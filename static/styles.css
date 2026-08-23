@@ -1,0 +1,534 @@
+/* =============================================================
+   Dewy — Base Stylesheet
+   Three themes: sage (default) · sunset · mono
+   Apply data-theme="sunset" or data-theme="mono" on any
+   ancestor element to switch themes for that subtree.
+   ============================================================= */
+
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Nunito:wght@400;500;600;700;800&family=Space+Grotesk:wght@400;500;600;700&family=VT323&family=JetBrains+Mono:wght@400;500;600&display=swap');
+
+/* ── Design tokens ─────────────────────────────────────────── */
+
+:root,
+[data-theme="sage"] {
+  /* Surfaces */
+  --bg:               #f5f1e8;
+  --panel:            #ffffff;
+  --panel-border:     rgba(45, 58, 46, 0.08);
+  --panel-shadow:     0 1px 0 rgba(45,58,46,0.04), 0 12px 32px -16px rgba(45,58,46,0.18);
+
+  /* Text */
+  --text:             #2d3a2e;
+  --text-muted:       #6c7a6e;
+  --text-faint:       #a0aaa1;
+
+  /* Accent */
+  --accent:           #6b9e7a;
+  --accent-soft:      #cfe3c8;
+  --danger:           #d97757;
+  --success:          #6b9e7a;
+
+  /* Radius */
+  --radius:           14px;
+
+  /* Chips */
+  --chip-bg:          #eef3e8;
+  --chip-text:        #3e5340;
+
+  /* Chapter badge */
+  --chapter-bg:       #fff7e6;
+  --chapter-text:     #a4732a;
+
+  /* Progress */
+  --progress-track:   #eee7d8;
+  --progress-fill:    #6b9e7a;
+
+  /* Editor */
+  --editor-bg:        #fdfbf6;
+  --editor-gutter:    #f3eee2;
+  --editor-line:      #d97757;
+  --editor-text:      #2d3a2e;
+  --tok-keyword:      #a4732a;
+  --tok-string:       #6b9e7a;
+  --tok-number:       #d97757;
+  --tok-fn:           #2d3a2e;
+  --tok-comment:      #a0aaa1;
+  --tok-ident:        #3e5340;
+
+  /* Buttons */
+  --btn-primary-bg:   #6b9e7a;
+  --btn-primary-text: #ffffff;
+  --btn-ghost-bg:     #ffffff;
+  --btn-ghost-text:   #2d3a2e;
+  --btn-ghost-border: rgba(45, 58, 46, 0.12);
+
+  /* Typography */
+  --font-ui:          "Nunito", "Inter", system-ui, sans-serif;
+  --font-display:     "Nunito", "Inter", system-ui, sans-serif;
+  --font-display-wt:  800;
+  --font-code:        "JetBrains Mono", "Fira Code", ui-monospace, monospace;
+}
+
+[data-theme="sunset"] {
+  --bg:               #1f1a2e;
+  --panel:            #2a2440;
+  --panel-border:     rgba(255, 255, 255, 0.06);
+  --panel-shadow:     0 1px 0 rgba(255,255,255,0.04) inset, 0 16px 40px -16px rgba(0,0,0,0.5);
+
+  --text:             #f3eef7;
+  --text-muted:       #a89cc4;
+  --text-faint:       #6e6388;
+
+  --accent:           #ffb86b;
+  --accent-soft:      #3d3360;
+  --danger:           #ff5d73;
+  --success:          #7ee787;
+
+  --radius:           12px;
+
+  --chip-bg:          #3d3360;
+  --chip-text:        #ffd6a4;
+  --chapter-bg:       #3d3360;
+  --chapter-text:     #ffb86b;
+
+  --progress-track:   #1f1a2e;
+  --progress-fill:    #ffb86b;
+
+  --editor-bg:        #171327;
+  --editor-gutter:    #221c38;
+  --editor-line:      #ffb86b;
+  --editor-text:      #f3eef7;
+  --tok-keyword:      #ff8bd1;
+  --tok-string:       #7ee787;
+  --tok-number:       #ffb86b;
+  --tok-fn:           #8ecae6;
+  --tok-comment:      #6e6388;
+  --tok-ident:        #f3eef7;
+
+  --btn-primary-bg:   #ffb86b;
+  --btn-primary-text: #1f1a2e;
+  --btn-ghost-bg:     #3d3360;
+  --btn-ghost-text:   #f3eef7;
+  --btn-ghost-border: rgba(255, 255, 255, 0.10);
+
+  --font-ui:          "Space Grotesk", "Inter", system-ui, sans-serif;
+  --font-display:     "VT323", "Space Grotesk", system-ui, sans-serif;
+  --font-display-wt:  400;
+  --font-code:        "JetBrains Mono", "Fira Code", ui-monospace, monospace;
+}
+
+[data-theme="mono"] {
+  --bg:               #fafaf7;
+  --panel:            #ffffff;
+  --panel-border:     rgba(15, 15, 15, 0.08);
+  --panel-shadow:     0 0 0 1px rgba(15,15,15,0.04), 0 1px 2px rgba(15,15,15,0.04);
+
+  --text:             #0f0f0f;
+  --text-muted:       #6b6b66;
+  --text-faint:       #a8a8a2;
+
+  --accent:           #3a6df0;
+  --accent-soft:      #e8eefc;
+  --danger:           #d14343;
+  --success:          #3a6df0;
+
+  --radius:           8px;
+
+  --chip-bg:          #f1f1ec;
+  --chip-text:        #3a3a36;
+  --chapter-bg:       #f1f1ec;
+  --chapter-text:     #0f0f0f;
+
+  --progress-track:   #f1f1ec;
+  --progress-fill:    #3a6df0;
+
+  --editor-bg:        #ffffff;
+  --editor-gutter:    #fafaf7;
+  --editor-line:      #3a6df0;
+  --editor-text:      #0f0f0f;
+  --tok-keyword:      #3a6df0;
+  --tok-string:       #0a8754;
+  --tok-number:       #0f0f0f;
+  --tok-fn:           #0f0f0f;
+  --tok-comment:      #a8a8a2;
+  --tok-ident:        #0f0f0f;
+
+  --btn-primary-bg:   #0f0f0f;
+  --btn-primary-text: #ffffff;
+  --btn-ghost-bg:     #ffffff;
+  --btn-ghost-text:   #0f0f0f;
+  --btn-ghost-border: rgba(15, 15, 15, 0.12);
+
+  --font-ui:          "Inter", system-ui, sans-serif;
+  --font-display:     "Inter", system-ui, sans-serif;
+  --font-display-wt:  700;
+  --font-code:        "JetBrains Mono", "Fira Code", ui-monospace, monospace;
+}
+
+/* ── Base reset ────────────────────────────────────────────── */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-ui);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* ── Typography ────────────────────────────────────────────── */
+
+h1, h2, h3, h4, h5, h6 {
+  margin: 0;
+  font-family: var(--font-display);
+  font-weight: var(--font-display-wt);
+  letter-spacing: -0.2px;
+  line-height: 1.2;
+  color: var(--text);
+}
+
+p {
+  margin: 0;
+  line-height: 1.6;
+}
+
+code {
+  font-family: var(--font-code);
+  font-size: 0.875em;
+  background: var(--chip-bg);
+  color: var(--chip-text);
+  padding: 1px 5px;
+  border-radius: 4px;
+}
+
+kbd {
+  font-family: var(--font-code);
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 6px;
+  border: 1px solid var(--panel-border);
+  border-radius: 3px;
+  font-size: 0.6875rem;
+  color: var(--text-faint);
+}
+
+/* ── Scrollbars ────────────────────────────────────────────── */
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(0,0,0,0.18) transparent;
+}
+
+*::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+*::-webkit-scrollbar-thumb {
+  background: rgba(0,0,0,0.18);
+  border-radius: 6px;
+}
+
+/* ── Panel ─────────────────────────────────────────────────── */
+
+.panel {
+  background: var(--panel);
+  border-radius: var(--radius);
+  box-shadow: var(--panel-shadow);
+  border: 1px solid var(--panel-border);
+}
+
+/* ── Buttons ───────────────────────────────────────────────── */
+
+.btn {
+  appearance: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 16px;
+  border-radius: calc(var(--radius) - 2px);
+  font-family: var(--font-ui);
+  font-weight: 600;
+  font-size: 0.8125rem;
+  letter-spacing: 0.2px;
+  cursor: pointer;
+  border: none;
+  text-decoration: none;
+  transition: transform 80ms ease, opacity 150ms ease;
+  white-space: nowrap;
+}
+
+.btn:active {
+  transform: translateY(1px);
+}
+
+.btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.btn-primary {
+  background: var(--btn-primary-bg);
+  color: var(--btn-primary-text);
+  box-shadow: 0 1px 0 rgba(0,0,0,0.06), 0 6px 16px -8px var(--btn-primary-bg);
+}
+
+.btn-ghost {
+  background: var(--btn-ghost-bg);
+  color: var(--btn-ghost-text);
+  border: 1px solid var(--btn-ghost-border);
+}
+
+/* ── Chips & badges ────────────────────────────────────────── */
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  background: var(--chip-bg);
+  color: var(--chip-text);
+  font-family: var(--font-code);
+  font-size: 0.75rem;
+  font-weight: 700;
+  padding: 3px 8px;
+  border-radius: 6px;
+}
+
+.badge-chapter {
+  display: inline-flex;
+  align-items: center;
+  background: var(--chapter-bg);
+  color: var(--chapter-text);
+  font-size: 0.6875rem;
+  font-weight: 700;
+  padding: 3px 8px;
+  border-radius: 999px;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+}
+
+/* ── Progress ──────────────────────────────────────────────── */
+
+.progress {
+  height: 4px;
+  border-radius: 999px;
+  background: var(--progress-track);
+  overflow: hidden;
+}
+
+.progress-fill {
+  height: 100%;
+  background: var(--progress-fill);
+  border-radius: 999px;
+  transition: width 300ms ease;
+}
+
+/* ── Code editor chrome ────────────────────────────────────── */
+
+.editor {
+  background: var(--editor-bg);
+  color: var(--editor-text);
+  border-radius: var(--radius);
+  font-family: var(--font-code);
+  font-size: 0.8125rem;
+  overflow: hidden;
+  box-shadow: inset 0 0 0 1px var(--panel-border);
+  display: flex;
+  flex-direction: column;
+}
+
+.editor-titlebar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--panel-border);
+  font-family: var(--font-ui);
+  font-size: 0.6875rem;
+  color: var(--text-muted);
+  letter-spacing: 0.4px;
+}
+
+.editor-titlebar-dots {
+  display: flex;
+  gap: 5px;
+}
+
+.editor-titlebar-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+}
+
+.editor-body {
+  flex: 1;
+  overflow: auto;
+}
+
+.editor-line {
+  display: flex;
+  align-items: stretch;
+  border-left: 3px solid transparent;
+  transition: background 120ms;
+  line-height: 1.55;
+}
+
+.editor-line.is-active {
+  background: color-mix(in srgb, var(--editor-line) 13%, transparent);
+  border-left-color: var(--editor-line);
+}
+
+.editor-gutter {
+  width: 36px;
+  flex-shrink: 0;
+  text-align: right;
+  padding: 0 10px 0 0;
+  background: var(--editor-gutter);
+  border-right: 1px solid var(--panel-border);
+  color: var(--text-faint);
+  font-size: 0.75rem;
+  user-select: none;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+}
+
+.editor-line.is-active .editor-gutter {
+  color: var(--editor-line);
+  font-weight: 700;
+}
+
+.editor-code {
+  padding: 0 12px;
+  white-space: pre;
+  display: flex;
+  align-items: center;
+}
+
+/* Syntax tokens */
+.tok-keyword { color: var(--tok-keyword); }
+.tok-string  { color: var(--tok-string); }
+.tok-number  { color: var(--tok-number); }
+.tok-fn      { color: var(--tok-fn); }
+.tok-comment { color: var(--tok-comment); font-style: italic; }
+.tok-ident   { color: var(--tok-ident); }
+.tok-punct   { color: var(--tok-ident); }
+
+/* ── Console / log ─────────────────────────────────────────── */
+
+.console {
+  background: var(--editor-bg);
+  border-radius: var(--radius);
+  box-shadow: inset 0 0 0 1px var(--panel-border);
+  font-family: var(--font-code);
+  font-size: 0.71875rem;
+  line-height: 1.65;
+  color: var(--text);
+  padding: 10px 14px;
+  overflow: auto;
+}
+
+.console-line-info { color: var(--text-muted); }
+.console-line-cmd  { color: var(--text); }
+.console-line-ok   { color: var(--success); }
+.console-line-err  { color: var(--danger); }
+.console-line-warn { color: var(--accent); }
+
+/* ── Dividers ──────────────────────────────────────────────── */
+
+.divider {
+  height: 1px;
+  background: var(--panel-border);
+  border: none;
+  margin: 0;
+}
+
+.divider-v {
+  width: 1px;
+  background: var(--panel-border);
+  align-self: stretch;
+}
+
+/* ── Status dot ────────────────────────────────────────────── */
+
+.status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--text-faint);
+  display: inline-block;
+  flex-shrink: 0;
+}
+
+.status-dot.is-active {
+  background: var(--accent);
+  box-shadow: 0 0 8px var(--accent);
+}
+
+/* ── Gem counter ───────────────────────────────────────────── */
+
+.gem {
+  width: 14px;
+  height: 14px;
+  border: 2px solid var(--text-faint);
+  transform: rotate(45deg);
+  border-radius: 2px;
+  display: inline-block;
+  flex-shrink: 0;
+  transition: background 200ms, border-color 200ms;
+}
+
+.gem.is-collected {
+  background: var(--accent);
+  border-color: var(--accent-soft);
+}
+
+/* ── Navbar / top bar ──────────────────────────────────────── */
+
+.topbar {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 14px 22px;
+  background: var(--panel);
+  border-bottom: 1px solid var(--panel-border);
+}
+
+.topbar-logo {
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  background: var(--accent);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  font-weight: 800;
+  font-size: 1rem;
+  flex-shrink: 0;
+}
+
+.topbar-wordmark {
+  font-weight: 800;
+  font-size: 0.9375rem;
+  letter-spacing: -0.2px;
+}
+
+/* ── Layout utilities ──────────────────────────────────────── */
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0,0,0,0);
+  white-space: nowrap;
+  border-width: 0;
+}
