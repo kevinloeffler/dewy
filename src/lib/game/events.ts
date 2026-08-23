@@ -23,6 +23,15 @@ export type WorldEvent =
     | { kind: 'door';        doorId: string; open: boolean }
     | { kind: 'switch';      position: Coord; on: boolean }
     | { kind: 'plate';       position: Coord; pressed: boolean }
+    | { kind: 'sensor';      sensorId: string; active: boolean }
+    /**
+     * A crate delivered by being *pushed* onto a bay — a flourish only, with
+     * no motion of its own. It cannot reuse `deliver`: a step animates its
+     * events simultaneously, so `[push, deliver]` would put two tweens on one
+     * mesh, and `deliver` also re-parents the crate out of the robot's hands,
+     * which never held it.
+     */
+    | { kind: 'crateDelivered'; crateId: string }
     | { kind: 'bump';        at: Coord; toward: Coord }
     | { kind: 'crash';       at: Coord; reason: string }
     | { kind: 'goalReached' };

@@ -34,6 +34,8 @@ const DURATIONS: Record<WorldEventKind, number> = {
     door:        0.35,
     switch:      0.25,
     plate:       0.15,
+    sensor:      0.30,
+    crateDelivered: 0.35,
     bump:        0.25,
     crash:       0.90,
     goalReached: 0.50,
@@ -77,6 +79,7 @@ export class World implements EventPlayer {
     private doorLeaves = new Map<string, THREE.Object3D[]>()
     private switchLevers = new Map<TileKey, THREE.Object3D>()
     private platePads = new Map<TileKey, THREE.Object3D>()
+    private sensorZones = new Map<string, THREE.Object3D[]>()
 
     private lastZoom: number
 
@@ -121,6 +124,7 @@ export class World implements EventPlayer {
         this.buildTiles(level)
         this.buildWalls(level)
         this.buildItems(level)
+        this.buildSensors(level)
 
         this.roboter = createRoboter({
             scale: ROBOT_SCALE,
@@ -163,6 +167,11 @@ export class World implements EventPlayer {
 
         for (const door of state.doors) this.setDoorOpen(door.doorId, door.open, 1)
         for (const sw of state.switches) this.setSwitchOn(coordKey(sw.position), sw.on, 1)
+        for (const plate of state.plates) this.setPlatePressed(coordKey(plate.position), plate.pressed, 1)
+        for (const sensor of state.motionSensors) this.setSensorActive(sensor.sensorId, sensor.active, 1)
+        for (const crate of state.crates) {
+            if (crate.delivered) this.markDelivered(crate.id)
+        }
     }
 
     /**
@@ -299,17 +308,47 @@ export class World implements EventPlayer {
         }
     }
 
+    /**
+     * Tinted overlays marking each motion sensor's forbidden tiles.
+     *
+     * Built here rather than in `TileFactory` because a sensor spans many
+     * tiles and sits *on top of* whatever tile is underneath it, which the
+     * per-tile factory has no way to express.
+     */
+    private buildSensors(level: Level) {
+        for (const sensor of level.motionSensors) {
+            const zones: THREE.Object3D[] = []
+            for (const coord of sensor.forbiddenTiles) {
+                const material = new THREE.MeshBasicMaterial({
+                    color: 0xff3b30,
+                    transparent: true,
+                    opacity: 0.28,
+                    depthWrite: false,
+                })
+                const mesh = new THREE.Mesh(new THREE.BoxGeometry(0.94, 0.01, 0.94), material)
+                mesh.position.set(coord.x, 0.012, coord.y)
+                this.tileRoot.add(mesh)
+                zones.push(mesh)
+            }
+            this.sensorZones.set(sensor.sensorId, zones)
+        }
+    }
+
     private disposeLevel() {
         this.roboter?.dispose()
         this.roboter = null
+        // The tile factory's cache is shared across levels and disposed by
+        // `destroy`, so tearing this level down must leave it alone.
+        const shared = this.tiles.shared()
         clearGroup(this.actorRoot)
         clearGroup(this.itemRoot)
-        clearGroup(this.tileRoot)
+        clearGroup(this.tileRoot, shared)
         this.crateMeshes.clear()
         this.keycardMeshes.clear()
         this.doorLeaves.clear()
         this.switchLevers.clear()
         this.platePads.clear()
+        this.sensorZones.clear()
         this.level = null
     }
 
@@ -504,6 +543,33 @@ export class World implements EventPlayer {
                 })]
             }
 
+            case 'sensor': {
+                const zones = this.sensorZones.get(event.sensorId)
+                if (!zones) return []
+                return [tween({
+                    durationSeconds: seconds,
+                    ease: easeOutCubic,
+                    onUpdate: (t) => this.setSensorActive(event.sensorId, event.active, t),
+                })]
+            }
+
+            case 'crateDelivered': {
+                // Pushed onto the bay rather than placed — the crate is
+                // already where it belongs, so this is a settle, not a move.
+                const mesh = this.crateMeshes.get(event.crateId)
+                if (!mesh) return []
+                const base = mesh.position.y
+                return [tween({
+                    durationSeconds: seconds,
+                    ease: easeOutCubic,
+                    onUpdate: (t) => { mesh.position.y = base + Math.sin(t * Math.PI) * 0.12 },
+                    onDone: () => {
+                        mesh.position.y = base
+                        this.markDelivered(event.crateId)
+                    },
+                })]
+            }
+
             case 'bump': {
                 const at = vec(event.at)
                 const toward = vec(event.toward)
@@ -540,6 +606,39 @@ export class World implements EventPlayer {
                 leaf.position.x = side * lerp(0.25, 0.72, progress)
             })
         }
+    }
+
+    private setPlatePressed(key: TileKey, pressed: boolean, t: number) {
+        const pad = this.platePads.get(key)
+        if (!pad) return
+        const from = pressed ? 0.035 : 0.012
+        const to = pressed ? 0.012 : 0.035
+        pad.position.y = lerp(from, to, t)
+    }
+
+    private setSensorActive(sensorId: string, active: boolean, t: number) {
+        const zones = this.sensorZones.get(sensorId)
+        if (!zones) return
+        const from = active ? 0 : 0.28
+        const to = active ? 0.28 : 0
+        for (const zone of zones) {
+            const material = (zone as THREE.Mesh).material as THREE.MeshBasicMaterial
+            material.opacity = lerp(from, to, t)
+            zone.visible = material.opacity > 0.01
+        }
+    }
+
+    /** A delivered crate is inert — dim it so it reads as locked in. */
+    private markDelivered(crateId: string) {
+        const mesh = this.crateMeshes.get(crateId)
+        mesh?.traverse((child) => {
+            const material = (child as THREE.Mesh).material
+            if (material && !Array.isArray(material) && 'emissive' in material) {
+                const standard = material as THREE.MeshStandardMaterial
+                standard.emissive.setHex(0x224422)
+                standard.emissiveIntensity = 0.45
+            }
+        })
     }
 
     private setSwitchOn(key: TileKey, on: boolean, t: number) {

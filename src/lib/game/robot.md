@@ -33,7 +33,10 @@ If a pushable crate is ahead and the tile behind it is free, the crate is pushed
 
 **Crashes if:**
 - Tile ahead is a wall, closed door, world edge, or pit
-- Tile ahead has a crate with no free tile behind it
+- Tile ahead is a switch, or a cargo belt (crates only)
+- Tile ahead has a crate with no free tile behind it, or a crate already delivered
+
+Pushing a crate onto a matching drop-off bay **delivers** it, exactly as `drop()` would.
 
 ---
 
@@ -57,6 +60,10 @@ Interact with the item on the tile ahead:
 **Crashes if:**
 - Tile ahead has no crate or keycard
 - Tile ahead has a crate and robot is already carrying a crate
+- Tile ahead has a crate that has already been delivered
+
+A keycard is pocketed even while carrying a crate, and a tile holding both a
+crate and a keycard gives up the crate first.
 
 ---
 
@@ -66,7 +73,11 @@ If the tile ahead is a matching drop-off bay the level goal is updated.
 
 **Crashes if:**
 - Robot is not carrying a crate
-- Tile ahead is occupied by a crate, wall, closed door, or is a pit
+- Tile ahead cannot hold a crate: another crate, a wall, a closed door, a pit,
+  a switch, a robot gap, or the world edge
+
+A bay that does not accept the crate is **not** a crash — the crate is simply
+placed there, so it can be picked back up and taken somewhere else.
 
 ---
 
@@ -109,6 +120,10 @@ All sensing functions check the tile directly ahead unless otherwise noted.
 ### `isBlocked()`
 Returns `true` if moving forward would crash the robot.  
 A pushable crate with free space behind it returns `false` — the robot can move there.
+
+This is about **physical** obstruction only. A motion sensor's forbidden zone is
+walkable floor that happens to be fatal, so it does not count as blocked —
+that is what `isDangerous()` is for.
 
 **Returns:** `boolean`
 
@@ -156,7 +171,9 @@ or `null` if carrying a grey (unlabelled) crate or not carrying anything.
 ---
 
 ### `isDangerous()`
-Returns `true` if the tile ahead is inside a motion sensor's forbidden zone.
+Returns `true` if the tile ahead is inside the forbidden zone of an **active**
+motion sensor. A sensor switched off by a linked switch or pressure plate is
+safe to walk through, and reports `false`.
 
 **Returns:** `boolean`
 

@@ -6,7 +6,7 @@ import type { LanguageStage } from '$lib/game/level';
  *
  * These are bare globals, not methods on a `robot` object — see
  * `src/lib/game/robot.md`, which is the spec, and `RobotActions` /
- * `RobotSensors` in `src/lib/game/world-interfaces.ts`, which mirror it.
+ * `RobotSensors` in `src/lib/game/robot-api.ts`, which mirror it.
  *
  * `stage` is the language stage at which each name becomes available, so a
  * level can offer only what its students have been taught.

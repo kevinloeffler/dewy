@@ -78,6 +78,14 @@ export class TileFactory {
         }
     }
 
+    /**
+     * The geometries and materials this factory memoises and reuses across
+     * levels. Tearing a level down must skip these — see `disposeObject`.
+     */
+    shared(): ReadonlySet<{ dispose(): void }> {
+        return new Set<{ dispose(): void }>([...this.geometries.values(), ...this.materials.values()]);
+    }
+
     dispose(): void {
         for (const geometry of this.geometries.values()) geometry.dispose();
         for (const material of this.materials.values()) material.dispose();
