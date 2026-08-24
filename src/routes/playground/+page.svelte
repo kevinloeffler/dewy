@@ -1,13 +1,15 @@
 <script lang="ts">
-    import { onMount } from 'svelte'
+    import { onMount, untrack } from 'svelte'
     import { World } from '$lib/game/world'
     import { createWorldState } from '$lib/game/worldState.svelte'
     import { GameEngine } from '$lib/game/engine'
     import { createRobotApi, LevelComplete, RobotCrash, type RobotApi } from '$lib/game/robot-api'
     import { RunCancelled } from '$lib/game/events'
-    import { tutorial01 } from '$lib/game/levels'
     import Console from '$lib/components/Console.svelte'
     import type { LogEntry } from '$lib/components/Console.svelte'
+    import type { PageServerData } from './$types'
+
+    let { data }: { data: PageServerData } = $props()
 
     let canvas: HTMLCanvasElement
     let world: World | undefined
@@ -15,7 +17,9 @@
     let robot: RobotApi | undefined
 
     const view = createWorldState()
-    const level = tutorial01
+    // Read once: the engine and the scene are built from it in `onMount`, so
+    // swapping levels means a fresh navigation, not a reactive update.
+    const level = untrack(() => data.level)
 
     // The engine owns `LevelState` and is deliberately not reactive — it is
     // read 60×/s by the renderer, where a rune proxy would only cost. The UI

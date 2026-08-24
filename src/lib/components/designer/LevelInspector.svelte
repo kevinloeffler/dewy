@@ -1,0 +1,223 @@
+<script lang="ts">
+	import { untrack } from 'svelte';
+	import { resize, setMeta, setOptions } from '$lib/game/editor/operations';
+	import type { LevelDraft } from '$lib/game/editor/draft.svelte';
+	import type { LanguageStage } from '$lib/game/level';
+	import { inBounds } from '$lib/game/grid';
+
+	interface Props {
+		draft: LevelDraft;
+	}
+
+	let { draft }: Props = $props();
+
+	let level = $derived(draft.level);
+
+	// Size is staged rather than applied on every keystroke: shrinking is
+	// lossy, so it gets an explicit button and a count of what it would drop.
+	let width = $state(untrack(() => draft.level.width));
+	let height = $state(untrack(() => draft.level.height));
+
+	// Re-sync when the level's own size changes — a resize, an undo, a redo.
+	// Guarded against the level *reference* changing, which happens on every
+	// brush stroke and would otherwise wipe a size the user was mid-way
+	// through typing.
+	let synced = { width: untrack(() => draft.level.width), height: untrack(() => draft.level.height) };
+
+	$effect(() => {
+		const level = draft.level;
+		if (level.width === synced.width && level.height === synced.height) return;
+
+		synced = { width: level.width, height: level.height };
+		width = level.width;
+		height = level.height;
+	});
+
+	let sizeChanged = $derived(width !== level.width || height !== level.height);
+
+	let wouldDrop = $derived.by(() => {
+		if (!sizeChanged) return 0;
+		const bounds = { ...level, width, height };
+		const tiles = Object.keys(level.tiles).filter((key) => {
+			const [x, y] = key.split(',').map(Number);
+			return !inBounds(bounds, { x, y });
+		}).length;
+		const items = level.items.filter((item) => !inBounds(bounds, item.position)).length;
+		return tiles + items;
+	});
+
+	let budgetOn = $derived(level.options.lineBudget !== null);
+
+	function applySize() {
+		draft.edit((current) => resize(current, width, height));
+	}
+</script>
+
+<div class="inspector">
+	<label class="field">
+		Name
+		<input
+			value={level.name}
+			onchange={(event) =>
+				draft.edit((current) => setMeta(current, { name: event.currentTarget.value }))}
+		/>
+	</label>
+
+	<label class="field">
+		Description
+		<textarea
+			rows="2"
+			value={level.description ?? ''}
+			onchange={(event) =>
+				draft.edit((current) =>
+					setMeta(current, { description: event.currentTarget.value.trim() || null })
+				)}
+		></textarea>
+	</label>
+
+	<div class="field">
+		Grid size
+		<div class="size">
+			<input type="number" min="1" max="40" bind:value={width} aria-label="Width" />
+			<span class="times">×</span>
+			<input type="number" min="1" max="40" bind:value={height} aria-label="Height" />
+		</div>
+		{#if sizeChanged}
+			<button class="btn btn-ghost small" type="button" onclick={applySize}>
+				Resize to {width} × {height}
+			</button>
+			{#if wouldDrop > 0}
+				<p class="warn">Drops {wouldDrop} thing{wouldDrop === 1 ? '' : 's'} outside the new grid.</p>
+			{/if}
+		{/if}
+	</div>
+
+	<hr />
+
+	<label class="field check">
+		<input
+			type="checkbox"
+			checked={budgetOn}
+			onchange={(event) =>
+				draft.edit((current) =>
+					setOptions(current, { lineBudget: event.currentTarget.checked ? 15 : null })
+				)}
+		/>
+		Line budget
+	</label>
+
+	{#if budgetOn}
+		<label class="field indent">
+			Maximum lines
+			<input
+				type="number"
+				min="1"
+				value={level.options.lineBudget}
+				onchange={(event) =>
+					draft.edit((current) =>
+						setOptions(current, { lineBudget: Number(event.currentTarget.value) || 1 })
+					)}
+			/>
+		</label>
+	{/if}
+
+	<label class="field check">
+		<input
+			type="checkbox"
+			checked={level.options.showInventory}
+			onchange={(event) =>
+				draft.edit((current) =>
+					setOptions(current, { showInventory: event.currentTarget.checked })
+				)}
+		/>
+		Show inventory
+	</label>
+
+	<label class="field">
+		Language stage
+		<select
+			value={level.options.languageStage}
+			onchange={(event) =>
+				draft.edit((current) =>
+					setOptions(current, {
+						languageStage: Number(event.currentTarget.value) as LanguageStage
+					})
+				)}
+		>
+			{#each [1, 2, 3, 4, 5] as stage (stage)}
+				<option value={stage}>Stage {stage}</option>
+			{/each}
+		</select>
+	</label>
+</div>
+
+<style>
+	.inspector {
+		display: flex;
+		flex-direction: column;
+		gap: 12px;
+	}
+
+	.field {
+		display: flex;
+		flex-direction: column;
+		gap: 5px;
+		font-size: 12px;
+		color: var(--text-muted);
+	}
+
+	.field.check {
+		flex-direction: row;
+		align-items: center;
+		gap: 8px;
+	}
+
+	.field.indent {
+		padding-left: 22px;
+	}
+
+	.field :global(input:not([type='checkbox'])),
+	.field :global(select),
+	.field :global(textarea) {
+		font: inherit;
+		font-family: var(--font-ui);
+		font-size: 13px;
+		color: var(--text);
+		background: var(--bg);
+		border: 1px solid var(--panel-border);
+		border-radius: calc(var(--radius) - 8px);
+		padding: 6px 8px;
+		width: 100%;
+		resize: vertical;
+	}
+
+	.size {
+		display: flex;
+		align-items: center;
+		gap: 6px;
+	}
+
+	.times {
+		color: var(--text-faint);
+	}
+
+	.small {
+		align-self: flex-start;
+		padding: 5px 10px;
+		font-size: 12px;
+		margin-top: 6px;
+	}
+
+	.warn {
+		margin: 6px 0 0;
+		font-size: 12px;
+		color: var(--danger);
+	}
+
+	hr {
+		border: none;
+		border-top: 1px solid var(--panel-border);
+		margin: 2px 0;
+		width: 100%;
+	}
+</style>

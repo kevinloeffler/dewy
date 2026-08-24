@@ -13,7 +13,8 @@ import {
     tween,
     type Animation,
 } from './animation'
-import { clearGroup } from './three-utils'
+import { aimIsometricCamera, clearGroup, createIsometricCamera } from './three-utils'
+import { pickTileFrom } from './editor/picking'
 import { createRoboter, type Roboter } from '$lib/game/models/roboter'
 import { createCrate } from '$lib/game/models/crate'
 import { createKeycard } from '$lib/game/models/keycard'
@@ -69,6 +70,11 @@ export class World implements EventPlayer {
     private tileRoot = new THREE.Group()
     private itemRoot = new THREE.Group()
     private actorRoot = new THREE.Group()
+    /** Editor overlays. Outlives a level, so `disposeLevel` leaves it alone. */
+    private editorRoot = new THREE.Group()
+    private highlight: THREE.LineSegments | null = null
+    private raycaster = new THREE.Raycaster()
+    private pointer = new THREE.Vector2()
 
     private level: Level | null = null
     private roboter: Roboter | null = null
@@ -89,7 +95,7 @@ export class World implements EventPlayer {
         this.lastZoom = view.zoom
 
         this.scene = new THREE.Scene()
-        this.scene.add(this.tileRoot, this.itemRoot, this.actorRoot)
+        this.scene.add(this.tileRoot, this.itemRoot, this.actorRoot, this.editorRoot)
 
         this.camera = this.createCamera()
         this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true })
@@ -233,6 +239,8 @@ export class World implements EventPlayer {
         this.frame = null
         this.queue.cancel()
         this.observer.disconnect()
+        clearGroup(this.editorRoot)
+        this.highlight = null
         this.disposeLevel()
         this.tiles.dispose()
         this.renderer.dispose()
@@ -254,6 +262,9 @@ export class World implements EventPlayer {
                 if (!object) continue
                 object.position.x += x
                 object.position.z += y
+                // What `pickTile` reads back. Stamped on the tile's root
+                // object; a raycast hit on a child walks up to find it.
+                object.userData.coord = coord
                 this.tileRoot.add(object)
 
                 const key = coordKey(coord)
@@ -354,32 +365,69 @@ export class World implements EventPlayer {
 
 
     // ========================================================
+    // Editor support
+    //
+    // Used by the level designer, never by the game. It lives here rather
+    // than in `editor/` because picking needs the camera, the canvas and the
+    // tile scene graph, and `World` owns all three.
+    // ========================================================
+
+    /**
+     * The tile under a mouse position, or `null` when the pointer is off-world.
+     *
+     * Only the pixels-to-NDC step needs the canvas; the raycast itself lives
+     * in `editor/picking.ts`, where it can be tested without a WebGL context.
+     */
+    pickTile(clientX: number, clientY: number): Coord | null {
+        if (!this.level) return null
+
+        const rect = this.canvas.getBoundingClientRect()
+        if (rect.width === 0 || rect.height === 0) return null
+
+        this.pointer.set(
+            ((clientX - rect.left) / rect.width) * 2 - 1,
+            -((clientY - rect.top) / rect.height) * 2 + 1,
+        )
+
+        return pickTileFrom(this.raycaster, this.camera, this.tileRoot, this.pointer, this.level)
+    }
+
+    /** Outline one tile, or clear the outline with `null`. */
+    setHighlight(coord: Coord | null) {
+        const outline = this.highlight ??= this.createHighlight()
+        outline.visible = coord !== null
+        if (coord) outline.position.set(coord.x, 0, coord.y)
+    }
+
+    private createHighlight(): THREE.LineSegments {
+        const box = new THREE.BoxGeometry(1.02, 0.04, 1.02)
+        const geometry = new THREE.EdgesGeometry(box)
+        box.dispose()
+
+        // `depthTest: false` keeps the outline readable on a tile tucked
+        // behind a wall, which the fixed camera angle makes common.
+        const material = new THREE.LineBasicMaterial({ color: 0xffffff, depthTest: false })
+        const outline = new THREE.LineSegments(geometry, material)
+        outline.renderOrder = 999
+        outline.visible = false
+
+        this.editorRoot.add(outline)
+        return outline
+    }
+
+
+    // ========================================================
     // Camera
     // ========================================================
 
     private createCamera() {
-        const aspect = this.aspect()
-        const camera = new THREE.OrthographicCamera(
-            -this.view.zoom * aspect,
-            this.view.zoom * aspect,
-            this.view.zoom,
-            -this.view.zoom,
-            0.1, 1000,
-        )
-        const d = this.view.cameraPosition
-        camera.position.set(d, d, d)
-        camera.lookAt(0, 0, 0)
-        camera.updateProjectionMatrix()
-        return camera
+        return createIsometricCamera(this.view.zoom, this.aspect(), this.view.cameraPosition)
     }
 
     /** Centre the view on the level rather than on its corner tile. */
     private frameCamera(level: Level) {
         const centre = new THREE.Vector3((level.width - 1) / 2, 0, (level.height - 1) / 2)
-        const d = this.view.cameraPosition
-        this.camera.position.set(centre.x + d, d, centre.z + d)
-        this.camera.lookAt(centre)
-        this.camera.updateProjectionMatrix()
+        aimIsometricCamera(this.camera, centre, this.view.cameraPosition)
     }
 
     private aspect() {

@@ -42,3 +42,36 @@ export function clearGroup(group: THREE.Object3D, keep?: ReadonlySet<Disposable>
         disposeObject(child, keep);
     }
 }
+
+
+/**
+ * The game's fixed isometric view: an orthographic frustum looked at down
+ * `(-1, -1, -1)`. Shared with the level designer's picking tests, so the
+ * angle they verify against is the angle the game actually renders.
+ */
+export function createIsometricCamera(
+    zoom: number,
+    aspect: number,
+    distance: number,
+): THREE.OrthographicCamera {
+    const camera = new THREE.OrthographicCamera(
+        -zoom * aspect,
+        zoom * aspect,
+        zoom,
+        -zoom,
+        0.1, 1000,
+    )
+    aimIsometricCamera(camera, new THREE.Vector3(0, 0, 0), distance)
+    return camera
+}
+
+/** Point an isometric camera at `centre`, from `distance` along each axis. */
+export function aimIsometricCamera(
+    camera: THREE.OrthographicCamera,
+    centre: THREE.Vector3,
+    distance: number,
+) {
+    camera.position.set(centre.x + distance, distance, centre.z + distance)
+    camera.lookAt(centre)
+    camera.updateProjectionMatrix()
+}

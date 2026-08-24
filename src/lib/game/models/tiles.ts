@@ -23,7 +23,7 @@ const SLAB = 0.1;
  *  base-centre origin every model in `models/` assumes. */
 const SLAB_Y = -SLAB / 2;
 
-const COLORS = {
+export const COLORS = {
     floorLight: 0xc4c4c4,
     floorDark:  0xa6a6a6,
     wall:       0x888888,
