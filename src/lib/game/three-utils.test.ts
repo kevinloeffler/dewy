@@ -74,3 +74,33 @@ describe('clearGroup', () => {
         expect(disposed.size).toBe(2);
     });
 });
+
+
+describe('TileFactory belts', () => {
+    /**
+     * `World.scrollBelts` finds the chevrons by name and slides them along
+     * local +Z. Both halves of that contract live in different files, so a
+     * rename here would otherwise show up only as a belt that stopped moving.
+     */
+    it('names the chevron group and lines it up along local +Z', () => {
+        const factory = new TileFactory();
+
+        for (const tile of [
+            { kind: 'conveyor', direction: 'east' },
+            { kind: 'cargo_conveyor', direction: 'north' },
+        ] as const) {
+            const belt = factory.create(tile, { x: 0, y: 0 })!;
+            const chevrons = belt.getObjectByName('beltChevrons');
+
+            expect(chevrons, tile.kind).toBeDefined();
+            expect(chevrons!.children).toHaveLength(3);
+
+            const zs = chevrons!.children.map((c) => c.position.z).sort((a, b) => a - b);
+            expect(zs[1] - zs[0]).toBeCloseTo(zs[2] - zs[1]);
+            // Inside the tile, so the scroll has room to wrap on the pitch.
+            expect(Math.max(...zs.map(Math.abs))).toBeLessThan(0.5);
+        }
+
+        factory.dispose();
+    });
+});

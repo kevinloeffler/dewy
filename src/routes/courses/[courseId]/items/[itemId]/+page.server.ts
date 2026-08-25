@@ -43,14 +43,29 @@ export const actions: Actions = {
 	 *
 	 * One code path signed in or out: an anonymous visitor still advances, they
 	 * just leave no trace. `markComplete` is idempotent, so re-solving is safe.
+	 *
+	 * The lock check is repeated here, and has to be. `load` only stops a locked
+	 * item being *opened* — a POST aimed straight at this action skips that
+	 * entirely, and recording a locked item as done would unlock everything
+	 * behind it, which is the one thing the stage rules exist to prevent.
 	 */
 	complete: async (event) => {
 		const formData = await event.request.formData();
+
+		const course = await findCourse(event.params.courseId);
+		if (!course || !course.published) return fail(404, { message: 'No such course.' });
+
 		const context = await findItem(event.params.courseId, event.params.itemId);
 		if (!context) return fail(404, { message: 'No such item.' });
 
-		if (event.locals.user) {
-			await markComplete(event.locals.user.id, event.params.itemId, formData.get('code')?.toString());
+		const user = event.locals.user;
+		if (user) {
+			const progress = courseProgress(course, await loadCompleted(user.id, course.id));
+			if (progress.state[context.item.id] === 'locked') {
+				return fail(403, { message: 'That item is locked.' });
+			}
+
+			await markComplete(user.id, event.params.itemId, formData.get('code')?.toString());
 		}
 
 		// A level records in the background and stays put — the student should

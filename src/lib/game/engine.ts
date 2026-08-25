@@ -1,18 +1,20 @@
-import type { Coord, Level } from './level';
+import type { Coord, Level, TileKey } from './level';
 import type { CrateColor } from './crate-color';
 import type { LevelState, DoorState, MotionSensorState, GoalConditionState } from './level-state';
 import type { WorldEvent } from './events';
 import { createLevelState } from './level-state';
-import { ahead, sameCoord, tileAt, turn } from './grid';
+import { ahead, coordKey, sameCoord, tileAt, turn } from './grid';
 import { crash, type CrashReason } from './crash-reasons';
 import {
     bayAccepts,
+    beltDirection,
     crateAt,
     crateById,
     crateBlockedBy,
     keycardAt,
     platePressedAt,
     sensorForbidding,
+    tileBlocksCrate,
     tileBlocksRobot,
     type Blocker,
 } from './rules';
@@ -48,6 +50,33 @@ export type StepOutcome = {
     events: WorldEvent[][];
 };
 
+/**
+ * Something a belt is trying to move this tick.
+ *
+ * `key` is the occupancy key rather than the crate id, so a crate authored
+ * with the id `"robot"` cannot shadow the robot itself.
+ */
+type Rider = {
+    key: string;
+    crateId: string | null;
+    from: Coord;
+    to: Coord;
+};
+
+/**
+ * Tiles each rider has already crossed during the current ride, keyed as
+ * `Rider.key`. A belt that loops back on itself would otherwise carry its
+ * rider round forever; stopping one the moment it would revisit a tile ends
+ * the loop after exactly one lap, and bounds every ride to the grid.
+ */
+type BeltRide = Map<string, Set<TileKey>>;
+
+const ROBOT_KEY = 'robot';
+
+function crateKey(crateId: string): string {
+    return `crate:${crateId}`;
+}
+
 /** What `moveForward` is about to do — also the answer to `isBlocked()`. */
 type MoveCheck =
     | { kind: 'move'; target: Coord }
@@ -63,6 +92,13 @@ export class GameEngine {
     /** The level's authored battery, in commands. `null` means unlimited. */
     private readonly energy: number | null;
 
+    /**
+     * Safety net on the belt ride, not a game rule: no rider may revisit a
+     * tile, so a ride is already bounded — this only stops a future rule from
+     * hanging the loop.
+     */
+    private readonly rideCap: number;
+
     /** Authored door/sensor values, so settle can express either polarity. */
     private readonly initialDoorOpen = new Map<string, boolean>();
     private readonly initialSensorActive = new Map<string, boolean>();
@@ -70,6 +106,7 @@ export class GameEngine {
     constructor(level: Level, options: { energy?: number | null } = {}) {
         this.level = level;
         this.energy = options.energy ?? null;
+        this.rideCap = level.width * level.height + 1;
 
         for (const tile of Object.values(level.tiles)) {
             if (tile?.kind === 'door') this.initialDoorOpen.set(tile.doorId, tile.initiallyOpen);
@@ -363,23 +400,39 @@ export class GameEngine {
     }
 
     /**
-     * Runs after every action that changed the world.
+     * Runs after every action that changed the world — then once more for
+     * every tile of belt the world carries anything along.
      *
-     * Settle first, so stepping onto a plate that suppresses a sensor works
-     * within the same action; then the sensor check, which beats goals — a
-     * run that both delivers the last crate and trips a sensor is a crash.
+     * One turn of the loop is one tick of the world, and the order inside it
+     * is load-bearing. Settle first, so stepping onto a plate that suppresses
+     * a sensor works within the same action, and so a door the ride's own
+     * weight opens is open before the ride reaches it. Then the sensor check,
+     * which beats goals — a run that both delivers the last crate and trips a
+     * sensor is a crash. The belt tick comes last, so a forbidden tile the
+     * ride merely passes *through* still fires, and a goal it crosses still
+     * counts.
      */
     private finish(steps: WorldEvent[][]): StepOutcome {
-        const settled = this.settle();
-        if (settled.length > 0) steps.push(settled);
+        const ride: BeltRide = new Map();
 
-        const tripped = sensorForbidding(this.level, this.levelState, this.levelState.robot.position);
-        if (tripped) return this.fail(steps, crash('motion_sensor'));
+        for (let tick = 0; tick <= this.rideCap; tick++) {
+            const settled = this.settle();
+            if (settled.length > 0) steps.push(settled);
 
-        if (this.latchGoals()) {
-            this.levelState.completed = true;
-            steps.push([{ kind: 'goalReached' }]);
-            return { status: 'complete', reason: null, events: steps };
+            const tripped = sensorForbidding(this.level, this.levelState, this.levelState.robot.position);
+            if (tripped) return this.fail(steps, crash('motion_sensor'));
+
+            if (this.latchGoals()) {
+                this.levelState.completed = true;
+                steps.push([{ kind: 'goalReached' }]);
+                return { status: 'complete', reason: null, events: steps };
+            }
+
+            // Each tile of the ride is its own step, so it plays out tile by
+            // tile on screen rather than teleporting to the end of the belt.
+            const conveyed = this.convey(ride);
+            if (conveyed.length === 0) break;
+            steps.push(conveyed);
         }
 
         return { status: 'ok', reason: null, events: steps };
@@ -499,6 +552,162 @@ export class GameEngine {
             }
         }
         return false;
+    }
+
+
+    // ========================================================
+    // Belts
+    // ========================================================
+
+    /**
+     * One tile of the belt ride: everything standing on a conveyor slides one
+     * tile. `finish` calls this until it reports nothing moved, so a rider is
+     * carried to the *end* of the belt — off it, or up against whatever stops
+     * it — for the price of the single command that put it there. Sensing
+     * never ticks belts: it costs no energy and changes nothing.
+     *
+     * Belts **jam** rather than crash. `game-mechanics.md` lists every way a
+     * run can end and none of them is "the floor moved you", so a rider whose
+     * way is blocked — wall, pit, closed door, a crate that is not itself
+     * moving — simply stays put. That is also what lets crates pile up at the
+     * end of a cargo belt instead of the level being lost to a stray push.
+     *
+     * A jammed rider is not out of the ride: it retries on the next tick, so
+     * a queue of crates flows on as soon as the one in front steps off.
+     */
+    private convey(ride: BeltRide): WorldEvent[] {
+        const state = this.levelState;
+        const riders: Rider[] = [];
+
+        /** Start this rider's trail at the tile it is setting off from. */
+        const trail = (key: string, from: Coord): Set<TileKey> => {
+            let seen = ride.get(key);
+            if (!seen) {
+                seen = new Set<TileKey>([coordKey(from)]);
+                ride.set(key, seen);
+            }
+            return seen;
+        };
+
+        const robotBelt = beltDirection(this.level, state.robot.position, 'robot');
+        if (robotBelt) {
+            trail(ROBOT_KEY, state.robot.position);
+            riders.push({
+                key: ROBOT_KEY,
+                crateId: null,
+                from: { ...state.robot.position },
+                to: ahead(state.robot.position, robotBelt),
+            });
+        }
+
+        for (const crate of state.crates) {
+            // A carried crate rides in the robot's hands; a delivered one is
+            // inert and the belt runs underneath it.
+            if (crate.carried || crate.delivered) continue;
+            const belt = beltDirection(this.level, crate.position, 'crate');
+            if (!belt) continue;
+            trail(crateKey(crate.id), crate.position);
+            riders.push({
+                key: crateKey(crate.id),
+                crateId: crate.id,
+                from: { ...crate.position },
+                to: ahead(crate.position, belt),
+            });
+        }
+
+        if (riders.length === 0) return [];
+
+        // Where everyone stands before anything moves — riders and bystanders
+        // alike, since a stalled crate is what a rider behind it runs into.
+        const occupants = new Map<TileKey, string>();
+        occupants.set(coordKey(state.robot.position), ROBOT_KEY);
+        for (const crate of state.crates) {
+            if (crate.carried) continue;
+            occupants.set(coordKey(crate.position), crateKey(crate.id));
+        }
+
+        const byKey = new Map(riders.map((rider) => [rider.key, rider]));
+        const moving = new Set(riders.map((rider) => rider.key));
+
+        // Jamming cascades — a rider stopped by a wall stops whoever is queued
+        // behind it. Every pass drops at least one rider, so this terminates.
+        for (let pass = 0; pass <= riders.length; pass++) {
+            const claims = new Map<TileKey, number>();
+            for (const rider of riders) {
+                if (!moving.has(rider.key)) continue;
+                const key = coordKey(rider.to);
+                claims.set(key, (claims.get(key) ?? 0) + 1);
+            }
+
+            let changed = false;
+            for (const rider of riders) {
+                if (!moving.has(rider.key)) continue;
+                if (!this.jams(rider, ride, occupants, byKey, moving, claims)) continue;
+                moving.delete(rider.key);
+                changed = true;
+            }
+            if (!changed) break;
+        }
+
+        const events: WorldEvent[] = [];
+        for (const rider of riders) {
+            if (!moving.has(rider.key)) continue;
+            ride.get(rider.key)!.add(coordKey(rider.to));
+
+            if (rider.crateId === null) {
+                state.robot.position = { ...rider.to };
+                events.push({ kind: 'conveyRobot', from: { ...rider.from }, to: { ...rider.to } });
+            } else {
+                crateById(state, rider.crateId)!.position = { ...rider.to };
+                events.push({
+                    kind: 'conveyCrate',
+                    crateId: rider.crateId,
+                    from: { ...rider.from },
+                    to: { ...rider.to },
+                });
+            }
+        }
+        this.syncCarried();
+
+        return events;
+    }
+
+    /**
+     * Why a rider stays put: its own trail, the tile ahead, a bystander, or
+     * another rider.
+     */
+    private jams(
+        rider: Rider,
+        ride: BeltRide,
+        occupants: Map<TileKey, string>,
+        byKey: Map<string, Rider>,
+        moving: Set<string>,
+        claims: Map<TileKey, number>,
+    ): boolean {
+        const key = coordKey(rider.to);
+
+        // A belt laid out in a ring would carry its rider round for ever.
+        // Stopping at the first tile it would cross twice ends the ride after
+        // one lap — and is what guarantees the ride terminates at all.
+        if (ride.get(rider.key)?.has(key)) return true;
+
+        // Two belts feeding one tile: neither rider wins, or the order they
+        // happen to be listed in would silently decide the level.
+        if ((claims.get(key) ?? 0) > 1) return true;
+
+        const blocked = rider.crateId === null
+            ? tileBlocksRobot(this.level, this.levelState, rider.to)
+            : tileBlocksCrate(this.level, this.levelState, rider.to);
+        if (blocked) return true;
+
+        const occupant = occupants.get(key);
+        if (occupant === undefined || occupant === rider.key) return false;
+
+        // Following someone who is leaving is fine — that is a train of crates
+        // on one belt. Trading places is not: they would pass through each
+        // other, so two belts pointing at each other deadlock, as they should.
+        if (!moving.has(occupant)) return true;
+        return sameCoord(byKey.get(occupant)!.to, rider.from);
     }
 
 

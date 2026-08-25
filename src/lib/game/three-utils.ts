@@ -54,12 +54,17 @@ export function createIsometricCamera(
     aspect: number,
     distance: number,
 ): THREE.OrthographicCamera {
+    // The clip planes straddle the camera. An orthographic view of a ground
+    // plane always has part of that plane *behind* the camera — the rays are
+    // parallel, so the near half of the floor keeps going past the lens
+    // instead of vanishing at a horizon. A positive near would cut the
+    // world's base off across the bottom of the frame.
     const camera = new THREE.OrthographicCamera(
         -zoom * aspect,
         zoom * aspect,
         zoom,
         -zoom,
-        0.1, 1000,
+        -1000, 1000,
     )
     aimIsometricCamera(camera, new THREE.Vector3(0, 0, 0), distance)
     return camera

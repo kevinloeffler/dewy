@@ -5,7 +5,7 @@ import { nullPlayer, RunCancelled, type EventPlayer } from './events';
 import { validateLevel } from './rules';
 import { tutorial01 } from './levels/tutorial-01';
 import type {
-    Coord, GoalCondition, Item, Level, MotionSensor, RobotConfig, Tile, TileKey,
+    Coord, Direction, GoalCondition, Item, Level, MotionSensor, RobotConfig, Tile, TileKey,
 } from './level';
 
 
@@ -66,16 +66,20 @@ describe('moveForward', () => {
     });
 
     it('walks onto goal, drop-off, plate, conveyor and robot_gap tiles', () => {
-        for (const tile of [
-            { kind: 'goal' },
-            { kind: 'drop_off', color: null },
-            { kind: 'pressure_plate', targetId: 'none' },
-            { kind: 'conveyor', direction: 'east' },
-            { kind: 'robot_gap' },
-        ] as Tile[]) {
+        // A conveyor is walkable like the rest, but it does not leave the
+        // robot standing there: the belt tick carries it one tile on.
+        const cases: [Tile, Coord][] = [
+            [{ kind: 'goal' },                            { x: 2, y: 1 }],
+            [{ kind: 'drop_off', color: null },           { x: 2, y: 1 }],
+            [{ kind: 'pressure_plate', targetId: 'none' }, { x: 2, y: 1 }],
+            [{ kind: 'conveyor', direction: 'east' },     { x: 3, y: 1 }],
+            [{ kind: 'robot_gap' },                       { x: 2, y: 1 }],
+        ];
+
+        for (const [tile, resting] of cases) {
             const engine = new GameEngine(makeLevel({ tiles: { '2,1': tile } }));
             expect(engine.moveForward().status, tile.kind).toBe('ok');
-            expect(at(engine)).toEqual({ x: 2, y: 1 });
+            expect(at(engine), tile.kind).toEqual(resting);
         }
     });
 
@@ -722,6 +726,344 @@ describe('motion sensors', () => {
             motionSensors: [sensor([{ x: 3, y: 1 }])],
         }));
         expect(engine.moveForward().status).toBe('ok');
+    });
+});
+
+
+describe('conveyors', () => {
+    const belt  = (direction: Direction): Tile => ({ kind: 'conveyor', direction });
+    const cargo = (direction: Direction): Tile => ({ kind: 'cargo_conveyor', direction });
+
+    function crate(engine: GameEngine, id: string): Coord {
+        return engine.state.crates.find((c) => c.id === id)!.position;
+    }
+
+    /** A grey crate is enough for anything that is not about delivery. */
+    function grey(id: string, x: number, y: number): Item {
+        return { kind: 'crate_grey', id, position: { x, y } };
+    }
+
+    it('carries the robot one tile after the move that put it on the belt', () => {
+        const engine = new GameEngine(makeLevel({ tiles: { '2,1': belt('east') } }));
+        const outcome = engine.moveForward();
+
+        expect(outcome.status).toBe('ok');
+        expect(shape(outcome)).toEqual([['move'], ['conveyRobot']]);
+        expect(at(engine)).toEqual({ x: 3, y: 1 });
+    });
+
+    it('carries the robot on any command, not only on moving', () => {
+        const engine = new GameEngine(makeLevel({
+            tiles: { '1,1': belt('east') },
+        }));
+        expect(shape(engine.turnLeft())).toEqual([['turn'], ['conveyRobot']]);
+        expect(at(engine)).toEqual({ x: 2, y: 1 });
+    });
+
+    it('carries the robot to the end of the belt on one command', () => {
+        const engine = new GameEngine(makeLevel({
+            tiles: { '2,1': belt('east'), '3,1': belt('east') },
+        }));
+        const outcome = engine.moveForward();
+
+        // One step per tile, so the ride plays out rather than teleporting.
+        expect(shape(outcome)).toEqual([['move'], ['conveyRobot'], ['conveyRobot']]);
+        expect(at(engine)).toEqual({ x: 4, y: 1 });
+        expect(engine.state.steps).toBe(1);
+    });
+
+    it('stops after one lap on a belt laid out in a ring', () => {
+        const engine = new GameEngine(makeLevel({
+            tiles: {
+                '1,1': belt('east'),
+                '2,1': belt('south'),
+                '2,2': belt('west'),
+                '1,2': belt('north'),
+            },
+        }));
+        const outcome = engine.turnLeft();
+
+        // Back at the tile it started from would be the second lap, so the
+        // ride ends one tile short of it rather than running forever.
+        expect(outcome.status).toBe('ok');
+        expect(at(engine)).toEqual({ x: 1, y: 2 });
+    });
+
+    it('leaves the world alone until the first command', () => {
+        const engine = new GameEngine(makeLevel({
+            tiles: { '1,1': belt('east'), '2,2': belt('east') },
+            items: [grey('c', 2, 2)],
+        }));
+        expect(at(engine)).toEqual({ x: 1, y: 1 });
+        expect(crate(engine, 'c')).toEqual({ x: 2, y: 2 });
+    });
+
+    it('does not run on sensing, which costs no step', () => {
+        const engine = new GameEngine(makeLevel({ tiles: { '1,1': belt('east') } }));
+        engine.isBlocked();
+        engine.isCrate();
+        engine.isDangerous();
+        expect(at(engine)).toEqual({ x: 1, y: 1 });
+        expect(engine.state.steps).toBe(0);
+    });
+
+    it('costs no energy — the whole ride is on the one command', () => {
+        const engine = new GameEngine(
+            makeLevel({ tiles: { '1,1': belt('east'), '2,1': belt('east') } }),
+            { energy: 1 },
+        );
+        expect(engine.turnLeft().status).toBe('ok');
+        expect(at(engine)).toEqual({ x: 3, y: 1 });
+        expect(engine.state.steps).toBe(1);
+        expect(engine.turnLeft().reason?.code).toBe('out_of_energy');
+    });
+
+    it('undoes a move made against it', () => {
+        const engine = new GameEngine(makeLevel({ tiles: { '2,1': belt('west') } }));
+        const outcome = engine.moveForward();
+
+        expect(outcome.status).toBe('ok');
+        expect(shape(outcome)).toEqual([['move'], ['conveyRobot']]);
+        expect(at(engine)).toEqual({ x: 1, y: 1 });
+    });
+
+    it('takes the carried crate along with the robot', () => {
+        const engine = new GameEngine(makeLevel({
+            tiles: { '1,1': belt('east') },
+            items: [grey('c', 2, 1)],
+        }));
+        engine.pick();
+        expect(at(engine)).toEqual({ x: 2, y: 1 });
+        expect(crate(engine, 'c')).toEqual({ x: 2, y: 1 });
+    });
+
+    it('carries crates, on a conveyor and on a cargo belt alike', () => {
+        for (const tile of [belt('east'), cargo('east')]) {
+            const engine = new GameEngine(makeLevel({
+                tiles: { '3,1': tile },
+                items: [grey('c', 3, 1)],
+            }));
+            expect(shape(engine.turnLeft()), tile.kind).toEqual([['turn'], ['conveyCrate']]);
+            expect(crate(engine, 'c'), tile.kind).toEqual({ x: 4, y: 1 });
+        }
+    });
+
+    it('moves a train of crates that has somewhere to go', () => {
+        const engine = new GameEngine(makeLevel({
+            tiles: { '2,1': belt('east'), '3,1': belt('east') },
+            items: [grey('back', 2, 1), grey('front', 3, 1)],
+        }));
+        engine.turnLeft();
+        expect(crate(engine, 'front')).toEqual({ x: 4, y: 1 });
+        expect(crate(engine, 'back')).toEqual({ x: 3, y: 1 });
+    });
+
+    const jams: [string, Tile][] = [
+        ['a wall',        { kind: 'wall' }],
+        ['a pit',         { kind: 'pit' }],
+        ['a closed door', { kind: 'door', doorId: 'd', initiallyOpen: false }],
+    ];
+
+    for (const [label, blocker] of jams) {
+        it(`jams a crate against ${label} instead of crashing`, () => {
+            const engine = new GameEngine(makeLevel({
+                tiles: { '3,1': belt('east'), '4,1': blocker },
+                items: [grey('c', 3, 1)],
+            }));
+            const outcome = engine.turnLeft();
+
+            expect(outcome.status).toBe('ok');
+            expect(shape(outcome)).toEqual([['turn']]);
+            expect(crate(engine, 'c')).toEqual({ x: 3, y: 1 });
+        });
+
+        it(`jams the robot against ${label} instead of crashing`, () => {
+            const engine = new GameEngine(makeLevel({
+                tiles: { '1,1': belt('east'), '2,1': blocker },
+            }));
+            const outcome = engine.turnLeft();
+
+            expect(outcome.status).toBe('ok');
+            expect(at(engine)).toEqual({ x: 1, y: 1 });
+            expect(engine.state.failed).toBe(false);
+        });
+    }
+
+    it('jams at the world edge', () => {
+        const engine = new GameEngine(makeLevel({
+            tiles: { '4,1': belt('east') },
+            items: [grey('c', 4, 1)],
+        }));
+        expect(engine.turnLeft().status).toBe('ok');
+        expect(crate(engine, 'c')).toEqual({ x: 4, y: 1 });
+    });
+
+    it('will not feed the robot onto a cargo belt', () => {
+        const engine = new GameEngine(makeLevel({
+            tiles: { '1,1': belt('east'), '2,1': cargo('east') },
+        }));
+        expect(engine.turnLeft().status).toBe('ok');
+        expect(at(engine)).toEqual({ x: 1, y: 1 });
+    });
+
+    it('stops the crate queued behind a jammed one', () => {
+        const engine = new GameEngine(makeLevel({
+            tiles: { '2,1': belt('east'), '3,1': belt('east'), '4,1': { kind: 'wall' } },
+            items: [grey('back', 2, 1), grey('front', 3, 1)],
+        }));
+        expect(shape(engine.turnLeft())).toEqual([['turn']]);
+        expect(crate(engine, 'front')).toEqual({ x: 3, y: 1 });
+        expect(crate(engine, 'back')).toEqual({ x: 2, y: 1 });
+    });
+
+    it('deadlocks two belts pointing at each other rather than swapping', () => {
+        const engine = new GameEngine(makeLevel({
+            tiles: { '2,1': belt('east'), '3,1': belt('west') },
+            items: [grey('a', 2, 1), grey('b', 3, 1)],
+        }));
+        engine.turnLeft();
+        expect(crate(engine, 'a')).toEqual({ x: 2, y: 1 });
+        expect(crate(engine, 'b')).toEqual({ x: 3, y: 1 });
+    });
+
+    it('stops both riders when two belts claim one tile', () => {
+        const engine = new GameEngine(makeLevel({
+            tiles: { '2,1': belt('east'), '3,0': belt('south') },
+            items: [grey('a', 2, 1), grey('b', 3, 0)],
+        }));
+        engine.turnLeft();
+        expect(crate(engine, 'a')).toEqual({ x: 2, y: 1 });
+        expect(crate(engine, 'b')).toEqual({ x: 3, y: 0 });
+    });
+
+    it('jams against a crate that is standing still', () => {
+        const engine = new GameEngine(makeLevel({
+            tiles: { '2,1': belt('east') },
+            items: [grey('rider', 2, 1), grey('parked', 3, 1)],
+        }));
+        engine.turnLeft();
+        expect(crate(engine, 'rider')).toEqual({ x: 2, y: 1 });
+    });
+
+    it('delivers a crate it carries onto a matching bay', () => {
+        const engine = new GameEngine(makeLevel({
+            tiles: { '2,1': belt('east'), '3,1': { kind: 'drop_off', color: 'red' } },
+            items: [{ kind: 'crate_colour', id: 'c', color: 'red', position: { x: 2, y: 1 } }],
+        }));
+        const outcome = engine.turnLeft();
+
+        expect(shape(outcome)).toEqual([['turn'], ['conveyCrate'], ['crateDelivered']]);
+        expect(engine.state.crates[0].delivered).toBe(true);
+    });
+
+    it('completes the level when it carries the robot onto the goal', () => {
+        const engine = new GameEngine(makeLevel({
+            tiles: { '1,1': belt('east'), '2,1': { kind: 'goal' } },
+            goals: [{ kind: 'reach_goal' }],
+        }));
+        const outcome = engine.turnLeft();
+
+        expect(outcome.status).toBe('complete');
+        expect(shape(outcome)).toEqual([['turn'], ['conveyRobot'], ['goalReached']]);
+    });
+
+    it('trips a motion sensor the ride only passes through', () => {
+        const engine = new GameEngine(makeLevel({
+            tiles: { '1,1': belt('east'), '2,1': belt('east'), '3,1': belt('east') },
+            motionSensors: [{ sensorId: 's', forbiddenTiles: [{ x: 3, y: 1 }], initiallyActive: true }],
+        }));
+        const outcome = engine.turnLeft();
+
+        // The belt would have carried it clean past 3,1 to 4,1 — the sensor
+        // has to fire on the tile crossed, not on where the ride ends.
+        expect(outcome.reason?.code).toBe('motion_sensor');
+        expect(at(engine)).toEqual({ x: 3, y: 1 });
+        expect(shape(outcome)).toEqual([['turn'], ['conveyRobot'], ['conveyRobot'], ['crash']]);
+    });
+
+    it('resumes a jammed ride once the world settles it open', () => {
+        const engine = new GameEngine(makeLevel({
+            tiles: {
+                '1,1': belt('east'),
+                '2,1': belt('east'),
+                '3,1': { kind: 'door', doorId: 'd', initiallyOpen: false },
+                '1,3': cargo('east'),
+                '2,3': cargo('east'),
+                '3,3': { kind: 'pressure_plate', targetId: 'd' },
+            },
+            items: [grey('c', 1, 3)],
+        }));
+        const outcome = engine.turnLeft();
+
+        // The robot jams against the shut door on tick two, and is still in
+        // the ride when the crate reaches the plate and opens it on tick three.
+        expect(shape(outcome)).toEqual([
+            ['turn'],
+            ['conveyRobot', 'conveyCrate'],
+            ['conveyCrate'],
+            ['plate', 'door'],
+            ['conveyRobot'],
+        ]);
+        expect(at(engine)).toEqual({ x: 3, y: 1 });
+        expect(engine.state.doors[0].open).toBe(true);
+    });
+
+    it('runs a crate the length of a cargo belt into the bay on one command', () => {
+        const engine = new GameEngine(makeLevel({
+            tiles: {
+                '1,3': cargo('east'),
+                '2,3': cargo('east'),
+                '3,3': cargo('east'),
+                '4,3': { kind: 'drop_off', color: 'red' },
+            },
+            items: [{ kind: 'crate_colour', id: 'c', color: 'red', position: { x: 1, y: 3 } }],
+            goals: [{ kind: 'deliver_all' }],
+        }));
+        const outcome = engine.turnLeft();
+
+        expect(outcome.status).toBe('complete');
+        expect(crate(engine, 'c')).toEqual({ x: 4, y: 3 });
+        expect(engine.state.crates[0].delivered).toBe(true);
+    });
+
+    it('trips a motion sensor it carries the robot into', () => {
+        const engine = new GameEngine(makeLevel({
+            tiles: { '1,1': belt('east') },
+            motionSensors: [{ sensorId: 's', forbiddenTiles: [{ x: 2, y: 1 }], initiallyActive: true }],
+        }));
+        const outcome = engine.turnLeft();
+
+        expect(outcome.reason?.code).toBe('motion_sensor');
+        expect(shape(outcome)).toEqual([['turn'], ['conveyRobot'], ['crash']]);
+    });
+
+    it('presses the plate it delivers a crate onto', () => {
+        const engine = new GameEngine(makeLevel({
+            tiles: {
+                '2,1': belt('east'),
+                '3,1': { kind: 'pressure_plate', targetId: 'd' },
+                '4,1': { kind: 'door', doorId: 'd', initiallyOpen: false },
+            },
+            items: [grey('c', 2, 1)],
+        }));
+        const outcome = engine.turnLeft();
+
+        // The settle *after* the belt tick is what opens the door.
+        expect(shape(outcome)).toEqual([['turn'], ['conveyCrate'], ['plate', 'door']]);
+        expect(engine.state.doors[0].open).toBe(true);
+    });
+
+    it('carries the robot through a door the belt itself opened', () => {
+        const engine = new GameEngine(makeLevel({
+            tiles: {
+                '2,1': { kind: 'pressure_plate', targetId: 'd' },
+                '3,1': { kind: 'door', doorId: 'd', initiallyOpen: false },
+            },
+        }));
+        // Step onto the plate: settle opens the door before the belt would
+        // have needed it — here there is no belt, so this is the plain path.
+        expect(engine.moveForward().status).toBe('ok');
+        expect(engine.state.doors[0].open).toBe(true);
     });
 });
 

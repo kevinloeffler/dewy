@@ -20,6 +20,39 @@
 
 ---
 
+## Belts
+
+A belt carries whatever is standing on it **to the end of the belt** — tile
+after tile, until the rider runs off the far end or something stops it. The
+whole ride costs nothing beyond the one command that put the robot on the
+belt in the first place, and `turnLeft()` on a belt is enough to set it off.
+Sensing does not move belts at all.
+
+The ride is not a teleport: the world ticks once per tile. Doors, plates and
+deliveries settle between tiles, so a plate the ride crosses can open a door
+further down the same belt; a motion sensor fires on a forbidden tile the
+ride merely passes **through**; and a goal tile reached mid-ride still counts.
+
+A belt **jams** rather than crashes. A rider whose way is blocked — a wall,
+the world edge, a pit, a closed door, a crate that is not itself moving —
+simply stays put, and so does whatever is queued behind it. That is what lets
+crates pile up at the end of a cargo belt, and it is why nothing in *Crash
+Conditions* mentions belts. A jam is not necessarily the end of the ride: a
+rider that is freed while the ride is still going carries on.
+
+Riders resolve together, so a line of crates on one belt all advance at once.
+Two riders that would trade places, and two belts that feed the same tile,
+both stall — neither rider wins, rather than the level turning on which crate
+the author happened to place first.
+
+A belt laid out in a ring carries its rider round **one lap** and stops rather
+than running forever.
+
+A belt that carries a crate onto a matching bay delivers it, exactly as a push
+would.
+
+---
+
 ## Walls & Structure
 
 | Element | Description |

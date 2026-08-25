@@ -19,6 +19,8 @@ import { createDropOffBay } from '$lib/game/models/drop-off-bay';
 
 const TILE = 1;
 const SLAB = 0.1;
+/** Gap between belt chevrons. `World` scrolls them; see `scrollBelts`. */
+const CHEVRON_SPACING = 0.28;
 /** Slab centre, chosen so its top surface sits exactly on y = 0 — the
  *  base-centre origin every model in `models/` assumes. */
 const SLAB_Y = -SLAB / 2;
@@ -156,11 +158,19 @@ export class TileFactory {
     private conveyor(direction: Direction, chevronColor: number) {
         const group = new THREE.Group();
         group.add(this.box(TILE, SLAB, TILE, COLORS.conveyor, SLAB_Y));
+
+        // The chevrons live in their own named group so `World` can scroll
+        // them. The tile is rotated, not the chevrons, so local +Z is always
+        // the direction of travel — scrolling is `+z` whichever way it points.
+        const chevrons = new THREE.Group();
+        chevrons.name = 'beltChevrons';
         for (let i = -1; i <= 1; i++) {
             const chevron = this.box(0.5, 0.03, 0.12, chevronColor, 0.02);
-            chevron.position.z = i * 0.28;
-            group.add(chevron);
+            chevron.position.z = i * CHEVRON_SPACING;
+            chevrons.add(chevron);
         }
+        group.add(chevrons);
+
         group.rotation.y = DIRECTION_YAW[direction];
         return group;
     }

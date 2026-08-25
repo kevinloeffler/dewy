@@ -13,7 +13,7 @@ import {
     tween,
     type Animation,
 } from './animation'
-import { aimIsometricCamera, clearGroup, createIsometricCamera } from './three-utils'
+import { aimIsometricCamera, clearGroup, createIsometricCamera, disposeObject } from './three-utils'
 import { pickTileFrom } from './editor/picking'
 import { createRoboter, type Roboter } from '$lib/game/models/roboter'
 import { createCrate } from '$lib/game/models/crate'
@@ -23,16 +23,40 @@ import { TileFactory } from '$lib/game/models/tiles'
 
 const ROBOT_SCALE = 1.5
 
+/** The ground the world sits on, and the colour behind it. */
+const BASE_COLOR = 0xcae5c5
+
+/**
+ * How far the base extends from the level centre, in tiles. Large enough to
+ * run past the frustum at `maxZoom` on any sane aspect ratio, and still well
+ * inside the camera's clip planes.
+ */
+const BASE_EXTENT = 500
+
+/**
+ * Base height. Below the plate a pit tile drops to (y = -0.6), so pits still
+ * read as holes rather than filling in with ground.
+ */
+const BASE_Y = -0.75
+
 /**
  * Zoom per unit of wheel delta, applied exponentially so a notch changes the
  * view by the same *proportion* whether we are close in or far out.
  */
 const ZOOM_SENSITIVITY = 0.0015
 
+/**
+ * How fast belt chevrons scroll, in tiles per second. Ambient, so it is not
+ * the speed anything actually travels at — it just has to read as "running".
+ */
+const BELT_SCROLL = 0.45
+
 /** Seconds at speed 1. The queue applies the speed multiplier. */
 const DURATIONS: Record<WorldEventKind, number> = {
     move:        0.40,
     push:        0.40,
+    conveyRobot: 0.35,
+    conveyCrate: 0.35,
     turn:        0.30,
     pick:        0.35,
     drop:        0.30,
@@ -79,6 +103,8 @@ export class World implements EventPlayer {
     /** Editor overlays. Outlives a level, so `disposeLevel` leaves it alone. */
     private editorRoot = new THREE.Group()
     private highlight: THREE.LineSegments | null = null
+    /** The ground plane. Outlives a level, like the lights. */
+    private base: THREE.Mesh
     private raycaster = new THREE.Raycaster()
     private pointer = new THREE.Vector2()
 
@@ -92,6 +118,8 @@ export class World implements EventPlayer {
     private switchLevers = new Map<TileKey, THREE.Object3D>()
     private platePads = new Map<TileKey, THREE.Object3D>()
     private sensorZones = new Map<string, THREE.Object3D[]>()
+    /** The 'beltChevrons' group of every conveyor tile, scrolled by `tick`. */
+    private beltChevrons: THREE.Object3D[] = []
 
     private lastZoom: number
 
@@ -118,6 +146,7 @@ export class World implements EventPlayer {
         canvas.addEventListener('wheel', this.onWheel, { passive: false })
 
         this.createLights()
+        this.base = this.createBase()
         this.tick()
     }
 
@@ -240,6 +269,7 @@ export class World implements EventPlayer {
 
         // Ambient motion runs even while paused, so the robot never looks dead.
         this.roboter?.update(delta)
+        this.scrollBelts(delta)
 
         this.renderer.render(this.scene, this.camera)
     }
@@ -252,9 +282,38 @@ export class World implements EventPlayer {
         this.canvas.removeEventListener('wheel', this.onWheel)
         clearGroup(this.editorRoot)
         this.highlight = null
+        this.scene.remove(this.base)
+        disposeObject(this.base)
         this.disposeLevel()
         this.tiles.dispose()
         this.renderer.dispose()
+    }
+
+
+    /**
+     * Slide every belt's chevrons along its direction of travel.
+     *
+     * Ambient, like the robot's idle motion: belts are machinery and a level
+     * full of frozen ones reads as broken. They are *not* what moves anything
+     * — that is `conveyRobot` / `conveyCrate`, one step per tile of the ride.
+     *
+     * The wrap period is the tile pitch, not the chevron spacing, and every
+     * belt shares one phase. That is what makes a run of belts look like a
+     * single loop: the chevron that jumps back at a tile's seam lands exactly
+     * where its neighbour's chevron was leaving, so nothing visibly pops.
+     */
+    private scrollBelts(delta: number) {
+        if (this.beltChevrons.length === 0) return
+
+        const step = BELT_SCROLL * delta
+        for (const belt of this.beltChevrons) {
+            for (const chevron of belt.children) {
+                // Modulo rather than one subtraction: a backgrounded tab hands
+                // us a delta of several seconds on the frame it wakes up.
+                const z = chevron.position.z + step + 0.5
+                chevron.position.z = ((z % 1) + 1) % 1 - 0.5
+            }
+        }
     }
 
 
@@ -292,6 +351,9 @@ export class World implements EventPlayer {
                 } else if (tile.kind === 'pressure_plate') {
                     const pad = object.getObjectByName('platePad')
                     if (pad) this.platePads.set(key, pad)
+                } else if (tile.kind === 'conveyor' || tile.kind === 'cargo_conveyor') {
+                    const chevrons = object.getObjectByName('beltChevrons')
+                    if (chevrons) this.beltChevrons.push(chevrons)
                 }
             }
         }
@@ -371,6 +433,7 @@ export class World implements EventPlayer {
         this.switchLevers.clear()
         this.platePads.clear()
         this.sensorZones.clear()
+        this.beltChevrons = []
         this.level = null
     }
 
@@ -439,6 +502,7 @@ export class World implements EventPlayer {
     private frameCamera(level: Level) {
         const centre = new THREE.Vector3((level.width - 1) / 2, 0, (level.height - 1) / 2)
         aimIsometricCamera(this.camera, centre, this.view.cameraPosition)
+        this.base.position.set(centre.x, BASE_Y, centre.z)
     }
 
     /**
@@ -467,6 +531,27 @@ export class World implements EventPlayer {
         this.camera.top = this.view.zoom
         this.camera.bottom = -this.view.zoom
         this.camera.updateProjectionMatrix()
+    }
+
+    /**
+     * The ground the level sits on: one big quad plus a matching clear
+     * colour, so the frame is filled at any zoom even if the quad ever runs
+     * out at an extreme aspect ratio.
+     *
+     * Unlit on purpose — `MeshBasicMaterial` renders `BASE_COLOR` exactly,
+     * where a lit material would tint it with the scene's three lights.
+     */
+    private createBase(): THREE.Mesh {
+        this.scene.background = new THREE.Color(BASE_COLOR)
+
+        const base = new THREE.Mesh(
+            new THREE.PlaneGeometry(BASE_EXTENT * 2, BASE_EXTENT * 2),
+            new THREE.MeshBasicMaterial({ color: BASE_COLOR }),
+        )
+        base.rotation.x = -Math.PI / 2
+        base.position.y = BASE_Y
+        this.scene.add(base)
+        return base
     }
 
     private createLights() {
@@ -518,6 +603,29 @@ export class World implements EventPlayer {
                 return [tween({
                     durationSeconds: seconds,
                     ease: easeInOutCubic,
+                    onUpdate: (t) => mesh.position.set(lerp(from.x, to.x, t), 0, lerp(from.z, to.z, t)),
+                })]
+            }
+
+            case 'conveyRobot': {
+                const from = vec(event.from)
+                const to = vec(event.to)
+                // Linear, and no wheel roll: the belt is doing the moving, and
+                // a robot whose wheels spin while it is carried reads as
+                // driving. Nothing eases, because a belt runs at one speed.
+                return [tween({
+                    durationSeconds: seconds,
+                    onUpdate: (t) => robot.setPosition(lerp(from.x, to.x, t), lerp(from.z, to.z, t)),
+                })]
+            }
+
+            case 'conveyCrate': {
+                const mesh = this.crateMeshes.get(event.crateId)
+                if (!mesh) return []
+                const from = vec(event.from)
+                const to = vec(event.to)
+                return [tween({
+                    durationSeconds: seconds,
                     onUpdate: (t) => mesh.position.set(lerp(from.x, to.x, t), 0, lerp(from.z, to.z, t)),
                 })]
             }

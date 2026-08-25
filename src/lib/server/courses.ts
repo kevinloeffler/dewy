@@ -52,6 +52,8 @@ export type StageView = {
 	position: number;
 	/** Shut until the stage before it is finished. See `$lib/progress`. */
 	gated: boolean;
+	/** Items have to be taken top to bottom. See `$lib/progress`. */
+	ordered: boolean;
 	items: StageItemView[];
 };
 
@@ -204,6 +206,7 @@ export async function findCourse(courseId: string): Promise<CourseOutline | null
 			description: s.description,
 			position: s.position,
 			gated: s.gated,
+			ordered: s.ordered,
 			items: byStage.get(s.id) ?? []
 		}))
 	};
@@ -268,12 +271,13 @@ export async function createStage(courseId: string, title: string): Promise<stri
 
 export async function updateStage(
 	stageId: string,
-	patch: { title?: string; description?: string | null; gated?: boolean }
+	patch: { title?: string; description?: string | null; gated?: boolean; ordered?: boolean }
 ): Promise<void> {
 	const set: Record<string, unknown> = { updatedAt: new Date() };
 	if (patch.title !== undefined) set.title = patch.title.trim() || 'Untitled stage';
 	if (patch.description !== undefined) set.description = patch.description?.trim() || null;
 	if (patch.gated !== undefined) set.gated = patch.gated;
+	if (patch.ordered !== undefined) set.ordered = patch.ordered;
 
 	await db.update(stage).set(set).where(eq(stage.id, stageId));
 }

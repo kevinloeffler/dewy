@@ -40,14 +40,25 @@
 </script>
 
 <div class="controls">
-	<Button onclick={onrun} disabled={blocked}>
-		{#snippet icon()}
-			<svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true">
-				<polygon points="2,1 2,11 11,6" fill="currentColor" />
-			</svg>
-		{/snippet}
-		Run
-	</Button>
+	{#if running}
+		<Button onclick={onstop}>
+			{#snippet icon()}
+				<svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true">
+					<rect x="2" y="2" width="8" height="8" rx="1" fill="currentColor" />
+				</svg>
+			{/snippet}
+			Stop
+		</Button>
+	{:else}
+		<Button onclick={onrun} disabled={blocked}>
+			{#snippet icon()}
+				<svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true">
+					<polygon points="2,1 2,11 11,6" fill="currentColor" />
+				</svg>
+			{/snippet}
+			Run
+		</Button>
+	{/if}
 
 	<Button variant="ghost" onclick={onstep} disabled={blocked}>
 		{#snippet icon()}
@@ -58,17 +69,6 @@
 		{/snippet}
 		Step
 	</Button>
-
-	{#if running}
-		<Button variant="ghost" onclick={onstop}>
-			{#snippet icon()}
-				<svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true">
-					<rect x="2" y="2" width="8" height="8" rx="1" fill="currentColor" />
-				</svg>
-			{/snippet}
-			Stop
-		</Button>
-	{/if}
 
 	<Button variant="ghost" onclick={onreset}>
 		{#snippet icon()}

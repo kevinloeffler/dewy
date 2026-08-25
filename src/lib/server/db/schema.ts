@@ -48,6 +48,15 @@ export const stage = sqliteTable(
 		 * so the flag is inert there.
 		 */
 		gated: integer('gated', { mode: 'boolean' }).notNull().default(false),
+		/**
+		 * Whether the items inside this stage have to be taken in order.
+		 *
+		 * Defaults to on, which is how the course behaved before the flag existed.
+		 * Turned off, the whole stage opens at once and a class can pick its way
+		 * through in any order — a stage of practice levels rather than a sequence
+		 * that builds. `$lib/progress` holds the rule.
+		 */
+		ordered: integer('ordered', { mode: 'boolean' }).notNull().default(true),
 		createdAt: integer('created_at', { mode: 'timestamp' }).notNull().$defaultFn(() => new Date()),
 		updatedAt: integer('updated_at', { mode: 'timestamp' }).notNull().$defaultFn(() => new Date())
 	},

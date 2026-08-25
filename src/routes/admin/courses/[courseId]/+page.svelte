@@ -123,31 +123,53 @@
 
 			{@const previous = stageIndex === 0 ? null : course.stages[stageIndex - 1]}
 			{@const previousLevels = previous?.items.filter((i) => i.kind === 'level').length ?? 0}
-			<form class="gate" method="POST" action="?/gateStage" use:enhance>
-				<input type="hidden" name="id" value={stage.id} />
-				<input type="hidden" name="gated" value={stage.gated ? 'false' : 'true'} />
-				<label class="gate-toggle">
-					<input
-						type="checkbox"
-						checked={stage.gated}
-						disabled={previous === null}
-						onchange={(event) => event.currentTarget.form?.requestSubmit()}
-					/>
-					<span>Gate this stage</span>
-				</label>
-				<span class="gate-note">
-					{#if previous === null}
-						The first stage has nothing in front of it.
-					{:else if previousLevels === 0}
-						“{previous.title}” has no levels yet, so this gate would stay open.
-					{:else if stage.gated}
-						Shut until all {previousLevels}
-						{previousLevels === 1 ? 'level' : 'levels'} in “{previous.title}” are complete.
-					{:else}
-						Off — students reach this stage item by item, as usual.
-					{/if}
-				</span>
-			</form>
+			<div class="rules">
+				<form class="rule" method="POST" action="?/gateStage" use:enhance>
+					<input type="hidden" name="id" value={stage.id} />
+					<input type="hidden" name="gated" value={stage.gated ? 'false' : 'true'} />
+					<label class="rule-toggle">
+						<input
+							type="checkbox"
+							checked={stage.gated}
+							disabled={previous === null}
+							onchange={(event) => event.currentTarget.form?.requestSubmit()}
+						/>
+						<span>Gate this stage</span>
+					</label>
+					<span class="rule-note">
+						{#if previous === null}
+							The first stage has nothing in front of it.
+						{:else if previousLevels === 0}
+							“{previous.title}” has no levels yet, so this gate would stay open.
+						{:else if stage.gated}
+							Shut until all {previousLevels}
+							{previousLevels === 1 ? 'level' : 'levels'} in “{previous.title}” are complete.
+						{:else}
+							Off — students reach this stage item by item, as usual.
+						{/if}
+					</span>
+				</form>
+
+				<form class="rule" method="POST" action="?/orderStage" use:enhance>
+					<input type="hidden" name="id" value={stage.id} />
+					<input type="hidden" name="ordered" value={stage.ordered ? 'false' : 'true'} />
+					<label class="rule-toggle">
+						<input
+							type="checkbox"
+							checked={stage.ordered}
+							onchange={(event) => event.currentTarget.form?.requestSubmit()}
+						/>
+						<span>Keep this stage in order</span>
+					</label>
+					<span class="rule-note">
+						{#if stage.ordered}
+							Items open one at a time, top to bottom.
+						{:else}
+							Off — the stage opens at once, and the next one waits for all of it.
+						{/if}
+					</span>
+				</form>
+			</div>
 
 			{#if stage.items.length === 0}
 				<p class="empty indent">Empty stage — add a level or a theory block below.</p>
@@ -352,28 +374,35 @@
 		gap: 6px;
 	}
 
-	.gate {
+	.rules {
+		display: flex;
+		flex-direction: column;
+		gap: 4px;
+		margin-top: 10px;
+	}
+
+	.rule {
 		display: flex;
 		align-items: center;
 		gap: 10px;
 		flex-wrap: wrap;
-		margin-top: 10px;
 	}
 
-	.gate-toggle {
+	.rule-toggle {
 		display: flex;
 		align-items: center;
 		gap: 7px;
 		font-size: 13px;
 		font-weight: 600;
 		white-space: nowrap;
+		min-width: 210px;
 	}
 
-	.gate-toggle:has(input:disabled) {
+	.rule-toggle:has(input:disabled) {
 		opacity: 0.5;
 	}
 
-	.gate-note {
+	.rule-note {
 		font-size: 13px;
 		color: var(--text-muted);
 	}

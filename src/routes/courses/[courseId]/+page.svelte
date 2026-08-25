@@ -60,6 +60,8 @@
 				{stage.title}
 				{#if lock}
 					<span class="stage-lock">🔒 Locked</span>
+				{:else if !stage.ordered}
+					<span class="stage-tag">Any order</span>
 				{/if}
 			</h2>
 			{#if stage.description}
@@ -90,8 +92,10 @@
 											<p class="item-meta">
 												{#if lock}
 													Locked until “{lock.requiredStageTitle}” is finished.
-												{:else}
+												{:else if stage.ordered}
 													Finish the item before this one to unlock it.
+												{:else}
+													Finish the stage before this one to unlock it.
 												{/if}
 											</p>
 										</div>
@@ -172,7 +176,8 @@
 		color: var(--text-muted);
 	}
 
-	.stage-lock {
+	.stage-lock,
+	.stage-tag {
 		font-family: var(--font-ui);
 		font-weight: 600;
 		font-size: 11px;
@@ -182,6 +187,11 @@
 		background: var(--chip-bg);
 		border-radius: 999px;
 		padding: 3px 9px;
+	}
+
+	.stage-tag {
+		color: var(--accent);
+		background: var(--accent-soft);
 	}
 
 	.stage-gate {

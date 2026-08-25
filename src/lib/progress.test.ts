@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { anonymousProgress, courseProgress, flattenItems } from './progress';
-import type { CourseOutline } from '$lib/server/courses';
+import type { CourseOutline, StageView } from '$lib/server/courses';
 
 /** A two-stage course: theory, level, theory. */
 function outline(): CourseOutline {
@@ -16,6 +16,7 @@ function outline(): CourseOutline {
 				description: null,
 				position: 0,
 				gated: false,
+				ordered: true,
 				items: [
 					{ id: 'a', kind: 'theory', position: 0, title: 'A', body: 'a' },
 					{ id: 'b', kind: 'level', position: 1, levelId: 'lb', name: 'B', description: null }
@@ -27,6 +28,7 @@ function outline(): CourseOutline {
 				description: null,
 				position: 1,
 				gated: false,
+				ordered: true,
 				items: [{ id: 'c', kind: 'theory', position: 0, title: 'C', body: 'c' }]
 			}
 		]
@@ -154,6 +156,98 @@ describe('courseProgress with a gated stage', () => {
 		const { state, stageLocks } = courseProgress(first, new Set());
 		expect(stageLocks.s1).toBeNull();
 		expect(state.a).toBe('available');
+	});
+});
+
+describe('courseProgress with an unordered stage', () => {
+	/** Stage two takes its items in any order, and has two of them. */
+	function unordered(): CourseOutline {
+		const base = outline();
+		const second: StageView = {
+			...base.stages[1],
+			ordered: false,
+			items: [
+				base.stages[1].items[0],
+				{ id: 'd', kind: 'level', position: 1, levelId: 'ld', name: 'D', description: null }
+			]
+		};
+		return { ...base, stages: [base.stages[0], second] };
+	}
+
+	/** The same course with an ordered stage three, to watch the handover. */
+	function withThird(): CourseOutline {
+		const base = unordered();
+		const third: StageView = {
+			id: 's3',
+			title: 'Three',
+			description: null,
+			position: 2,
+			gated: false,
+			ordered: true,
+			items: [{ id: 'e', kind: 'theory', position: 0, title: 'E', body: 'e' }]
+		};
+		return { ...base, stages: [...base.stages, third] };
+	}
+
+	it('opens every item at once once the stage is reached', () => {
+		const { state } = courseProgress(unordered(), new Set(['a', 'b']));
+		expect(state.c).toBe('available');
+		expect(state.d).toBe('available');
+	});
+
+	it('still waits for the stage before it', () => {
+		const { state } = courseProgress(unordered(), new Set(['a']));
+		expect(state).toEqual({ a: 'complete', b: 'available', c: 'locked', d: 'locked' });
+	});
+
+	it('lets its items be taken out of order', () => {
+		const { state } = courseProgress(unordered(), new Set(['a', 'b', 'd']));
+		expect(state.d).toBe('complete');
+		expect(state.c).toBe('available');
+	});
+
+	it('points Continue at the first item still outstanding in it', () => {
+		expect(courseProgress(unordered(), new Set(['a', 'b', 'd'])).nextItemId).toBe('c');
+	});
+
+	it('hands over only when all of it is done, not just the last item', () => {
+		// 'd' is last but 'c' is outstanding — with no order to the stage, being
+		// past the bottom of it means nothing.
+		expect(courseProgress(withThird(), new Set(['a', 'b', 'd'])).state.e).toBe('locked');
+		expect(courseProgress(withThird(), new Set(['a', 'b', 'c', 'd'])).state.e).toBe('available');
+	});
+
+	it('gates the stage after it on levels, wherever they were taken', () => {
+		const base = withThird();
+		const gatedThird = { ...base.stages[2], gated: true };
+		const course = { ...base, stages: [base.stages[0], base.stages[1], gatedThird] };
+
+		// 'd' is the only level in stage two; 'c' is theory and holds the handover
+		// but not the gate.
+		expect(courseProgress(course, new Set(['a', 'b', 'd'])).stageLocks.s3).toBeNull();
+		expect(courseProgress(course, new Set(['a', 'b'])).stageLocks.s3?.remaining).toBe(1);
+	});
+});
+
+describe('courseProgress with an empty stage', () => {
+	it('passes the stage before it through rather than opening the one after', () => {
+		const base = outline();
+		const blank: StageView = {
+			id: 's-blank',
+			title: 'Blank',
+			description: null,
+			position: 1,
+			gated: false,
+			ordered: true,
+			items: []
+		};
+		const course = {
+			...base,
+			stages: [base.stages[0], blank, { ...base.stages[1], position: 2 }]
+		};
+
+		expect(courseProgress(course, new Set(['a'])).state.c).toBe('locked');
+		expect(courseProgress(course, new Set(['a', 'b'])).state.c).toBe('available');
 	});
 });
 

@@ -8,10 +8,14 @@ import type { CourseOutline, StageItemView, StageView } from '$lib/server/course
  * and it should be revisable in one function with a test beside it rather than
  * spread across a query and a page.
  *
- * Two rules stack here. The item rule runs everywhere and opens the course one
- * item at a time. The *stage gate* is opt-in per stage (`stage.gated`) and sits
- * in front of it: a gated stage stays shut, item rule or not, until every level
- * in the stage before it is complete.
+ * Two questions, asked in this order. *Is the stage open?* — it is, once the
+ * stage before it has handed over, and, if the stage is gated (`stage.gated`),
+ * once every level in that stage is complete. *Is the item open inside it?* —
+ * one at a time top to bottom in an ordered stage (`stage.ordered`, the
+ * default), or all at once in one that is not.
+ *
+ * Both flags are per stage and independent: gating controls the way in,
+ * ordering controls the way through.
  */
 
 export type ItemState = 'locked' | 'available' | 'complete';
@@ -57,13 +61,34 @@ function lockFor(previous: StageView, completed: ReadonlySet<string>): StageLock
 }
 
 /**
- * Item *n* is available when it is the first, when *n − 1* is complete, or when
- * it is itself complete — and, on top of that, when its stage's gate is open.
+ * Whether a stage lets the student on to the next one.
  *
- * That "itself complete" clause is doing real work: it keeps finished items
- * revisitable, and it means inserting a new item into the middle of a stage does
- * not lock a class out of the work they have already done. It survives the gate
- * too, so a teacher turning gating on mid-course never takes finished work away.
+ * An ordered stage hands over on its last item, which is the rule the course had
+ * before any of this was configurable. An unordered stage has no last item in
+ * any meaningful sense, so it hands over once all of it is done — otherwise a
+ * class could clear one level of a stage they may take in any order and walk
+ * straight past the rest.
+ *
+ * An empty stage hands over whatever it received, so a placeholder a teacher has
+ * not filled in yet is transparent rather than a dead end.
+ */
+function handsOver(stage: StageView, open: boolean, completed: ReadonlySet<string>): boolean {
+	if (!open) return false;
+	if (stage.items.length === 0) return true;
+	if (!stage.ordered) return stage.items.every((item) => completed.has(item.id));
+
+	return completed.has(stage.items[stage.items.length - 1].id);
+}
+
+/**
+ * Inside an open ordered stage, item *n* is available when it is the first or
+ * when *n − 1* is complete. Inside an open unordered one, every item is.
+ * Either way an item that is *itself* complete stays available.
+ *
+ * That last clause is doing real work: it keeps finished items revisitable, and
+ * it means inserting a new item into the middle of a stage does not lock a class
+ * out of the work they have already done. It outranks both flags, so a teacher
+ * changing either one mid-course never takes finished work away.
  */
 export function courseProgress(
 	outline: CourseOutline,
@@ -73,21 +98,25 @@ export function courseProgress(
 	const stageLocks: Record<string, StageLock | null> = {};
 	let nextItemId: string | null = null;
 	let completedCount = 0;
-	let previousItem: StageItemView | null = null;
+	// Nothing precedes the first stage, so the course starts handed over.
+	let handover = true;
 	let previousStage: StageView | null = null;
 
 	for (const stage of outline.stages) {
-		// The first stage has nothing in front of it, so its flag is inert.
+		// The first stage has nothing in front of it, so its gate is inert.
 		const lock = stage.gated && previousStage ? lockFor(previousStage, completed) : null;
 		stageLocks[stage.id] = lock;
+
+		const open = lock === null && handover;
+		let previousItem: StageItemView | null = null;
 
 		for (const item of stage.items) {
 			const isComplete = completed.has(item.id);
 			if (isComplete) completedCount++;
 
-			const unlocked =
-				isComplete ||
-				(lock === null && (previousItem === null || completed.has(previousItem.id)));
+			const reached =
+				!stage.ordered || previousItem === null || completed.has(previousItem.id);
+			const unlocked = isComplete || (open && reached);
 
 			state[item.id] = isComplete ? 'complete' : unlocked ? 'available' : 'locked';
 
@@ -95,6 +124,7 @@ export function courseProgress(
 			previousItem = item;
 		}
 
+		handover = handsOver(stage, open, completed);
 		previousStage = stage;
 	}
 

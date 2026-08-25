@@ -90,6 +90,16 @@ export const actions: Actions = {
 		return { savedAt: Date.now() };
 	},
 
+	/** Same shape as `gateStage`, for the other half of the stage's rules. */
+	orderStage: async (event) => {
+		const formData = await event.request.formData();
+		const id = required(formData, 'id');
+		if (!id) return fail(400, { message: 'No stage to reorder.' });
+
+		await updateStage(id, { ordered: formData.get('ordered') === 'true' });
+		return { savedAt: Date.now() };
+	},
+
 	deleteStage: async (event) => {
 		const formData = await event.request.formData();
 		const id = required(formData, 'id');

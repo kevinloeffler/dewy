@@ -1,4 +1,4 @@
-import type { Coord, DropOffTile, Level } from './level';
+import type { Coord, Direction, DropOffTile, Level } from './level';
 import type { CrateState, KeycardState, LevelState } from './level-state';
 import { coordKey, sameCoord, tileAt } from './grid';
 import { isCrate } from './level';
@@ -102,6 +102,29 @@ export function crateBlockedBy(level: Level, state: LevelState, coord: Coord): B
     const crate = crateAt(state, coord);
     if (crate) return { kind: 'crate', crateId: crate.id };
     return tileBlocksCrate(level, state, coord);
+}
+
+
+// ============================================================
+// Belts
+// ============================================================
+
+/**
+ * Which way the belt under `coord` carries `subject`, or `null` when the
+ * tile is not a belt that moves it.
+ *
+ * A cargo belt is crate-only — the robot cannot stand on one at all, so
+ * asking for the robot always answers `null`.
+ */
+export function beltDirection(
+    level: Level,
+    coord: Coord,
+    subject: 'robot' | 'crate',
+): Direction | null {
+    const tile = tileAt(level, coord);
+    if (tile?.kind === 'conveyor') return tile.direction;
+    if (tile?.kind === 'cargo_conveyor' && subject === 'crate') return tile.direction;
+    return null;
 }
 
 

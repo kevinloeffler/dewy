@@ -15,6 +15,14 @@ import type { Coord, Direction } from './level';
 export type WorldEvent =
     | { kind: 'move';        from: Coord; to: Coord }
     | { kind: 'push';        crateId: string; from: Coord; to: Coord }
+    /**
+     * Belt motion — the world moving something rather than the robot moving
+     * itself. Its own kinds rather than a reused `move`/`push` because it is
+     * drawn differently: a conveyed robot is carried, so its wheels do not
+     * roll, and a conveyed crate has no one pushing it.
+     */
+    | { kind: 'conveyRobot'; from: Coord; to: Coord }
+    | { kind: 'conveyCrate'; crateId: string; from: Coord; to: Coord }
     | { kind: 'turn';        from: Direction; to: Direction; rotation: 'left' | 'right' }
     | { kind: 'pick';        crateId: string; from: Coord }
     | { kind: 'pickKeycard'; keycardId: string; from: Coord }
