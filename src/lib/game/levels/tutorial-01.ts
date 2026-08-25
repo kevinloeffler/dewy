@@ -15,7 +15,7 @@ import type { Level, Tile, TileKey } from '$lib/game/level';
  *  B red drop-off bay · R robot start (facing north)
  *
  * The pits block the direct descent, so the crate has to come back down
- * column 4. Solvable in 12 statements against a budget of 15.
+ * column 4. Solvable in 12 commands against an energy budget of 15.
  */
 
 const tiles: Partial<Record<TileKey, Tile>> = {};
@@ -49,7 +49,7 @@ export const tutorial01: Level = {
     ],
     motionSensors: [],
     robot: { position: { x: 1, y: 4 }, facing: 'north' },
-    options: { lineBudget: 15, showInventory: false, languageStage: 1 },
+    options: { energy: 15, memory: null, showInventory: false, languageStage: 1 },
     goals: [
         { kind: 'reach_goal' },
         { kind: 'deliver_specific', color: 'red', dropOffPosition: { x: 4, y: 4 } },

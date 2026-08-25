@@ -28,7 +28,8 @@ export type CrashCode =
     | 'not_a_switch'
     // the world fighting back
     | 'motion_sensor'
-    | 'battery';
+    | 'out_of_energy'
+    | 'runaway';
 
 export type CrashReason = {
     code: CrashCode;
@@ -56,7 +57,8 @@ const MESSAGES: Record<CrashCode, string> = {
     not_a_switch:  "There's no switch here to flip.",
 
     motion_sensor: 'A motion sensor spotted the robot!',
-    battery:       "The robot's battery ran out — is it stuck in a loop?",
+    out_of_energy: "The robot's battery is empty — that took more commands than it had energy for.",
+    runaway:       'The robot kept going and going — is it stuck in a loop?',
 };
 
 export function crash(code: CrashCode): CrashReason {

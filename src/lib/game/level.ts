@@ -144,8 +144,17 @@ export type RobotConfig = {
 export type LanguageStage = 1 | 2 | 3 | 4 | 5;
 
 export type LevelOptions = {
-    /** `null` means no battery limit. Never `undefined` — see the note on `Level`. */
-    lineBudget: number | null;
+    /**
+     * The robot's battery, in commands. One robot command costs one energy;
+     * sensing is free. `null` means unlimited — and never `undefined`, see
+     * the note on `Level`.
+     */
+    energy: number | null;
+    /**
+     * How much program the robot can hold, in statements. Checked before the
+     * run, not during it. `null` means unlimited.
+     */
+    memory: number | null;
     showInventory: boolean;
     languageStage: LanguageStage;
 };

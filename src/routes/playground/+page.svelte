@@ -169,8 +169,10 @@
             <dd>{view_.inventory.length ? view_.inventory.join(', ') : '—'}</dd>
             <dt>goals</dt>
             <dd>{view_.satisfied} / {view_.goals}</dd>
-            <dt>steps</dt>
-            <dd>{view_.steps}{level.options.lineBudget ? ` (budget ${level.options.lineBudget})` : ''}</dd>
+            <dt>energy</dt>
+            <dd>{view_.steps}{level.options.energy === null ? '' : ` / ${level.options.energy}`}</dd>
+            <dt>memory</dt>
+            <dd>{level.options.memory === null ? 'unlimited' : level.options.memory}</dd>
             <dt>sensing</dt>
             <dd class="sensing">
                 {#each Object.entries(sensors) as [name, value] (name)}

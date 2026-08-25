@@ -36,7 +36,7 @@ function makeLevel(opts: {
         items: opts.items ?? [],
         motionSensors: opts.motionSensors ?? [],
         robot: opts.robot ?? { position: { x: 1, y: 1 }, facing: 'east' },
-        options: { lineBudget: null, showInventory: false, languageStage: 5 },
+        options: { energy: null, memory: null, showInventory: false, languageStage: 5 },
         goals: opts.goals ?? [],
     };
 }
@@ -906,11 +906,19 @@ describe('lifecycle', () => {
         expect(at(engine)).toEqual({ x: 2, y: 1 });   // no post-win crash into the wall
     });
 
-    it('runs out of battery rather than looping forever', () => {
-        const engine = new GameEngine(makeLevel(), { maxSteps: 3 });
+    it('runs out of energy once the authored battery is spent', () => {
+        const engine = new GameEngine(makeLevel(), { energy: 3 });
         engine.turnLeft(); engine.turnLeft(); engine.turnLeft();
         const outcome = engine.turnLeft();
-        expect(outcome.reason?.code).toBe('battery');
+        expect(outcome.reason?.code).toBe('out_of_energy');
+    });
+
+    it('falls back to the runaway cap when the level authors no energy', () => {
+        const engine = new GameEngine(makeLevel(), { energy: null });
+        let outcome!: StepOutcome;
+        for (let i = 0; i < 501; i++) outcome = engine.turnLeft();
+        expect(outcome.reason?.code).toBe('runaway');
+        expect(engine.state.steps).toBe(501);
     });
 
     it('restores the start state on reset', () => {
@@ -977,7 +985,7 @@ describe('tutorial-01', () => {
         expect(last!.status).toBe('complete');
         expect(engine.state.goals.every((goal) => goal.satisfied)).toBe(true);
         expect(engine.state.steps).toBe(12);
-        expect(tutorial01.options.lineBudget).toBeGreaterThanOrEqual(12);
+        expect(tutorial01.options.energy).toBeGreaterThanOrEqual(12);
     });
 
     it('crashes into the pit at (2,2)', () => {

@@ -4,9 +4,10 @@ import { defineConfig } from 'vitest/config';
 export default defineConfig({
 	plugins: [sveltekit()],
 	test: {
-		// The game engine is deliberately free of Svelte, Three.js and the DOM,
-		// so its tests run in plain Node.
+		// Everything under test here — the game engine, the script parser, the
+		// markdown renderer — is deliberately free of Svelte, Three.js and the
+		// DOM, so it all runs in plain Node.
 		environment: 'node',
-		include: ['src/lib/game/**/*.test.ts']
+		include: ['src/lib/**/*.test.ts']
 	}
 });

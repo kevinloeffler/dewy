@@ -27,8 +27,12 @@ import {
  * unit-tested in plain Node.
  */
 
-/** How many actions a run may take before we call it a runaway loop. */
-const DEFAULT_MAX_STEPS = 500;
+/**
+ * Safety net, not a game rule: how far an *unbudgeted* run may go before we
+ * call it a runaway loop. A level that authors `energy` bounds itself, so
+ * this only applies when it does not.
+ */
+const RUNAWAY_ACTION_CAP = 500;
 
 /** Settle is a fixpoint loop; this bounds it if a rule ever oscillates. */
 const SETTLE_PASSES = 8;
@@ -56,15 +60,16 @@ export class GameEngine {
 
     readonly level: Level;
     private levelState: LevelState;
-    private readonly maxSteps: number;
+    /** The level's authored battery, in commands. `null` means unlimited. */
+    private readonly energy: number | null;
 
     /** Authored door/sensor values, so settle can express either polarity. */
     private readonly initialDoorOpen = new Map<string, boolean>();
     private readonly initialSensorActive = new Map<string, boolean>();
 
-    constructor(level: Level, options: { maxSteps?: number } = {}) {
+    constructor(level: Level, options: { energy?: number | null } = {}) {
         this.level = level;
-        this.maxSteps = options.maxSteps ?? DEFAULT_MAX_STEPS;
+        this.energy = options.energy ?? null;
 
         for (const tile of Object.values(level.tiles)) {
             if (tile?.kind === 'door') this.initialDoorOpen.set(tile.doorId, tile.initiallyOpen);
@@ -349,7 +354,11 @@ export class GameEngine {
         if (state.completed) return { status: 'complete', reason: null, events: [] };
 
         state.steps++;
-        if (state.steps > this.maxSteps) return this.fail([], crash('battery'));
+        if (this.energy !== null) {
+            if (state.steps > this.energy) return this.fail([], crash('out_of_energy'));
+        } else if (state.steps > RUNAWAY_ACTION_CAP) {
+            return this.fail([], crash('runaway'));
+        }
         return null;
     }
 

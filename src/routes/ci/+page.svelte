@@ -340,7 +340,6 @@ robot.forward();`;
 					code={SAMPLE_CODE}
 					activeLine={cmActiveLine}
 					readonly={cmReadonly}
-					filename="mission_1_3.js"
 					height={420}
 					onchange={(v) => (cmCode = v)}
 				/>

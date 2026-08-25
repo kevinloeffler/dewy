@@ -70,8 +70,20 @@ describe('parseLevel rejections', () => {
     });
 
     it('rejects a missing nested key', () => {
+        for (const key of ['energy', 'memory'] as const) {
+            const level = roundTrip(emptyLevel('x', 'X'));
+            delete level.options[key];
+            expect(parseLevel(level).ok).toBe(false);
+        }
+    });
+
+    it('rejects a pre-split blob still carrying `lineBudget`', () => {
+        // These rows are fixed by the one-off backfill in
+        // `scripts/migrate-level-options.js`, not by a lenient parser.
         const level = roundTrip(emptyLevel('x', 'X'));
-        delete level.options.lineBudget;
+        delete level.options.energy;
+        delete level.options.memory;
+        level.options.lineBudget = 15;
 
         expect(parseLevel(level).ok).toBe(false);
     });
@@ -99,7 +111,7 @@ describe('parseLevel rejections', () => {
 
     it('rejects a language stage outside 1–5', () => {
         expect(broken({ options: {
-            lineBudget: null, showInventory: false, languageStage: 6,
+            energy: null, memory: null, showInventory: false, languageStage: 6,
         } }).ok).toBe(false);
     });
 

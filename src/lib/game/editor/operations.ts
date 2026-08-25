@@ -211,7 +211,8 @@ export function setOptions(level: Level, patch: Partial<LevelOptions>): Level {
     const options = { ...level.options, ...patch };
     const o = level.options;
     if (
-        options.lineBudget === o.lineBudget
+        options.energy === o.energy
+        && options.memory === o.memory
         && options.showInventory === o.showInventory
         && options.languageStage === o.languageStage
     ) {
@@ -308,7 +309,7 @@ export function emptyLevel(
         items: [],
         motionSensors: [],
         robot: { position: { x: 0, y: 0 }, facing: 'south' },
-        options: { lineBudget: null, showInventory: false, languageStage: 1 },
+        options: { energy: null, memory: null, showInventory: false, languageStage: 1 },
         goals: [],
     };
 }

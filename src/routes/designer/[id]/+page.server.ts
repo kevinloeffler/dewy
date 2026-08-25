@@ -1,12 +1,13 @@
 import { error, fail } from '@sveltejs/kit';
 import type { Actions, PageServerLoad } from './$types';
-import { findLevel, InvalidLevel, saveLevel } from '$lib/server/levels';
+import { findLevel, findLevelOwner, InvalidLevel, saveLevel } from '$lib/server/levels';
 
 export const load: PageServerLoad = async (event) => {
 	const level = await findLevel(event.params.id);
 	if (!level) error(404, 'No such level.');
 
-	return { level };
+	// `null` for a level that predates courses, or one left unassigned.
+	return { level, owner: await findLevelOwner(event.params.id) };
 };
 
 export const actions: Actions = {

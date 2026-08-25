@@ -268,14 +268,21 @@ function options(value: unknown, path: string): LevelOptions {
         throw new ParseError(`${path}.languageStage`, 'must be between 1 and 5');
     }
 
-    const budget = nullable(
-        field(source, 'lineBudget', path),
-        `${path}.lineBudget`,
+    const energy = nullable(
+        field(source, 'energy', path),
+        `${path}.energy`,
+        positiveInteger,
+    );
+
+    const memory = nullable(
+        field(source, 'memory', path),
+        `${path}.memory`,
         positiveInteger,
     );
 
     return {
-        lineBudget: budget,
+        energy,
+        memory,
         showInventory: boolean(field(source, 'showInventory', path), `${path}.showInventory`),
         languageStage: stage as LanguageStage,
     };

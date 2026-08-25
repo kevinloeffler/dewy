@@ -117,7 +117,7 @@ export type LevelState = {
     plates: PlateState[];
     motionSensors: MotionSensorState[];
     goals: GoalConditionState[];
-    /** Actions taken. Guards runaway loops; cleared by reset for free. */
+    /** Commands run, i.e. energy spent. Cleared by reset for free. */
     steps: number;
     failed: boolean;
     failReason: string | null;

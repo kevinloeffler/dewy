@@ -1,0 +1,475 @@
+<script lang="ts">
+	import { enhance } from '$app/forms';
+	import { Badge, Button, Panel, Topbar } from '$lib/components/index.js';
+	import { markdownExcerpt } from '$lib/markdown';
+	import type { PageServerData } from './$types';
+
+	let { data }: { data: PageServerData } = $props();
+
+	const course = $derived(data.course);
+	const itemCount = $derived(course.stages.reduce((total, s) => total + s.items.length, 0));
+
+	let newStage = $state('');
+	// Keyed by stage id, so each stage's two "add" fields keep their own text.
+	let newLevel = $state<Record<string, string>>({});
+	let newTheory = $state<Record<string, string>>({});
+</script>
+
+<svelte:head>
+	<title>{course.title} · Dewy</title>
+</svelte:head>
+
+<Topbar>
+	{#snippet left()}
+		<a class="topbar-wordmark" href="/admin/courses">Dewy</a>
+		<span class="divider-v"></span>
+		<span class="chip">Course</span>
+		<span class="mission">{course.title}</span>
+	{/snippet}
+	{#snippet right()}
+		{#if course.published}
+			<Badge variant="chapter">Published</Badge>
+		{:else}
+			<span class="chip">Draft</span>
+		{/if}
+		<form method="POST" action="?/publish" use:enhance>
+			<input type="hidden" name="published" value={course.published ? 'false' : 'true'} />
+			<button class="btn btn-ghost" type="submit">
+				{course.published ? 'Unpublish' : 'Publish'}
+			</button>
+		</form>
+		<a class="btn btn-ghost" href="/courses/{course.id}">Preview</a>
+	{/snippet}
+</Topbar>
+
+<main class="page">
+	<Panel>
+		<h2 class="section-title">Course details</h2>
+		<form class="details" method="POST" action="?/updateCourse" use:enhance>
+			<input class="field" name="title" value={course.title} autocomplete="off" />
+			<textarea
+				class="field"
+				name="description"
+				rows="2"
+				placeholder="What this course covers"
+				>{course.description ?? ''}</textarea
+			>
+			<div class="details-actions">
+				<Button type="submit">Save</Button>
+			</div>
+		</form>
+	</Panel>
+
+	<div class="heading-row">
+		<h2 class="section-title">
+			Stages
+			<span class="count">{course.stages.length} stages · {itemCount} items</span>
+		</h2>
+		<form class="add-stage" method="POST" action="?/addStage" use:enhance>
+			<input
+				class="field"
+				name="title"
+				placeholder="New stage name"
+				bind:value={newStage}
+				autocomplete="off"
+			/>
+			<Button type="submit" variant="ghost">Add stage</Button>
+		</form>
+	</div>
+
+	{#if course.stages.length === 0}
+		<Panel>
+			<p class="empty">
+				No stages yet. A stage is a chunk of the course — add one above, then fill it with levels
+				and theory blocks.
+			</p>
+		</Panel>
+	{/if}
+
+	{#each course.stages as stage, stageIndex (stage.id)}
+		<Panel>
+			<header class="stage-head">
+				<form class="stage-title" method="POST" action="?/updateStage" use:enhance>
+					<input type="hidden" name="id" value={stage.id} />
+					<span class="stage-index">{stageIndex + 1}</span>
+					<input class="field field-inline" name="title" value={stage.title} autocomplete="off" />
+					<button class="btn btn-ghost" type="submit">Rename</button>
+				</form>
+
+				<div class="stage-actions">
+					<form method="POST" action="?/moveStage" use:enhance>
+						<input type="hidden" name="id" value={stage.id} />
+						<input type="hidden" name="direction" value="up" />
+						<button class="btn btn-ghost" type="submit" disabled={stageIndex === 0} title="Move up"
+							>↑</button
+						>
+					</form>
+					<form method="POST" action="?/moveStage" use:enhance>
+						<input type="hidden" name="id" value={stage.id} />
+						<input type="hidden" name="direction" value="down" />
+						<button
+							class="btn btn-ghost"
+							type="submit"
+							disabled={stageIndex === course.stages.length - 1}
+							title="Move down">↓</button
+						>
+					</form>
+					<form method="POST" action="?/deleteStage" use:enhance>
+						<input type="hidden" name="id" value={stage.id} />
+						<button class="btn btn-ghost danger" type="submit">Delete stage</button>
+					</form>
+				</div>
+			</header>
+
+			{@const previous = stageIndex === 0 ? null : course.stages[stageIndex - 1]}
+			{@const previousLevels = previous?.items.filter((i) => i.kind === 'level').length ?? 0}
+			<form class="gate" method="POST" action="?/gateStage" use:enhance>
+				<input type="hidden" name="id" value={stage.id} />
+				<input type="hidden" name="gated" value={stage.gated ? 'false' : 'true'} />
+				<label class="gate-toggle">
+					<input
+						type="checkbox"
+						checked={stage.gated}
+						disabled={previous === null}
+						onchange={(event) => event.currentTarget.form?.requestSubmit()}
+					/>
+					<span>Gate this stage</span>
+				</label>
+				<span class="gate-note">
+					{#if previous === null}
+						The first stage has nothing in front of it.
+					{:else if previousLevels === 0}
+						“{previous.title}” has no levels yet, so this gate would stay open.
+					{:else if stage.gated}
+						Shut until all {previousLevels}
+						{previousLevels === 1 ? 'level' : 'levels'} in “{previous.title}” are complete.
+					{:else}
+						Off — students reach this stage item by item, as usual.
+					{/if}
+				</span>
+			</form>
+
+			{#if stage.items.length === 0}
+				<p class="empty indent">Empty stage — add a level or a theory block below.</p>
+			{:else}
+				<ol class="items">
+					{#each stage.items as item, itemIndex (item.id)}
+						<li class="item">
+							<span class="item-kind" class:is-theory={item.kind === 'theory'}>
+								{item.kind === 'theory' ? 'Text' : 'Level'}
+							</span>
+
+							<div class="item-text">
+								{#if item.kind === 'theory'}
+									<a class="item-name" href="/admin/courses/{course.id}/theory/{item.id}"
+										>{item.title}</a
+									>
+									<p class="item-meta">{markdownExcerpt(item.body, 90)}</p>
+								{:else}
+									<a class="item-name" href="/designer/{item.levelId}">{item.name}</a>
+									{#if item.description}
+										<p class="item-meta">{item.description}</p>
+									{/if}
+								{/if}
+							</div>
+
+							<div class="item-actions">
+								<form method="POST" action="?/moveItem" use:enhance>
+									<input type="hidden" name="id" value={item.id} />
+									<input type="hidden" name="direction" value="up" />
+									<button
+										class="btn btn-ghost"
+										type="submit"
+										disabled={itemIndex === 0}
+										title="Move up">↑</button
+									>
+								</form>
+								<form method="POST" action="?/moveItem" use:enhance>
+									<input type="hidden" name="id" value={item.id} />
+									<input type="hidden" name="direction" value="down" />
+									<button
+										class="btn btn-ghost"
+										type="submit"
+										disabled={itemIndex === stage.items.length - 1}
+										title="Move down">↓</button
+									>
+								</form>
+								{#if item.kind === 'theory'}
+									<a class="btn btn-ghost" href="/admin/courses/{course.id}/theory/{item.id}">Edit</a>
+								{:else}
+									<a class="btn btn-ghost" href="/designer/{item.levelId}">Edit</a>
+								{/if}
+								<form method="POST" action="?/deleteItem" use:enhance>
+									<input type="hidden" name="id" value={item.id} />
+									<button class="btn btn-ghost danger" type="submit">Remove</button>
+								</form>
+							</div>
+						</li>
+					{/each}
+				</ol>
+			{/if}
+
+			<footer class="stage-add">
+				<form method="POST" action="?/addLevel" use:enhance>
+					<input type="hidden" name="stageId" value={stage.id} />
+					<input
+						class="field"
+						name="name"
+						placeholder="New level name"
+						bind:value={newLevel[stage.id]}
+						autocomplete="off"
+					/>
+					<button class="btn btn-ghost" type="submit">+ Level</button>
+				</form>
+				<form method="POST" action="?/addTheory" use:enhance>
+					<input type="hidden" name="stageId" value={stage.id} />
+					<input
+						class="field"
+						name="title"
+						placeholder="New theory block title"
+						bind:value={newTheory[stage.id]}
+						autocomplete="off"
+					/>
+					<button class="btn btn-ghost" type="submit">+ Text</button>
+				</form>
+			</footer>
+		</Panel>
+	{/each}
+
+	<Panel>
+		<h2 class="section-title">Danger zone</h2>
+		<div class="danger-zone">
+			<p class="empty">
+				Deleting this course also deletes every stage, theory block and level inside it.
+			</p>
+			<form method="POST" action="?/deleteCourse" use:enhance>
+				<button class="btn btn-ghost danger" type="submit">Delete course</button>
+			</form>
+		</div>
+	</Panel>
+</main>
+
+<style>
+	.page {
+		max-width: 940px;
+		margin: 0 auto;
+		padding: 28px 24px 64px;
+		display: flex;
+		flex-direction: column;
+		gap: 16px;
+	}
+
+	.section-title {
+		font-family: var(--font-display);
+		font-weight: var(--font-display-wt);
+		font-size: 15px;
+		color: var(--text-muted);
+		margin: 0;
+	}
+
+	.count {
+		font-family: var(--font-ui);
+		font-weight: 400;
+		font-size: 13px;
+		color: var(--text-faint);
+		margin-left: 8px;
+	}
+
+	.heading-row {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 16px;
+		flex-wrap: wrap;
+		margin-top: 8px;
+	}
+
+	.details,
+	.add-stage,
+	.stage-add form {
+		display: flex;
+		gap: 10px;
+	}
+
+	.details {
+		flex-direction: column;
+		margin-top: 12px;
+	}
+
+	.details-actions {
+		display: flex;
+		justify-content: flex-end;
+	}
+
+	.field {
+		flex: 1;
+		font: inherit;
+		font-family: var(--font-ui);
+		color: var(--text);
+		background: var(--bg);
+		border: 1px solid var(--panel-border);
+		border-radius: calc(var(--radius) - 6px);
+		padding: 9px 12px;
+		resize: vertical;
+	}
+
+	.field:focus-visible {
+		outline: 2px solid var(--accent);
+		outline-offset: 1px;
+	}
+
+	.field-inline {
+		font-family: var(--font-display);
+		font-weight: var(--font-display-wt);
+		font-size: 16px;
+	}
+
+	.stage-head {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 16px;
+		flex-wrap: wrap;
+	}
+
+	.stage-title {
+		flex: 1;
+		align-items: center;
+		min-width: 260px;
+	}
+
+	.stage-index {
+		font-family: var(--font-display);
+		font-weight: var(--font-display-wt);
+		color: var(--text-faint);
+		min-width: 18px;
+	}
+
+	.stage-actions,
+	.item-actions {
+		display: flex;
+		align-items: center;
+		gap: 6px;
+	}
+
+	.gate {
+		display: flex;
+		align-items: center;
+		gap: 10px;
+		flex-wrap: wrap;
+		margin-top: 10px;
+	}
+
+	.gate-toggle {
+		display: flex;
+		align-items: center;
+		gap: 7px;
+		font-size: 13px;
+		font-weight: 600;
+		white-space: nowrap;
+	}
+
+	.gate-toggle:has(input:disabled) {
+		opacity: 0.5;
+	}
+
+	.gate-note {
+		font-size: 13px;
+		color: var(--text-muted);
+	}
+
+	.items {
+		list-style: none;
+		margin: 14px 0 0;
+		padding: 0;
+		display: flex;
+		flex-direction: column;
+		gap: 8px;
+	}
+
+	.item {
+		display: flex;
+		align-items: center;
+		gap: 12px;
+		padding: 10px 12px;
+		background: var(--bg);
+		border: 1px solid var(--panel-border);
+		border-radius: calc(var(--radius) - 6px);
+		flex-wrap: wrap;
+	}
+
+	.item-kind {
+		font-family: var(--font-code);
+		font-size: 11px;
+		text-transform: uppercase;
+		letter-spacing: 0.06em;
+		color: var(--accent);
+		background: var(--accent-soft);
+		border-radius: 999px;
+		padding: 3px 9px;
+		white-space: nowrap;
+	}
+
+	.item-kind.is-theory {
+		color: var(--text-muted);
+		background: var(--chip-bg);
+	}
+
+	.item-text {
+		flex: 1;
+		min-width: 200px;
+	}
+
+	.item-name {
+		color: var(--text);
+		text-decoration: none;
+		font-weight: 600;
+	}
+
+	.item-name:hover {
+		color: var(--accent);
+	}
+
+	.item-meta {
+		margin: 3px 0 0;
+		font-size: 13px;
+		color: var(--text-muted);
+	}
+
+	.stage-add {
+		display: flex;
+		gap: 16px;
+		margin-top: 14px;
+		padding-top: 14px;
+		border-top: 1px solid var(--panel-border);
+		flex-wrap: wrap;
+	}
+
+	.stage-add form {
+		flex: 1;
+		min-width: 240px;
+	}
+
+	.danger-zone {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 16px;
+		margin-top: 12px;
+		flex-wrap: wrap;
+	}
+
+	.danger {
+		color: var(--danger);
+	}
+
+	.empty {
+		margin: 0;
+		color: var(--text-muted);
+		font-size: 14px;
+	}
+
+	.indent {
+		margin-top: 12px;
+	}
+</style>

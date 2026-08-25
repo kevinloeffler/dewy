@@ -1,6 +1,6 @@
-import { eq } from 'drizzle-orm';
+import { eq, isNull } from 'drizzle-orm';
 import { db } from '$lib/server/db';
-import { level as levelTable } from '$lib/server/db/schema';
+import { course, level as levelTable, stage, stageItem } from '$lib/server/db/schema';
 import { emptyLevel } from '$lib/game/editor/operations';
 import { parseLevel } from '$lib/game/editor/parse';
 import type { Level } from '$lib/game/level';
@@ -22,14 +22,40 @@ export type LevelSummary = {
     updatedAt: Date;
 };
 
+/** Where a level sits in the curriculum, for the designer's breadcrumb. */
+export type LevelOwner = {
+    itemId: string;
+    stageId: string;
+    stageTitle: string;
+    courseId: string;
+    courseTitle: string;
+};
+
 export class InvalidLevel extends Error {
     constructor(readonly errors: string[]) {
         super(`invalid level: ${errors.join('; ')}`);
     }
 }
 
-export async function listLevels(): Promise<LevelSummary[]> {
-    const rows = await db.select().from(levelTable).orderBy(levelTable.name);
+/**
+ * The `Level` a new row starts from.
+ *
+ * Split out of `createLevel` because `courses.ts` builds a level inside a
+ * `db.transaction`, and better-sqlite3 transactions are synchronous — nothing
+ * in there can `await`.
+ */
+export function buildEmptyLevel(id: string, name: string): Level {
+    return emptyLevel(id, name.trim() || 'Untitled level');
+}
+
+/** Levels belonging to no course. The rest are reached through their stage. */
+export async function listUnownedLevels(): Promise<LevelSummary[]> {
+    const rows = await db
+        .select()
+        .from(levelTable)
+        .where(isNull(levelTable.itemId))
+        .orderBy(levelTable.name);
+
     return rows.map((row) => ({
         id: row.id,
         name: row.name,
@@ -51,18 +77,24 @@ export async function findLevel(id: string): Promise<Level | null> {
     return result.level;
 }
 
-export async function createLevel(name: string): Promise<string> {
-    const id = crypto.randomUUID();
-    const data = emptyLevel(id, name.trim() || 'Untitled level');
+/** The course and stage a level belongs to, or `null` if it belongs to none. */
+export async function findLevelOwner(levelId: string): Promise<LevelOwner | null> {
+    const [row] = await db
+        .select({
+            itemId: stageItem.id,
+            stageId: stage.id,
+            stageTitle: stage.title,
+            courseId: course.id,
+            courseTitle: course.title,
+        })
+        .from(levelTable)
+        .innerJoin(stageItem, eq(stageItem.id, levelTable.itemId))
+        .innerJoin(stage, eq(stage.id, stageItem.stageId))
+        .innerJoin(course, eq(course.id, stage.courseId))
+        .where(eq(levelTable.id, levelId))
+        .limit(1);
 
-    await db.insert(levelTable).values({
-        id,
-        name: data.name,
-        description: data.description,
-        data,
-    });
-
-    return id;
+    return row ?? null;
 }
 
 /** Overwrites the level at `id`. Throws `InvalidLevel` if the payload is malformed. */
@@ -86,6 +118,25 @@ export async function saveLevel(id: string, value: unknown): Promise<Level> {
     return data;
 }
 
+/**
+ * Deletes an unowned level — one belonging to no course.
+ *
+ * A level that *is* owned must be deleted through its stage item instead
+ * (`courses.deleteItem`), so the cascade takes both and no empty
+ * `kind: 'level'` item is left stranded in the middle of a stage. Deleting one
+ * here is refused rather than silently doing half the job.
+ */
 export async function deleteLevel(id: string): Promise<void> {
+    const [row] = await db
+        .select({ itemId: levelTable.itemId })
+        .from(levelTable)
+        .where(eq(levelTable.id, id))
+        .limit(1);
+
+    if (!row) return;
+    if (row.itemId) {
+        throw new Error('That level belongs to a course — remove it from its stage instead.');
+    }
+
     await db.delete(levelTable).where(eq(levelTable.id, id));
 }

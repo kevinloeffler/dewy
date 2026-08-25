@@ -198,11 +198,12 @@ describe('meta, options and goals', () => {
     });
 
     it('patches options', () => {
-        const level = setOptions(base(), { lineBudget: 12, languageStage: 3 });
+        const level = setOptions(base(), { energy: 12, memory: 8, languageStage: 3 });
         expect(level.options).toEqual({
-            lineBudget: 12, showInventory: false, languageStage: 3,
+            energy: 12, memory: 8, showInventory: false, languageStage: 3,
         });
-        expect(setOptions(level, { lineBudget: 12 })).toBe(level);
+        expect(setOptions(level, { energy: 12 })).toBe(level);
+        expect(setOptions(level, { memory: 8 })).toBe(level);
     });
 
     it('refuses a duplicate level-wide goal but allows distinct bays', () => {

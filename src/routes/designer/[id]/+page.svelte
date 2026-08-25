@@ -91,7 +91,12 @@
 <div class="shell">
 	<Topbar>
 		{#snippet left()}
-			<a class="back" href="/designer">‹ Levels</a>
+			{#if data.owner}
+				<a class="back" href="/admin/courses/{data.owner.courseId}">‹ {data.owner.courseTitle}</a>
+				<span class="stage-crumb">{data.owner.stageTitle}</span>
+			{:else}
+				<a class="back" href="/admin/courses">‹ Courses</a>
+			{/if}
 			<span class="name">{draft.level.name}</span>
 			{#if draft.dirty}
 				<span class="chip">Unsaved</span>
@@ -145,7 +150,7 @@
 							draft.markSaved(submitted);
 							if (playAfterSave) {
 								playAfterSave = false;
-								await goto(`/playground?level=${data.level.id}`);
+								await goto(`/level/${data.level.id}`);
 							}
 							return;
 						}
@@ -246,6 +251,11 @@
 
 	.back:hover {
 		color: var(--accent);
+	}
+
+	.stage-crumb {
+		color: var(--text-faint);
+		font-size: 13px;
 	}
 
 	.name {

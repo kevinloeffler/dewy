@@ -46,7 +46,8 @@
 		return tiles + items;
 	});
 
-	let budgetOn = $derived(level.options.lineBudget !== null);
+	let energyOn = $derived(level.options.energy !== null);
+	let memoryOn = $derived(level.options.memory !== null);
 
 	function applySize() {
 		draft.edit((current) => resize(current, width, height));
@@ -97,25 +98,52 @@
 	<label class="field check">
 		<input
 			type="checkbox"
-			checked={budgetOn}
+			checked={energyOn}
 			onchange={(event) =>
 				draft.edit((current) =>
-					setOptions(current, { lineBudget: event.currentTarget.checked ? 15 : null })
+					setOptions(current, { energy: event.currentTarget.checked ? 15 : null })
 				)}
 		/>
-		Line budget
+		Energy limit
 	</label>
 
-	{#if budgetOn}
+	{#if energyOn}
 		<label class="field indent">
-			Maximum lines
+			Maximum commands
 			<input
 				type="number"
 				min="1"
-				value={level.options.lineBudget}
+				value={level.options.energy}
 				onchange={(event) =>
 					draft.edit((current) =>
-						setOptions(current, { lineBudget: Number(event.currentTarget.value) || 1 })
+						setOptions(current, { energy: Number(event.currentTarget.value) || 1 })
+					)}
+			/>
+		</label>
+	{/if}
+
+	<label class="field check">
+		<input
+			type="checkbox"
+			checked={memoryOn}
+			onchange={(event) =>
+				draft.edit((current) =>
+					setOptions(current, { memory: event.currentTarget.checked ? 12 : null })
+				)}
+		/>
+		Memory limit
+	</label>
+
+	{#if memoryOn}
+		<label class="field indent">
+			Maximum statements
+			<input
+				type="number"
+				min="1"
+				value={level.options.memory}
+				onchange={(event) =>
+					draft.edit((current) =>
+						setOptions(current, { memory: Number(event.currentTarget.value) || 1 })
 					)}
 			/>
 		</label>

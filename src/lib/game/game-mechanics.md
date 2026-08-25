@@ -85,7 +85,7 @@ A keycard is different — `open()` unlocks a door permanently, whatever its con
 - Calling `pick()` on an empty tile
 - Calling `pick()` when already carrying a crate
 - Calling `drop()` when not carrying a crate
-- Battery runs out — program exceeds the line budget
+- Energy runs out — the program used more commands than the battery holds
 
 ---
 
@@ -93,8 +93,13 @@ A keycard is different — `open()` unlocks a door permanently, whatever its con
 
 | Feature | Behaviour |
 |---------|-----------|
-| Battery / line budget | Maximum number of lines the student can write — counts down in the editor as they type, encourages loops and abstraction |
+| Battery / energy | How many commands the robot can run. One robot command — `moveForward`, `turnLeft`, `turnRight`, `pick`, `drop`, `open`, `toggle` — costs one energy; sensing is free. Running out crashes the robot mid-run |
+| Memory | How many statements the program may contain. Blank lines and comments are free, and a block costs one plus its body, so `repeat(4) { moveForward(); }` is 2. Checked before the run — an over-budget program can be typed but not run, which pushes students toward loops and functions |
 | Inventory | Shown automatically when the level contains keycards — not a manual designer toggle |
+
+A level may set either limit, both, or neither. With no energy set, a runaway
+loop still stops at a safety cap of 500 commands — a different message, since
+that is a bug in the program rather than a budget the level chose.
 
 ---
 

@@ -9,6 +9,9 @@
 export type WorldState = {
     /** Half-height of the orthographic frustum. Smaller = closer in. */
     zoom: number;
+    /** Bounds the wheel zoom stays inside. Closest in / furthest out. */
+    minZoom: number;
+    maxZoom: number;
     /** Distance of the camera along each axis from the level centre. */
     cameraPosition: number;
     /** Animation speed multiplier. 2 = twice as fast. */
@@ -20,6 +23,8 @@ export function createWorldState(init: Partial<WorldState> = {}): WorldState {
     // `$state` must initialize a declaration — it cannot be returned directly.
     const state = $state({
         zoom: 6,
+        minZoom: 2,
+        maxZoom: 20,
         cameraPosition: 10,
         speed: 1,
         paused: false,

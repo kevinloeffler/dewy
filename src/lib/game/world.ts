@@ -23,6 +23,12 @@ import { TileFactory } from '$lib/game/models/tiles'
 
 const ROBOT_SCALE = 1.5
 
+/**
+ * Zoom per unit of wheel delta, applied exponentially so a notch changes the
+ * view by the same *proportion* whether we are close in or far out.
+ */
+const ZOOM_SENSITIVITY = 0.0015
+
 /** Seconds at speed 1. The queue applies the speed multiplier. */
 const DURATIONS: Record<WorldEventKind, number> = {
     move:        0.40,
@@ -106,6 +112,10 @@ export class World implements EventPlayer {
             this.updateFrustum()
         })
         this.observer.observe(canvas)
+
+        // Not passive: zooming has to swallow the scroll, or the page moves
+        // under the pointer instead of the camera.
+        canvas.addEventListener('wheel', this.onWheel, { passive: false })
 
         this.createLights()
         this.tick()
@@ -239,6 +249,7 @@ export class World implements EventPlayer {
         this.frame = null
         this.queue.cancel()
         this.observer.disconnect()
+        this.canvas.removeEventListener('wheel', this.onWheel)
         clearGroup(this.editorRoot)
         this.highlight = null
         this.disposeLevel()
@@ -428,6 +439,20 @@ export class World implements EventPlayer {
     private frameCamera(level: Level) {
         const centre = new THREE.Vector3((level.width - 1) / 2, 0, (level.height - 1) / 2)
         aimIsometricCamera(this.camera, centre, this.view.cameraPosition)
+    }
+
+    /**
+     * Scroll to zoom. Writes `view.zoom`; `tick` notices and rebuilds the
+     * frustum, so the same path serves a slider or any other caller.
+     */
+    private onWheel = (event: WheelEvent) => {
+        event.preventDefault()
+
+        // Firefox reports lines, and page-at-a-time exists too.
+        const perUnit = event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? this.canvas.clientHeight : 1
+        const next = this.view.zoom * Math.exp(event.deltaY * perUnit * ZOOM_SENSITIVITY)
+
+        this.view.zoom = Math.min(Math.max(next, this.view.minZoom), this.view.maxZoom)
     }
 
     private aspect() {
