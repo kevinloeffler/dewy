@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { enhance } from '$app/forms';
-	import { Badge, Button, Panel, Topbar } from '$lib/components/index.js';
+	import { Button, Panel, Topbar } from '$lib/components/index.js';
 	import LevelPlayer from '$lib/components/level/LevelPlayer.svelte';
 	import type { PageServerData } from './$types';
 
@@ -91,22 +91,27 @@
 		previous level.
 	-->
 	{#key item.id}
-		<LevelPlayer level={data.context.level} oncomplete={record}>
-			{#snippet titleExtra()}
-				<span class="crumb-sep">·</span>
-				<a class="crumb" href="/courses/{courseId}">{context.course.title}</a>
-				<span class="chip">{context.index} / {context.total}</span>
-			{/snippet}
-
+		<LevelPlayer
+			level={data.context.level}
+			oncomplete={record}
+			solved={isComplete}
+			crumbs={[
+				{ label: context.course.title, href: `/courses/${courseId}` },
+				{ label: context.stage.title },
+			]}
+			counter="{context.index} / {context.total}"
+		>
 			{#snippet actions()}
-				{#if isComplete || justSolved}
-					<Badge variant="chapter">Complete</Badge>
-				{/if}
 				{#if prevHref}
-					<a class="btn btn-ghost" href={prevHref}>Back</a>
+					<a class="btn btn-ghost" href={prevHref}>Zurück</a>
 				{/if}
-				<a class="btn" class:btn-primary={isComplete || justSolved} class:btn-ghost={!(isComplete || justSolved)} href={nextHref}>
-					{context.nextItemId ? 'Next' : 'Finish'}
+				<a
+					class="btn"
+					class:btn-primary={isComplete || justSolved}
+					class:btn-ghost={!(isComplete || justSolved)}
+					href={nextHref}
+				>
+					{context.nextItemId ? 'Weiter' : 'Fertig'}
 				</a>
 			{/snippet}
 		</LevelPlayer>

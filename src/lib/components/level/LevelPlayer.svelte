@@ -6,17 +6,9 @@
 	import { GameEngine } from '$lib/game/engine';
 	import { createRobotApi, type RobotApi } from '$lib/game/robot-api';
 	import { measureMemory, runScript, type RunResult } from '$lib/game/script';
-	import type { GoalCondition, LanguageStage, Level } from '$lib/game/level';
-	import {
-		Badge,
-		CodeMirrorEditor,
-		Console,
-		GemCounter,
-		Kbd,
-		Progress,
-		Topbar,
-		type LogEntry,
-	} from '$lib/components/index.js';
+	import type { CrateColor } from '$lib/game/crate-color';
+	import type { GoalCondition, Level } from '$lib/game/level';
+	import { CodeMirrorEditor, Kbd, Topbar } from '$lib/components/index.js';
 	import RunControls from './RunControls.svelte';
 
 	interface Props {
@@ -25,8 +17,12 @@
 		storageKey?: string;
 		/** Fires on every transition into a completed run. */
 		oncomplete?: (info: { code: string; steps: number }) => void;
-		/** Rendered beside the level name — a course breadcrumb, say. */
-		titleExtra?: Snippet;
+		/** Breadcrumb trail in front of the level name — course, then stage. */
+		crumbs?: { label: string; href?: string }[];
+		/** Pill beside the breadcrumb — the item's place in the course, e.g. `1 / 3`. */
+		counter?: string;
+		/** Solved in an earlier session. Drives the "Gelöst" pill in the topbar. */
+		solved?: boolean;
 		/** Rendered top-right — prev/next navigation. */
 		actions?: Snippet;
 	}
@@ -54,21 +50,18 @@
 	// read 60×/s by the renderer, where a rune proxy would only cost. The UI
 	// mirrors the parts it shows into runes after every action instead.
 	let code = $state(loadCode());
-	let logs = $state<LogEntry[]>([]);
 	let activeLine = $state<number | null>(null);
 	let running = $state(false);
 	let outcome = $state<RunResult | null>(null);
+
+	/** The one place anything goes wrong out loud — the toast over the editor. */
+	let notice = $state<{ kind: 'error' | 'success'; text: string } | null>(null);
+	// Only what the UI still reads: the world itself shows the robot's pose.
 	let hud = $state({
-		x: level.robot.position.x,
-		y: level.robot.position.y,
-		facing: level.robot.facing as string,
-		carrying: null as string | null,
-		inventory: [] as string[],
-		satisfied: 0,
+		/** One flag per `level.goals`, in order. */
+		goals: level.goals.map(() => false),
 		steps: 0,
 	});
-
-	const goalCount = level.goals.length;
 
 	// Memory is a property of the source, not of the run, so it is measured
 	// straight from `code`. Programs are a few dozen statements at most, so
@@ -84,7 +77,7 @@
 
 		world = instance;
 		engine = game;
-		robot = traced(createRobotApi(game, instance));
+		robot = synced(createRobotApi(game, instance));
 
 		// The engine has already settled its derived state, so snapping the
 		// scene from it is enough — no need to animate `initialize()`.
@@ -158,11 +151,12 @@
 	async function begin() {
 		// One gate for Run, Step and Cmd+Enter alike: a program too big for the
 		// robot's memory never starts. Typing it is fine — only running is not.
+		// Run and Step are already disabled here; this catches Cmd+Enter.
 		if (overMemory) {
-			log(
-				'err',
-				`✗ Out of memory — ${memoryUsed} statements, the robot holds ${level.options.memory}.`
-			);
+			notice = {
+				kind: 'error',
+				text: `Das Programm ist zu lang für Dewys Speicher — ${memoryUsed} Anweisungen, Dewy fasst ${level.options.memory}.`,
+			};
 			return;
 		}
 
@@ -195,9 +189,9 @@
 
 		engine.reset();
 		world.reset(engine.state);
-		logs = [];
 		activeLine = null;
 		outcome = null;
+		notice = null;
 		sync();
 	}
 
@@ -207,7 +201,7 @@
 		controller = new AbortController();
 		running = true;
 		outcome = null;
-		log('info', '› Running…');
+		notice = null;
 
 		const result = await runScript(code, {
 			api: robot,
@@ -229,49 +223,40 @@
 		outcome = result;
 	}
 
-	/** Turns a finished run into console output and a resting line marker. */
+	/** Settles the UI after a run: the toast, the line marker, the score. */
 	function report(result: RunResult) {
 		switch (result.status) {
-			case 'finished':
-				log('info', '› Program finished.');
-				break;
 			case 'complete':
-				log('ok', '★ Level complete!');
+				notice = { kind: 'success', text: '★ Level geschafft!' };
 				// Fires on every completion, not once per mount: recording it is
 				// idempotent, and a student who resets and solves it again should
 				// not silently stop counting.
 				props.oncomplete?.({ code, steps: engine?.state.steps ?? 0 });
 				break;
-			case 'cancelled':
-				log('warn', '■ Stopped.');
-				break;
 			case 'crash':
 				activeLine = result.line;
-				log('err', `✗ Line ${result.line}: ${result.reason.message}`);
+				notice = { kind: 'error', text: result.reason.message };
 				break;
 			case 'error':
 				activeLine = result.line;
-				log('err', `✗ Line ${result.line}: ${result.message}`);
+				notice = { kind: 'error', text: `Zeile ${result.line}: ${result.message}` };
 				break;
 		}
 	}
 
 	/**
-	 * Wraps the robot API so every action narrates itself and refreshes the
-	 * HUD. The interpreter stays unaware of any of it.
+	 * Wraps the robot API so the HUD refreshes after every action. The
+	 * interpreter stays unaware of any of it.
 	 */
-	function traced(api: RobotApi): RobotApi {
+	function synced(api: RobotApi): RobotApi {
 		const actions = ['moveForward', 'turnLeft', 'turnRight', 'pick', 'drop', 'open', 'toggle'] as const;
 
 		const wrapped = { ...api };
 		for (const name of actions) {
 			wrapped[name] = async () => {
-				log('cmd', `${name}()`);
-				const before = deliveredCount();
 				try {
 					await api[name]();
 				} finally {
-					if (deliveredCount() > before) log('ok', '✓ Crate delivered.');
 					sync();
 				}
 			};
@@ -279,26 +264,13 @@
 		return wrapped;
 	}
 
-	function deliveredCount(): number {
-		return engine?.state.crates.filter((crate) => crate.delivered).length ?? 0;
-	}
-
 	function sync() {
 		if (!engine) return;
 		const state = engine.state;
 		hud = {
-			x: state.robot.position.x,
-			y: state.robot.position.y,
-			facing: state.robot.facing,
-			carrying: state.robot.carrying,
-			inventory: [...state.robot.inventory],
-			satisfied: state.goals.filter((goal) => goal.satisfied).length,
+			goals: state.goals.map((goal) => goal.satisfied),
 			steps: state.steps,
 		};
-	}
-
-	function log(kind: LogEntry['kind'], text: string) {
-		logs = [...logs, { kind, text }];
 	}
 
 	function onkeydown(event: KeyboardEvent) {
@@ -323,22 +295,24 @@
 		return lines.join('\n');
 	}
 
-	const STAGE_LABEL: Record<LanguageStage, string> = {
-		1: 'Sequencing',
-		2: 'Repeat',
-		3: 'Conditions',
-		4: 'While loops',
-		5: 'Functions',
+	const CRATE_COLOR_LABEL: Record<CrateColor, string> = {
+		grey: 'graue',
+		red: 'rote',
+		green: 'grüne',
+		blue: 'blaue',
+		purple: 'lila',
+		pink: 'pinke',
+		yellow: 'gelbe',
 	};
 
 	function goalLabel(goal: GoalCondition): string {
 		switch (goal.kind) {
 			case 'reach_goal':
-				return 'Reach the target square';
+				return 'Erreiche das Ziel';
 			case 'deliver_all':
-				return 'Deliver every crate';
+				return 'Liefere alle Kisten aus';
 			case 'deliver_specific':
-				return `Deliver the ${goal.color} crate`;
+				return `Liefere die ${CRATE_COLOR_LABEL[goal.color]} Kiste aus`;
 		}
 	}
 </script>
@@ -348,24 +322,28 @@
 <div class="screen">
 	<Topbar>
 		{#snippet left()}
-			<span class="topbar-logo">D</span>
 			<span class="topbar-wordmark">Dewy</span>
 			<span class="divider-v"></span>
-			<Badge variant="chapter">
-				Stage {level.options.languageStage} · {STAGE_LABEL[level.options.languageStage]}
-			</Badge>
-			<span class="mission">{level.name}</span>
-			{@render props.titleExtra?.()}
+			<nav class="crumbs" aria-label="Kurs">
+				{#each props.crumbs ?? [] as crumb, index (index)}
+					{#if crumb.href}
+						<a class="crumb" href={crumb.href}>{crumb.label}</a>
+					{:else}
+						<span class="crumb">{crumb.label}</span>
+					{/if}
+					<span class="crumb-sep" aria-hidden="true">/</span>
+				{/each}
+				<span class="crumb is-current">{level.name}</span>
+			</nav>
+			{#if props.counter}
+				<span class="pill">{props.counter}</span>
+			{/if}
 		{/snippet}
 
 		{#snippet right()}
-			<span class="hud-label">Goals</span>
-			<GemCounter collected={hud.satisfied} total={goalCount} />
-			<span class="hud-goals">
-				{#each level.goals as goal, index (index)}
-					<span class="hud-goal" class:is-done={index < hud.satisfied}>{goalLabel(goal)}</span>
-				{/each}
-			</span>
+			{#if props.solved || outcome?.status === 'complete'}
+				<span class="pill is-solved">Gelöst</span>
+			{/if}
 			{@render props.actions?.()}
 		{/snippet}
 	</Topbar>
@@ -381,11 +359,16 @@
 					height="100%"
 					onchange={(next) => (code = next)}
 				/>
+
+				<div class="notice" role="status" aria-live="polite">
+					{#if notice}
+						<p class="toast" class:is-success={notice.kind === 'success'}>{notice.text}</p>
+					{/if}
+				</div>
 			</div>
 
 			<RunControls
 				{running}
-				{activeLine}
 				steps={hud.steps}
 				energy={level.options.energy}
 				memory={level.options.memory}
@@ -397,57 +380,25 @@
 				onstop={stop}
 				onreset={reset}
 			/>
-
-			<Console {logs} height={132} />
 		</section>
 
-		<section class="world panel">
-			<header class="world-header">
-				<div>
-					<p class="eyebrow">Workshop</p>
-					<h1 class="world-title">{level.name}</h1>
-				</div>
-				<div class="world-chips">
-					<span class="hud-label">facing</span>
-					<span class="chip">{hud.facing}</span>
-					<span class="hud-label">tile</span>
-					<span class="chip">({hud.x}, {hud.y})</span>
-					{#if level.options.showInventory}
-						<span class="hud-label">carrying</span>
-						<span class="chip">{hud.carrying ?? '—'}</span>
-					{/if}
-				</div>
-			</header>
-
+		<section class="arena">
 			<div class="viewport">
 				<canvas bind:this={canvas}></canvas>
-
-				{#if outcome?.status === 'complete'}
-					<p class="banner is-win">★ Level complete!</p>
-				{:else if outcome?.status === 'crash'}
-					<p class="banner is-crash">{outcome.reason.message}</p>
-				{:else if outcome?.status === 'error'}
-					<p class="banner is-crash">Line {outcome.line}: {outcome.message}</p>
-				{/if}
 			</div>
 
-			{#if level.description}
-				<footer class="brief">
-					<span class="hud-label">Brief ›</span>
-					<span>{level.description}</span>
-				</footer>
-			{/if}
+			<ul class="goals panel">
+				{#each level.goals as goal, index (index)}
+					<li class="goal" class:is-done={hud.goals[index]}>
+						<span class="goal-mark" aria-hidden="true"></span>
+						{goalLabel(goal)}
+					</li>
+				{/each}
+			</ul>
 		</section>
 	</main>
 
 	<footer class="footer">
-		<div class="footer-progress">
-			<Progress
-				value={goalCount === 0 ? 0 : hud.satisfied / goalCount}
-				label="Goals"
-				sublabel="{hud.satisfied} / {goalCount}"
-			/>
-		</div>
 		<p class="hint">
 			<Kbd>⌘</Kbd>
 			<Kbd>↵</Kbd>
@@ -464,33 +415,53 @@
 		overflow: hidden;
 	}
 
-	.mission {
-		font-size: 0.8125rem;
-		color: var(--text-muted);
-	}
+	/* ── Topbar ─────────────────────────────────────────────── */
 
-	.hud-label {
-		font-size: 0.6875rem;
-		color: var(--text-muted);
-		text-transform: uppercase;
-		letter-spacing: 0.6px;
-	}
-
-	.hud-goals {
+	.crumbs {
 		display: flex;
-		flex-direction: column;
+		align-items: center;
+		gap: 8px;
+		min-width: 0;
 	}
 
-	.hud-goal {
-		font-size: 0.8125rem;
+	.crumb {
+		font-size: 1rem;
 		font-weight: 600;
+		color: var(--text-muted);
+		text-decoration: none;
+		white-space: nowrap;
+	}
+
+	a.crumb:hover {
 		color: var(--text);
 	}
 
-	.hud-goal.is-done {
-		color: var(--success);
-		text-decoration: line-through;
-		text-decoration-thickness: 1px;
+	.crumb.is-current {
+		color: var(--text);
+		overflow: hidden;
+		text-overflow: ellipsis;
+	}
+
+	.crumb-sep {
+		color: var(--text-faint);
+	}
+
+	.pill {
+		display: inline-flex;
+		align-items: center;
+		padding: 4px 10px;
+		border-radius: 8px;
+		background: var(--chip-bg);
+		color: var(--chip-text);
+		font-family: var(--font-ui);
+		font-size: 0.875rem;
+		font-weight: 600;
+		white-space: nowrap;
+	}
+
+	.pill.is-solved {
+		text-transform: uppercase;
+		letter-spacing: 0.4px;
 	}
 
 	/* ── Main split ─────────────────────────────────────────── */
@@ -512,48 +483,59 @@
 	}
 
 	.editor {
+		position: relative;
 		flex: 1;
 		min-height: 0;
 	}
 
-	.world {
+	/* Bottom-left of the editor, clear of the caret and the control row. */
+	.notice {
+		position: absolute;
+		left: 20px;
+		right: 20px;
+		bottom: 20px;
+		pointer-events: none;
+	}
+
+	.toast {
+		--toast: var(--danger);
+		/* Hugs short messages; wraps rather than growing past the editor. */
+		width: fit-content;
+		max-width: 380px;
+		padding: 12px 16px;
+		border-radius: 8px;
+		background: var(--toast);
+		box-shadow: 0 4px 10px -2px color-mix(in srgb, var(--toast) 60%, transparent);
+		color: #fff;
+		/* The editor sets a monospace family on everything inside it. */
+		font-family: var(--font-ui);
+		font-size: 0.875rem;
+		font-weight: 500;
+		line-height: 1.35;
+	}
+
+	.toast.is-success {
+		--toast: var(--success);
+	}
+
+	.arena {
 		display: flex;
 		flex-direction: column;
+		gap: 16px;
 		min-height: 0;
-		padding: 18px;
 	}
 
-	.world-header {
-		display: flex;
-		align-items: center;
-		justify-content: space-between;
-		gap: 12px;
-		margin-bottom: 10px;
-	}
-
-	.eyebrow {
-		font-size: 0.6875rem;
-		font-weight: 700;
-		letter-spacing: 0.8px;
-		text-transform: uppercase;
-		color: var(--text-muted);
-	}
-
-	.world-title {
-		font-size: 0.9375rem;
-		margin-top: 2px;
-	}
-
-	.world-chips {
-		display: flex;
-		align-items: center;
-		gap: 6px;
-	}
-
+	/*
+		No panel chrome: the world is the scene and nothing else. The background
+		only shows through before the first frame is painted.
+	*/
 	.viewport {
 		position: relative;
 		flex: 1;
 		min-height: 0;
+		background: var(--accent-soft);
+		border-radius: var(--radius);
+		overflow: hidden;
 	}
 
 	.viewport canvas {
@@ -562,34 +544,45 @@
 		height: 100%;
 	}
 
-	.banner {
-		position: absolute;
-		top: 16px;
-		left: 16px;
-		max-width: calc(100% - 32px);
-		padding: 8px 12px;
-		border-radius: var(--radius);
-		box-shadow: var(--panel-shadow);
-		font-size: 0.8125rem;
-		font-weight: 700;
-		color: #fff;
-	}
-
-	.banner.is-win {
-		background: var(--success);
-	}
-
-	.banner.is-crash {
-		background: var(--danger);
-	}
-
-	.brief {
+	.goals {
 		display: flex;
-		align-items: baseline;
-		gap: 8px;
-		margin-top: 10px;
-		font-size: 0.8125rem;
+		flex-wrap: wrap;
+		align-items: center;
+		gap: 12px 36px;
+		margin: 0;
+		padding: 18px 24px;
+		list-style: none;
+	}
+
+	.goal {
+		display: flex;
+		align-items: center;
+		gap: 11px;
+		font-size: 0.9375rem;
+		font-weight: 700;
 		color: var(--text);
+	}
+
+	/* A square on its corner — the diamond the goal markers use in-world. */
+	.goal-mark {
+		width: 16px;
+		height: 16px;
+		flex-shrink: 0;
+		border: 2px solid var(--text-faint);
+		border-radius: 3px;
+		rotate: 45deg;
+		transition: background 200ms ease, border-color 200ms ease;
+	}
+
+	.goal.is-done {
+		color: var(--text-muted);
+		text-decoration: line-through;
+		text-decoration-thickness: 1px;
+	}
+
+	.goal.is-done .goal-mark {
+		background: var(--success);
+		border-color: var(--success);
 	}
 
 	/* ── Footer ─────────────────────────────────────────────── */
@@ -597,12 +590,8 @@
 	.footer {
 		display: flex;
 		align-items: center;
-		gap: 20px;
+		justify-content: flex-end;
 		padding: 0 22px 14px;
-	}
-
-	.footer-progress {
-		flex: 1;
 	}
 
 	.hint {

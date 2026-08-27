@@ -37,30 +37,29 @@ export type CrashReason = {
 };
 
 const MESSAGES: Record<CrashCode, string> = {
-    edge:            "That's the edge of the warehouse.",
-    wall:            "There's a wall in the way.",
-    door_closed:     'That door is closed.',
-    pit:             "That's a pit — the robot fell in!",
-    cargo_belt:      'Cargo belts are for crates only — the robot cannot stand on one.',
-    switch_blocked:  'There is a switch in the way — flip it, do not walk into it.',
-    robot_gap:       'Only the robot fits through that gap.',
-    crate_blocked:   'The crate has nowhere to go.',
-    crate_delivered: 'That crate has already been delivered.',
+    edge:            'Das ist der Rand der Lagerhalle.',
+    wall:            'Da ist eine Wand im Weg.',
+    door_closed:     'Diese Tür ist zu.',
+    pit:             'Das ist ein Loch — Dewy ist hineingefallen!',
+    cargo_belt:      'Förderbänder sind nur für Kisten — Dewy kann nicht darauf stehen.',
+    switch_blocked:  'Da ist ein Schalter im Weg — betätige ihn, lauf nicht hinein.',
+    robot_gap:       'Durch diese Lücke passt nur Dewy allein.',
+    crate_blocked:   'Die Kiste kann nirgendwohin.',
+    crate_delivered: 'Diese Kiste ist schon abgeliefert.',
 
-    nothing_to_pick:  "There's nothing here to pick up.",
-    already_carrying: 'The robot is already carrying a crate.',
-    not_carrying:     "The robot isn't carrying anything.",
+    nothing_to_pick:  'Hier gibt es nichts zum Aufheben.',
+    already_carrying: 'Dewy trägt schon eine Kiste.',
+    not_carrying:     'Dewy trägt nichts.',
 
-    not_a_door:    "There's no door here to open.",
-    no_keycard:    "You don't have the keycard for this door.",
-    no_keyhole:    'This door has no keyhole — something else must open it.',
-    not_a_switch:  "There's no switch here to flip.",
+    not_a_door:    'Hier ist keine Tür zum Öffnen.',
+    no_keycard:    'Du hast keine Keycard für diese Tür.',
+    no_keyhole:    'Diese Tür hat kein Schlüsselloch — etwas anderes muss sie öffnen.',
+    not_a_switch:  'Hier ist kein Schalter zum Betätigen.',
 
-    motion_sensor: 'A motion sensor spotted the robot!',
-    out_of_energy: "The robot's battery is empty — that took more commands than it had energy for.",
-    runaway:       'The robot kept going and going — is it stuck in a loop?',
+    motion_sensor: 'Ein Bewegungsmelder hat Dewy entdeckt!',
+    out_of_energy: 'Dewy hat keine Batterie mehr. Verwende weniger Befehle um das Level zu lösen.',
+    runaway:       'Dewy läuft und läuft — ist das eine Endlosschleife?',
 };
-
 export function crash(code: CrashCode): CrashReason {
     return { code, message: MESSAGES[code] };
 }
