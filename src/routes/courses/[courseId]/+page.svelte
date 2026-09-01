@@ -25,7 +25,7 @@
 			<span class="hud-label">Progress</span>
 			<span class="chip">{progress.completedCount} / {progress.total}</span>
 		{:else}
-			<a class="btn btn-ghost" href="/demo/better-auth/login">Sign in to save progress</a>
+			<a class="btn btn-ghost" href="/login">Sign in to save progress</a>
 		{/if}
 		{#if progress.nextItemId}
 			<a class="btn btn-primary" href="/courses/{course.id}/items/{progress.nextItemId}">

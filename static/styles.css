@@ -605,6 +605,130 @@ kbd {
   margin: 1.8em 0;
 }
 
+/* ── Form fields ───────────────────────────────────────────── */
+/* The one definition of an input. Four pages had grown their own scoped
+   copy of exactly these rules; `Field.svelte` and everything under
+   /admin now share this instead. */
+
+.field {
+  font: inherit;
+  font-family: var(--font-ui);
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--panel-border);
+  border-radius: calc(var(--radius) - 6px);
+  padding: 9px 12px;
+  width: 100%;
+}
+
+.field:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.field:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+textarea.field {
+  font-family: var(--font-code);
+  font-size: 0.8125rem;
+  line-height: 1.6;
+  resize: vertical;
+}
+
+select.field {
+  cursor: pointer;
+}
+
+.field-label {
+  display: block;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  margin-bottom: 5px;
+}
+
+.field-hint {
+  margin: 4px 0 0;
+  font-size: 0.75rem;
+  color: var(--text-faint);
+}
+
+.field-error {
+  margin: 4px 0 0;
+  font-size: 0.75rem;
+  color: var(--danger);
+}
+
+/* ── Data tables ───────────────────────────────────────────── */
+/* For rosters and people lists — rows that are scanned and selected,
+   not read. Wrap in a container with `overflow-x: auto`. */
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.875rem;
+}
+
+.table th {
+  text-align: left;
+  font-size: 0.6875rem;
+  font-weight: 700;
+  letter-spacing: 0.6px;
+  text-transform: uppercase;
+  color: var(--text-faint);
+  padding: 0 12px 8px;
+  white-space: nowrap;
+}
+
+.table td {
+  padding: 10px 12px;
+  border-top: 1px solid var(--panel-border);
+  vertical-align: middle;
+}
+
+.table tbody tr:hover td {
+  background: var(--chip-bg);
+}
+
+.table .is-archived td {
+  color: var(--text-faint);
+}
+
+.table td.numeric,
+.table th.numeric {
+  text-align: right;
+  font-family: var(--font-code);
+  font-size: 0.8125rem;
+}
+
+.table td.tight,
+.table th.tight {
+  width: 1%;
+  white-space: nowrap;
+}
+
+/* ── Callouts ──────────────────────────────────────────────── */
+
+.callout {
+  border: 1px solid var(--panel-border);
+  border-left: 3px solid var(--text-faint);
+  border-radius: calc(var(--radius) - 6px);
+  padding: 12px 14px;
+  font-size: 0.8125rem;
+  line-height: 1.55;
+  color: var(--text-muted);
+  background: var(--bg);
+}
+
+.callout-info   { border-left-color: var(--accent); }
+.callout-warn   { border-left-color: var(--chapter-text); }
+.callout-danger { border-left-color: var(--danger); }
+
+.callout strong { color: var(--text); }
+
 /* ── Layout utilities ──────────────────────────────────────── */
 
 .sr-only {

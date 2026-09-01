@@ -18,7 +18,7 @@
 	{/snippet}
 	{#snippet right()}
 		{#if !data.signedIn}
-			<a class="btn btn-ghost" href="/demo/better-auth/login">Sign in to save progress</a>
+			<a class="btn btn-ghost" href="/login">Sign in to save progress</a>
 		{/if}
 	{/snippet}
 </Topbar>

@@ -1,26 +1,53 @@
 import { error, fail, redirect } from '@sveltejs/kit';
-import type { Actions, PageServerLoad } from './$types';
+import type { Actions, PageServerLoad, RequestEvent } from './$types';
 import {
 	addLevelItem,
 	addTheoryItem,
+	assertCanEditCourse,
+	assertCanEditItem,
+	assertCanEditStage,
+	canEditCourse,
+	canViewCourse,
+	copyLevel,
 	createStage,
 	deleteCourse,
 	deleteItem,
 	deleteStage,
+	duplicateCourse,
 	findCourse,
 	InvalidItem,
+	linkLevel,
+	listCourseShares,
+	listSharedLevels,
 	moveItem,
 	moveStage,
+	shareCourse,
+	unshareCourse,
 	updateCourse,
 	updateStage
 } from '$lib/server/courses';
+import { actorOf, Forbidden, listTeachers } from '$lib/server/users';
 import type { Direction } from '$lib/ordering';
 
 export const load: PageServerLoad = async (event) => {
+	const actor = actorOf(event);
+
 	const course = await findCourse(event.params.courseId);
 	if (!course) error(404, 'No such course.');
 
-	return { course };
+	// A course shared as a clone is visible and unchangeable. Everything the page
+	// renders keys off `canEdit`, so read-only is one flag rather than a second
+	// template.
+	if (!(await canViewCourse(actor, course.id))) error(404, 'No such course.');
+	const canEdit = await canEditCourse(actor, course.id);
+
+	return {
+		course,
+		canEdit,
+		shares: canEdit ? await listCourseShares(actor, course.id) : [],
+		teachers: canEdit ? (await listTeachers()).filter((row) => row.id !== actor.user.id) : [],
+		sharedLevels: canEdit ? await listSharedLevels(actor) : []
+	};
 };
 
 /** Reads a field that must be present, so each action can bail the same way. */
@@ -33,32 +60,85 @@ function direction(formData: FormData): Direction {
 	return formData.get('direction') === 'up' ? 'up' : 'down';
 }
 
+/**
+ * Runs one write behind its gate.
+ *
+ * Every action below is a write to somebody's course, so every one of them
+ * starts by asking whether this is that somebody. The rules themselves live in
+ * `courses.ts`; `gate` here just names which of them applies — the course, the
+ * stage it belongs to, or the item's.
+ */
+async function guarded<T>(
+	event: RequestEvent,
+	gate: (actor: ReturnType<typeof actorOf>) => Promise<void>,
+	work: (actor: ReturnType<typeof actorOf>) => Promise<T>
+) {
+	const actor = actorOf(event);
+	try {
+		await gate(actor);
+		return { ok: true as const, value: await work(actor) };
+	} catch (cause) {
+		if (cause instanceof Forbidden) return { ok: false as const, status: 403, message: cause.message };
+		if (cause instanceof InvalidItem) {
+			return { ok: false as const, status: 400, message: cause.errors.join('; ') };
+		}
+		throw cause;
+	}
+}
+
 export const actions: Actions = {
 	updateCourse: async (event) => {
 		const formData = await event.request.formData();
-		await updateCourse(event.params.courseId, {
-			title: formData.get('title')?.toString() ?? '',
-			description: formData.get('description')?.toString() ?? ''
-		});
+		const courseId = event.params.courseId;
+
+		const result = await guarded(
+			event,
+			(actor) => assertCanEditCourse(actor, courseId),
+			() =>
+				updateCourse(courseId, {
+					title: formData.get('title')?.toString() ?? '',
+					description: formData.get('description')?.toString() ?? ''
+				})
+		);
+		if (!result.ok) return fail(result.status, { message: result.message });
 		return { savedAt: Date.now() };
 	},
 
 	publish: async (event) => {
 		const formData = await event.request.formData();
-		await updateCourse(event.params.courseId, {
-			published: formData.get('published') === 'true'
-		});
+		const courseId = event.params.courseId;
+
+		const result = await guarded(
+			event,
+			(actor) => assertCanEditCourse(actor, courseId),
+			() => updateCourse(courseId, { published: formData.get('published') === 'true' })
+		);
+		if (!result.ok) return fail(result.status, { message: result.message });
 		return { savedAt: Date.now() };
 	},
 
 	deleteCourse: async (event) => {
-		await deleteCourse(event.params.courseId);
+		const courseId = event.params.courseId;
+
+		const result = await guarded(
+			event,
+			(actor) => assertCanEditCourse(actor, courseId),
+			() => deleteCourse(courseId)
+		);
+		if (!result.ok) return fail(result.status, { message: result.message });
 		return redirect(303, '/admin/courses');
 	},
 
 	addStage: async (event) => {
 		const formData = await event.request.formData();
-		await createStage(event.params.courseId, formData.get('title')?.toString() ?? '');
+		const courseId = event.params.courseId;
+
+		const result = await guarded(
+			event,
+			(actor) => assertCanEditCourse(actor, courseId),
+			() => createStage(courseId, formData.get('title')?.toString() ?? '')
+		);
+		if (!result.ok) return fail(result.status, { message: result.message });
 		return { savedAt: Date.now() };
 	},
 
@@ -67,10 +147,16 @@ export const actions: Actions = {
 		const id = required(formData, 'id');
 		if (!id) return fail(400, { message: 'No stage to rename.' });
 
-		await updateStage(id, {
-			title: formData.get('title')?.toString() ?? '',
-			description: formData.get('description')?.toString() ?? ''
-		});
+		const result = await guarded(
+			event,
+			(actor) => assertCanEditStage(actor, id),
+			() =>
+				updateStage(id, {
+					title: formData.get('title')?.toString() ?? '',
+					description: formData.get('description')?.toString() ?? ''
+				})
+		);
+		if (!result.ok) return fail(result.status, { message: result.message });
 		return { savedAt: Date.now() };
 	},
 
@@ -86,7 +172,12 @@ export const actions: Actions = {
 		const id = required(formData, 'id');
 		if (!id) return fail(400, { message: 'No stage to gate.' });
 
-		await updateStage(id, { gated: formData.get('gated') === 'true' });
+		const result = await guarded(
+			event,
+			(actor) => assertCanEditStage(actor, id),
+			() => updateStage(id, { gated: formData.get('gated') === 'true' })
+		);
+		if (!result.ok) return fail(result.status, { message: result.message });
 		return { savedAt: Date.now() };
 	},
 
@@ -96,7 +187,12 @@ export const actions: Actions = {
 		const id = required(formData, 'id');
 		if (!id) return fail(400, { message: 'No stage to reorder.' });
 
-		await updateStage(id, { ordered: formData.get('ordered') === 'true' });
+		const result = await guarded(
+			event,
+			(actor) => assertCanEditStage(actor, id),
+			() => updateStage(id, { ordered: formData.get('ordered') === 'true' })
+		);
+		if (!result.ok) return fail(result.status, { message: result.message });
 		return { savedAt: Date.now() };
 	},
 
@@ -105,7 +201,12 @@ export const actions: Actions = {
 		const id = required(formData, 'id');
 		if (!id) return fail(400, { message: 'No stage to delete.' });
 
-		await deleteStage(id);
+		const result = await guarded(
+			event,
+			(actor) => assertCanEditStage(actor, id),
+			() => deleteStage(id)
+		);
+		if (!result.ok) return fail(result.status, { message: result.message });
 		return { savedAt: Date.now() };
 	},
 
@@ -114,7 +215,12 @@ export const actions: Actions = {
 		const id = required(formData, 'id');
 		if (!id) return fail(400, { message: 'No stage to move.' });
 
-		await moveStage(id, direction(formData));
+		const result = await guarded(
+			event,
+			(actor) => assertCanEditStage(actor, id),
+			() => moveStage(id, direction(formData))
+		);
+		if (!result.ok) return fail(result.status, { message: result.message });
 		return { savedAt: Date.now() };
 	},
 
@@ -123,9 +229,47 @@ export const actions: Actions = {
 		const stageId = required(formData, 'stageId');
 		if (!stageId) return fail(400, { message: 'No stage to add to.' });
 
-		const { levelId } = await addLevelItem(stageId, formData.get('name')?.toString() ?? '');
+		const result = await guarded(
+			event,
+			(actor) => assertCanEditStage(actor, stageId),
+			() => addLevelItem(stageId, formData.get('name')?.toString() ?? '')
+		);
+		if (!result.ok) return fail(result.status, { message: result.message });
+
 		// Straight into the designer — a blank level is not worth a second click.
-		return redirect(303, `/designer/${levelId}`);
+		return redirect(303, `/designer/${result.value.levelId}`);
+	},
+
+	/** Adds a level another teacher shared, as a live link they keep owning. */
+	linkLevel: async (event) => {
+		const formData = await event.request.formData();
+		const stageId = required(formData, 'stageId');
+		const levelId = required(formData, 'levelId');
+		if (!stageId || !levelId) return fail(400, { message: 'Pick a level to add.' });
+
+		const result = await guarded(
+			event,
+			(actor) => assertCanEditStage(actor, stageId),
+			(actor) => linkLevel(actor, stageId, levelId)
+		);
+		if (!result.ok) return fail(result.status, { message: result.message });
+		return { savedAt: Date.now() };
+	},
+
+	/** Adds a shared level as an independent duplicate, editable here. */
+	copyLevel: async (event) => {
+		const formData = await event.request.formData();
+		const stageId = required(formData, 'stageId');
+		const levelId = required(formData, 'levelId');
+		if (!stageId || !levelId) return fail(400, { message: 'Pick a level to add.' });
+
+		const result = await guarded(
+			event,
+			(actor) => assertCanEditStage(actor, stageId),
+			(actor) => copyLevel(actor, stageId, levelId)
+		);
+		if (!result.ok) return fail(result.status, { message: result.message });
+		return redirect(303, `/designer/${result.value.levelId}`);
 	},
 
 	addTheory: async (event) => {
@@ -134,17 +278,18 @@ export const actions: Actions = {
 		if (!stageId) return fail(400, { message: 'No stage to add to.' });
 
 		const title = formData.get('title')?.toString() ?? '';
-		try {
-			const itemId = await addTheoryItem(stageId, {
-				title,
-				// A placeholder body keeps the item valid; the editor is next anyway.
-				body: `Write the lesson for “${title.trim() || 'this block'}” here.`
-			});
-			return redirect(303, `/admin/courses/${event.params.courseId}/theory/${itemId}`);
-		} catch (cause) {
-			if (cause instanceof InvalidItem) return fail(400, { message: cause.errors.join('; ') });
-			throw cause;
-		}
+		const result = await guarded(
+			event,
+			(actor) => assertCanEditStage(actor, stageId),
+			() =>
+				addTheoryItem(stageId, {
+					title,
+					// A placeholder body keeps the item valid; the editor is next anyway.
+					body: `Write the lesson for “${title.trim() || 'this block'}” here.`
+				})
+		);
+		if (!result.ok) return fail(result.status, { message: result.message });
+		return redirect(303, `/admin/courses/${event.params.courseId}/theory/${result.value}`);
 	},
 
 	deleteItem: async (event) => {
@@ -152,7 +297,12 @@ export const actions: Actions = {
 		const id = required(formData, 'id');
 		if (!id) return fail(400, { message: 'No item to delete.' });
 
-		await deleteItem(id);
+		const result = await guarded(
+			event,
+			(actor) => assertCanEditItem(actor, id),
+			() => deleteItem(id)
+		);
+		if (!result.ok) return fail(result.status, { message: result.message });
 		return { savedAt: Date.now() };
 	},
 
@@ -161,7 +311,59 @@ export const actions: Actions = {
 		const id = required(formData, 'id');
 		if (!id) return fail(400, { message: 'No item to move.' });
 
-		await moveItem(id, direction(formData));
+		const result = await guarded(
+			event,
+			(actor) => assertCanEditItem(actor, id),
+			() => moveItem(id, direction(formData))
+		);
+		if (!result.ok) return fail(result.status, { message: result.message });
 		return { savedAt: Date.now() };
+	},
+
+	// ── Sharing ───────────────────────────────────────────────
+
+	share: async (event) => {
+		const formData = await event.request.formData();
+		const teacherId = required(formData, 'teacherId');
+		const courseId = event.params.courseId;
+		if (!teacherId) return fail(400, { message: 'Pick a teacher.' });
+
+		const result = await guarded(
+			event,
+			(actor) => assertCanEditCourse(actor, courseId),
+			(actor) => shareCourse(actor, courseId, teacherId)
+		);
+		if (!result.ok) return fail(result.status, { message: result.message });
+		return { savedAt: Date.now() };
+	},
+
+	unshare: async (event) => {
+		const formData = await event.request.formData();
+		const teacherId = required(formData, 'teacherId');
+		const courseId = event.params.courseId;
+		if (!teacherId) return fail(400, { message: 'Pick a teacher.' });
+
+		const result = await guarded(
+			event,
+			(actor) => assertCanEditCourse(actor, courseId),
+			(actor) => unshareCourse(actor, courseId, teacherId)
+		);
+		if (!result.ok) return fail(result.status, { message: result.message });
+		return { savedAt: Date.now() };
+	},
+
+	/** Take an editable copy of a course — your own, or one shared with you. */
+	duplicate: async (event) => {
+		const courseId = event.params.courseId;
+
+		// The gate is `duplicateCourse`'s own: a clone recipient may copy, which
+		// is precisely what they may not do to the original.
+		const result = await guarded(
+			event,
+			async () => {},
+			(actor) => duplicateCourse(actor, courseId)
+		);
+		if (!result.ok) return fail(result.status, { message: result.message });
+		return redirect(303, `/admin/courses/${result.value}`);
 	}
 };

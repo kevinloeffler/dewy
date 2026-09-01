@@ -1,5 +1,8 @@
 <script lang="ts">
 	import { Panel, Topbar } from '$lib/components/index.js';
+	import type { PageServerData } from './$types';
+
+	let { data }: { data: PageServerData } = $props();
 </script>
 
 <svelte:head>
@@ -10,6 +13,16 @@
 	{#snippet left()}
 		<span class="topbar-logo">D</span>
 		<span class="topbar-wordmark">Dewy</span>
+	{/snippet}
+	{#snippet right()}
+		{#if data.signedIn}
+			<span class="who">{data.name}</span>
+			<form method="POST" action="/logout">
+				<button class="btn btn-ghost" type="submit">Sign out</button>
+			</form>
+		{:else}
+			<a class="btn btn-ghost" href="/login">Sign in</a>
+		{/if}
 	{/snippet}
 </Topbar>
 
@@ -27,12 +40,23 @@
 				<p class="card-desc">Work through a course, stage by stage.</p>
 			</Panel>
 		</a>
-		<a class="card" href="/admin/courses">
-			<Panel>
-				<h2 class="card-title">Build a course</h2>
-				<p class="card-desc">Design levels and write theory blocks for a class.</p>
-			</Panel>
-		</a>
+		{#if data.isStaff}
+			<a class="card" href="/admin/courses">
+				<Panel>
+					<h2 class="card-title">Build a course</h2>
+					<p class="card-desc">Design levels and write theory blocks for a class.</p>
+				</Panel>
+			</a>
+		{:else if !data.signedIn}
+			<a class="card" href="/login">
+				<Panel>
+					<h2 class="card-title">Sign in</h2>
+					<p class="card-desc">
+						Students sign in with the username their teacher gave them. Teachers use their email.
+					</p>
+				</Panel>
+			</a>
+		{/if}
 		<a class="card" href="/level/tutorial-01">
 			<Panel>
 				<h2 class="card-title">Try a level</h2>
@@ -43,6 +67,11 @@
 </main>
 
 <style>
+	.who {
+		font-size: 0.8125rem;
+		color: var(--text-muted);
+	}
+
 	.page {
 		max-width: 820px;
 		margin: 0 auto;

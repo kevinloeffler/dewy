@@ -19,7 +19,7 @@ function outline(): CourseOutline {
 				ordered: true,
 				items: [
 					{ id: 'a', kind: 'theory', position: 0, title: 'A', body: 'a' },
-					{ id: 'b', kind: 'level', position: 1, levelId: 'lb', name: 'B', description: null }
+					{ id: 'b', kind: 'level', position: 1, levelId: 'lb', name: 'B', description: null, linked: false }
 				]
 			},
 			{
@@ -142,7 +142,15 @@ describe('courseProgress with a gated stage', () => {
 			...base.stages[0],
 			items: [
 				...base.stages[0].items,
-				{ id: 'b2', kind: 'level' as const, position: 2, levelId: 'lb2', name: 'B2', description: null }
+				{
+					id: 'b2',
+					kind: 'level' as const,
+					position: 2,
+					levelId: 'lb2',
+					name: 'B2',
+					description: null,
+					linked: false
+				}
 			]
 		};
 		const lock = courseProgress({ ...base, stages: [stageOne, base.stages[1]] }, new Set(['a']))
@@ -168,7 +176,7 @@ describe('courseProgress with an unordered stage', () => {
 			ordered: false,
 			items: [
 				base.stages[1].items[0],
-				{ id: 'd', kind: 'level', position: 1, levelId: 'ld', name: 'D', description: null }
+				{ id: 'd', kind: 'level', position: 1, levelId: 'ld', name: 'D', description: null, linked: false }
 			]
 		};
 		return { ...base, stages: [base.stages[0], second] };

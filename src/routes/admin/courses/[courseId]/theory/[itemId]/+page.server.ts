@@ -1,8 +1,20 @@
 import { error, fail, redirect } from '@sveltejs/kit';
 import type { Actions, PageServerLoad } from './$types';
-import { deleteItem, findItem, InvalidItem, updateTheoryItem } from '$lib/server/courses';
+import {
+	assertCanEditItem,
+	canViewCourse,
+	deleteItem,
+	findItem,
+	InvalidItem,
+	updateTheoryItem
+} from '$lib/server/courses';
+import { actorOf, Forbidden } from '$lib/server/users';
 
 export const load: PageServerLoad = async (event) => {
+	if (!(await canViewCourse(actorOf(event), event.params.courseId))) {
+		error(404, 'No such theory block.');
+	}
+
 	const context = await findItem(event.params.courseId, event.params.itemId);
 	if (!context) error(404, 'No such theory block.');
 	if (context.item.kind !== 'theory') {
@@ -18,11 +30,13 @@ export const actions: Actions = {
 		const formData = await event.request.formData();
 
 		try {
+			await assertCanEditItem(actorOf(event), event.params.itemId);
 			await updateTheoryItem(event.params.itemId, {
 				title: formData.get('title')?.toString() ?? '',
 				body: formData.get('body')?.toString() ?? ''
 			});
 		} catch (cause) {
+			if (cause instanceof Forbidden) return fail(403, { message: cause.message });
 			if (cause instanceof InvalidItem) return fail(400, { message: cause.errors.join('; ') });
 			throw cause;
 		}
@@ -31,7 +45,14 @@ export const actions: Actions = {
 	},
 
 	delete: async (event) => {
-		await deleteItem(event.params.itemId);
+		try {
+			await assertCanEditItem(actorOf(event), event.params.itemId);
+			await deleteItem(event.params.itemId);
+		} catch (cause) {
+			if (cause instanceof Forbidden) return fail(403, { message: cause.message });
+			throw cause;
+		}
+
 		return redirect(303, `/admin/courses/${event.params.courseId}`);
 	}
 };

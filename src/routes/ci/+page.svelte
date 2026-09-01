@@ -1,9 +1,15 @@
 <script lang="ts">
 	import {
-		Badge, Button, CodeEditor, CodeMirrorEditor, Console, GemCounter,
-		Kbd, Panel, Progress, StatusDot, Topbar,
+		Badge, Button, Callout, Checkbox, CodeEditor, CodeMirrorEditor, Console,
+		CredentialsSheet, Field, GemCounter, Kbd, Modal, Panel, Progress,
+		StatusDot, Topbar,
 	} from '$lib/components/index.js';
 	import type { LogEntry } from '$lib/components/index.js';
+
+	// Live state for the form and overlay demos below.
+	let demoName = $state('Marie Muster');
+	let demoPicked = $state(true);
+	let demoModal = $state(false);
 
 	// ── sample data ──────────────────────────────────────────
 
@@ -232,6 +238,115 @@ robot.forward();`;
 					</div>
 				</div>
 			</Panel>
+		</section>
+
+		<!-- Field / Checkbox / Callout -->
+		<section class="section">
+			<h3 class="section-title">Form fields</h3>
+			<Panel>
+				<div class="demo-row demo-row--spaced">
+					<div class="demo-group grow">
+						<div class="demo-label">Field</div>
+						<Field label="Name" name="demo-name" bind:value={demoName} hint="Shown to students." />
+						<Field
+							label="Username"
+							name="demo-username"
+							value="mmuster"
+							error="That username is already taken."
+						/>
+					</div>
+					<div class="demo-group">
+						<div class="demo-label">Checkbox</div>
+						<div class="demo-row">
+							<Checkbox bind:checked={demoPicked} label="Selected" />
+							<Checkbox checked={false} label="Unselected" />
+							<Checkbox checked indeterminate label="Some selected" />
+							<Checkbox checked disabled label="Disabled" />
+						</div>
+					</div>
+				</div>
+			</Panel>
+		</section>
+
+		<!-- Callout -->
+		<section class="section">
+			<h3 class="section-title">Callout</h3>
+			<div class="stack">
+				<Callout>Anonymous visitors keep their progress in this browser only.</Callout>
+				<Callout variant="warn">
+					<strong>This is the only time these passwords are shown.</strong> They are stored hashed.
+				</Callout>
+				<Callout variant="danger">That class still has students — archive it instead.</Callout>
+			</div>
+		</section>
+
+		<!-- Table -->
+		<section class="section">
+			<h3 class="section-title">Data table</h3>
+			<Panel padding="sm">
+				<div class="table-wrap">
+					<table class="table">
+						<thead>
+							<tr>
+								<th class="tight"><Checkbox checked={false} label="Select all" /></th>
+								<th>Name</th>
+								<th>Signs in with</th>
+								<th>Role</th>
+								<th class="numeric">Done</th>
+							</tr>
+						</thead>
+						<tbody>
+							<tr>
+								<td class="tight"><Checkbox checked label="Select Marie" /></td>
+								<td>Marie Muster</td>
+								<td class="mono">mmuster</td>
+								<td><span class="chip">student</span></td>
+								<td class="numeric">12</td>
+							</tr>
+							<tr>
+								<td class="tight"><Checkbox checked={false} label="Select Tom" /></td>
+								<td>Tom Meier</td>
+								<td class="mono">tmeier</td>
+								<td><span class="chip">student</span></td>
+								<td class="numeric">7</td>
+							</tr>
+							<tr class="is-archived">
+								<td class="tight"><Checkbox checked={false} label="Select Aylin" /></td>
+								<td>Aylin Yilmaz <span class="chip">Archived</span></td>
+								<td class="mono">ayilmaz</td>
+								<td><span class="chip">student</span></td>
+								<td class="numeric">3</td>
+							</tr>
+						</tbody>
+					</table>
+				</div>
+			</Panel>
+		</section>
+
+		<!-- Modal -->
+		<section class="section">
+			<h3 class="section-title">Modal</h3>
+			<Panel>
+				<div class="demo-row">
+					<Button variant="ghost" onclick={() => (demoModal = true)}>Open modal</Button>
+					<span class="demo-label">Native &lt;dialog&gt; — Escape and the focus trap come free.</span>
+				</div>
+			</Panel>
+		</section>
+
+		<!-- CredentialsSheet -->
+		<section class="section">
+			<h3 class="section-title">
+				Credentials sheet <span class="section-badge">printable</span>
+			</h3>
+			<CredentialsSheet
+				heading="New accounts · 7b"
+				credentials={[
+					{ name: 'Marie Muster', username: 'mmuster', password: 'fiddlekitten53' },
+					{ name: 'Tom Meier', username: 'tmeier', password: 'pretzelharbor78' },
+					{ name: 'Aylin Yilmaz', username: 'ayilmaz', password: 'sparrowcrane76' }
+				]}
+			/>
 		</section>
 
 		<!-- Progress -->
@@ -515,7 +630,37 @@ robot.forward();`;
 	</main>
 </div>
 
+<Modal bind:open={demoModal} title="Share “Loops and Turns”">
+	<p style="margin: 0; font-size: 0.8125rem; color: var(--text-muted); line-height: 1.55">
+		A shared teacher sees this course as a <strong>live link</strong> — your later edits reach
+		them — and can assign it to their classes, but cannot change it.
+	</p>
+	{#snippet actions()}
+		<Button variant="ghost" onclick={() => (demoModal = false)}>Close</Button>
+	{/snippet}
+</Modal>
+
 <style>
+	.stack {
+		display: flex;
+		flex-direction: column;
+		gap: 10px;
+	}
+
+	.grow {
+		flex: 1;
+		min-width: 240px;
+	}
+
+	.table-wrap {
+		overflow-x: auto;
+	}
+
+	.mono {
+		font-family: var(--font-code);
+		font-size: 0.8125rem;
+	}
+
 	/* ── Page shell ───────────────────────────────────────── */
 	.page {
 		min-height: 100vh;

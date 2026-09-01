@@ -14,7 +14,6 @@
 
 <Topbar>
 	{#snippet left()}
-		<span class="topbar-wordmark">Dewy</span>
 		<span class="chip">Courses</span>
 	{/snippet}
 	{#snippet right()}
@@ -81,6 +80,41 @@
 									<input type="hidden" name="id" value={course.id} />
 									<button class="btn btn-ghost danger" type="submit">Delete</button>
 								</form>
+							</div>
+						</div>
+					</Panel>
+				</li>
+			{/each}
+		</ul>
+	{/if}
+
+	{#if data.shared.length > 0}
+		<h2 class="section-title">Shared with me</h2>
+		<p class="hint">
+			Live links to another teacher's courses. You can assign these to your classes and their
+			author's later edits reach you, but you cannot change them. Take a copy to make it yours.
+		</p>
+		<ul class="list">
+			{#each data.shared as course (course.id)}
+				<li>
+					<Panel>
+						<div class="row">
+							<div class="row-text">
+								<a class="row-name" href="/admin/courses/{course.id}">{course.title}</a>
+								<span class="chip">Read-only{course.ownerName ? ` · ${course.ownerName}` : ''}</span>
+								<p class="row-meta">
+									{course.stageCount}
+									{course.stageCount === 1 ? 'stage' : 'stages'}
+									· {course.itemCount}
+									{course.itemCount === 1 ? 'item' : 'items'}
+								</p>
+								{#if course.description}
+									<p class="row-desc">{course.description}</p>
+								{/if}
+							</div>
+
+							<div class="row-actions">
+								<a class="btn btn-ghost" href="/admin/courses/{course.id}">View</a>
 							</div>
 						</div>
 					</Panel>

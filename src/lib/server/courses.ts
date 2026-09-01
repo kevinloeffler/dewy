@@ -1,10 +1,31 @@
-import { asc, count, desc, eq, inArray } from 'drizzle-orm';
+import { and, asc, count, desc, eq, inArray, isNull } from 'drizzle-orm';
+import { alias } from 'drizzle-orm/sqlite-core';
 import { db } from '$lib/server/db';
-import { course, level as levelTable, stage, stageItem } from '$lib/server/db/schema';
+import {
+	classCourse,
+	classMember,
+	course,
+	courseShare,
+	levelShare,
+	level as levelTable,
+	schoolClass,
+	stage,
+	stageItem,
+	user
+} from '$lib/server/db/schema';
 import { buildEmptyLevel, InvalidLevel } from '$lib/server/levels';
 import { parseLevel } from '$lib/game/editor/parse';
 import { shift, type Direction } from '$lib/ordering';
+import { Forbidden, type Actor } from '$lib/server/users';
+import { roleOf } from '$lib/roles';
 import type { Level } from '$lib/game/level';
+
+/**
+ * A level a stage borrows rather than owns. It hangs off
+ * `stage_item.linked_level_id`, so resolving it needs a second join against the
+ * same table as the owned one.
+ */
+const linkedLevel = alias(levelTable, 'linked_level');
 
 /**
  * Reading and writing courses, stages and stage items.
@@ -43,6 +64,11 @@ export type StageItemView =
 			levelId: string;
 			name: string;
 			description: string | null;
+			/**
+			 * A level this stage borrows from another teacher rather than owns.
+			 * It plays identically; it just cannot be edited from here.
+			 */
+			linked: boolean;
 	  };
 
 export type StageView = {
@@ -86,6 +112,91 @@ export class InvalidItem extends Error {
 }
 
 // ============================================================
+// Who may edit a course
+// ============================================================
+
+/**
+ * Sharing, in two flavours.
+ *
+ * A **clone** is a live read-only link: `course_share` records who can see the
+ * owner's course, the owner's later edits reach them, and `assertCanEditCourse`
+ * is what stops them writing to it. A **copy** is `duplicateCourse` — a deep
+ * duplicate the recipient owns outright, with `copiedFromId` left behind purely
+ * as provenance.
+ *
+ * Ownership is `course.ownerId`, which has been recorded since courses existed
+ * against exactly this day:
+ *
+ * > "writing the author down now means turning ownership on later is a guard,
+ * > not a migration."
+ */
+
+/** Who owns a course, and `null` for a course written before ownership was read. */
+async function ownerOf(courseId: string): Promise<string | null | undefined> {
+	const row = await db
+		.select({ ownerId: course.ownerId })
+		.from(course)
+		.where(eq(course.id, courseId))
+		.get();
+	return row ? row.ownerId : undefined;
+}
+
+export async function canEditCourse(actor: Actor, courseId: string): Promise<boolean> {
+	if (roleOf(actor.user) === 'admin') return true;
+
+	const ownerId = await ownerOf(courseId);
+	if (ownerId === undefined) return false;
+
+	// A course from before roles existed has no owner. Refusing every teacher
+	// would strand the existing curriculum; any teacher may adopt it by editing.
+	return ownerId === null || ownerId === actor.user.id;
+}
+
+/**
+ * The gate on every write below.
+ *
+ * A recipient of a clone fails this — that is the whole of "can't be edited".
+ * A recipient of a copy owns their own row and passes.
+ */
+export async function assertCanEditCourse(actor: Actor, courseId: string): Promise<void> {
+	if (!(await canEditCourse(actor, courseId))) {
+		throw new Forbidden('That course belongs to another teacher.');
+	}
+}
+
+/** The stage's course, so stage- and item-level writes can be gated the same way. */
+async function courseOfStage(stageId: string): Promise<string | null> {
+	const row = await db
+		.select({ courseId: stage.courseId })
+		.from(stage)
+		.where(eq(stage.id, stageId))
+		.get();
+	return row?.courseId ?? null;
+}
+
+async function courseOfItem(itemId: string): Promise<string | null> {
+	const row = await db
+		.select({ courseId: stage.courseId })
+		.from(stageItem)
+		.innerJoin(stage, eq(stage.id, stageItem.stageId))
+		.where(eq(stageItem.id, itemId))
+		.get();
+	return row?.courseId ?? null;
+}
+
+export async function assertCanEditStage(actor: Actor, stageId: string): Promise<void> {
+	const courseId = await courseOfStage(stageId);
+	if (!courseId) throw new Forbidden('No such stage.');
+	await assertCanEditCourse(actor, courseId);
+}
+
+export async function assertCanEditItem(actor: Actor, itemId: string): Promise<void> {
+	const courseId = await courseOfItem(itemId);
+	if (!courseId) throw new Forbidden('No such item.');
+	await assertCanEditCourse(actor, courseId);
+}
+
+// ============================================================
 // Courses
 // ============================================================
 
@@ -126,6 +237,35 @@ export async function listCourses(
 }
 
 /**
+ * The catalogue for one student.
+ *
+ * A student who belongs to a class sees what that class has been assigned —
+ * that is the point of classes. A student in no class, and anyone signed out,
+ * sees every published course, which is exactly how `/courses` behaved before
+ * classes existed: an empty roster should not read as an empty curriculum.
+ */
+export async function listCoursesFor(userId: string | undefined): Promise<CourseSummary[]> {
+	if (!userId) return listCourses({ publishedOnly: true });
+
+	const assigned = await db
+		.selectDistinct({ courseId: classCourse.courseId })
+		.from(classCourse)
+		.innerJoin(classMember, eq(classMember.classId, classCourse.classId))
+		.innerJoin(schoolClass, eq(schoolClass.id, classCourse.classId))
+		.where(and(eq(classMember.userId, userId), isNull(schoolClass.archivedAt)));
+
+	if (assigned.length === 0) return listCourses({ publishedOnly: true });
+
+	const ids = new Set(assigned.map((row) => row.courseId));
+	return (await listCourses({ publishedOnly: true })).filter((row) => ids.has(row.id));
+}
+
+/** Whether this course is reachable by this student, for the course page's 404. */
+export async function canSeeCourse(userId: string | undefined, courseId: string): Promise<boolean> {
+	return (await listCoursesFor(userId)).some((row) => row.id === courseId);
+}
+
+/**
  * The whole course tree.
  *
  * Deliberately does not select `level.data`: a twelve-item course would drag
@@ -155,10 +295,14 @@ export async function findCourse(courseId: string): Promise<CourseOutline | null
 						position: stageItem.position,
 						levelId: levelTable.id,
 						levelName: levelTable.name,
-						levelDescription: levelTable.description
+						levelDescription: levelTable.description,
+						linkedId: linkedLevel.id,
+						linkedName: linkedLevel.name,
+						linkedDescription: linkedLevel.description
 					})
 					.from(stageItem)
 					.leftJoin(levelTable, eq(levelTable.itemId, stageItem.id))
+					.leftJoin(linkedLevel, eq(linkedLevel.id, stageItem.linkedLevelId))
 					.where(
 						inArray(
 							stageItem.stageId,
@@ -185,9 +329,10 @@ export async function findCourse(courseId: string): Promise<CourseOutline | null
 						// A level item without its level row is only possible if a
 						// write was interrupted; showing it as a placeholder beats
 						// dropping it silently out of the stage.
-						levelId: item.levelId ?? '',
-						name: item.levelName ?? 'Missing level',
-						description: item.levelDescription ?? null
+						levelId: item.levelId ?? item.linkedId ?? '',
+						name: item.levelName ?? item.linkedName ?? 'Missing level',
+						description: item.levelDescription ?? item.linkedDescription ?? null,
+						linked: item.levelId === null && item.linkedId !== null
 					};
 
 		const list = byStage.get(item.stageId);
@@ -235,8 +380,415 @@ export async function updateCourse(
 }
 
 /** One delete — the cascade clears stages, items and their levels. */
+/**
+ * Refuses to delete anything that would take a level out from under a course
+ * borrowing it.
+ *
+ * Deleting a course, a stage or a level item cascades down to the `level` rows
+ * beneath it — and a level another teacher linked into their own stage is
+ * protected by a `restrict` foreign key, so the delete fails anyway. It fails as
+ * `FOREIGN KEY constraint failed`, which is true and useless. This turns it into
+ * the sentence the teacher needs, before the write is attempted.
+ */
+async function assertNoBorrowedLevels(levelIds: string[]): Promise<void> {
+	if (levelIds.length === 0) return;
+
+	const borrowed = await db
+		.select({ name: levelTable.name })
+		.from(stageItem)
+		.innerJoin(levelTable, eq(levelTable.id, stageItem.linkedLevelId))
+		.where(inArray(stageItem.linkedLevelId, levelIds))
+		.limit(1);
+
+	if (borrowed.length > 0) {
+		throw new Forbidden(
+			`Another teacher's course is using “${borrowed[0].name}”. Unshare it before deleting.`
+		);
+	}
+}
+
+/** Every level owned by an item in this course. */
+async function levelIdsOfCourse(courseId: string): Promise<string[]> {
+	const rows = await db
+		.select({ id: levelTable.id })
+		.from(levelTable)
+		.innerJoin(stageItem, eq(stageItem.id, levelTable.itemId))
+		.innerJoin(stage, eq(stage.id, stageItem.stageId))
+		.where(eq(stage.courseId, courseId));
+	return rows.map((row) => row.id);
+}
+
+async function levelIdsOfStage(stageId: string): Promise<string[]> {
+	const rows = await db
+		.select({ id: levelTable.id })
+		.from(levelTable)
+		.innerJoin(stageItem, eq(stageItem.id, levelTable.itemId))
+		.where(eq(stageItem.stageId, stageId));
+	return rows.map((row) => row.id);
+}
+
+async function levelIdsOfItem(itemId: string): Promise<string[]> {
+	const rows = await db.select({ id: levelTable.id }).from(levelTable).where(eq(levelTable.itemId, itemId));
+	return rows.map((row) => row.id);
+}
+
 export async function deleteCourse(courseId: string): Promise<void> {
+	await assertNoBorrowedLevels(await levelIdsOfCourse(courseId));
 	await db.delete(course).where(eq(course.id, courseId));
+}
+
+// ============================================================
+// Sharing
+// ============================================================
+
+export type SharedCourse = CourseSummary & { ownerName: string | null };
+
+/** What a teacher sees in `/admin/courses`: their own courses, and the clones they hold. */
+export async function listCoursesForTeacher(
+	actor: Actor
+): Promise<{ owned: CourseSummary[]; shared: SharedCourse[] }> {
+	const all = await listCourses();
+
+	if (roleOf(actor.user) === 'admin') return { owned: all, shared: [] };
+
+	// A course with no owner predates ownership; `canEditCourse` lets any teacher
+	// adopt it, so it belongs in the editable list rather than nowhere.
+	const owned = [];
+	for (const row of all) {
+		if (await canEditCourse(actor, row.id)) owned.push(row);
+	}
+
+	const shares = await db
+		.select({ courseId: courseShare.courseId, ownerName: user.name })
+		.from(courseShare)
+		.leftJoin(course, eq(course.id, courseShare.courseId))
+		.leftJoin(user, eq(user.id, course.ownerId))
+		.where(eq(courseShare.teacherId, actor.user.id));
+
+	const ownedIds = new Set(owned.map((row) => row.id));
+	const ownerBy = new Map(shares.map((row) => [row.courseId, row.ownerName]));
+
+	const shared = all
+		.filter((row) => ownerBy.has(row.id) && !ownedIds.has(row.id))
+		.map((row) => ({ ...row, ownerName: ownerBy.get(row.id) ?? null }));
+
+	return { owned, shared };
+}
+
+/** Whether this teacher may *see* the course at all — to open, clone or copy it. */
+export async function canViewCourse(actor: Actor, courseId: string): Promise<boolean> {
+	if (await canEditCourse(actor, courseId)) return true;
+
+	const share = await db
+		.select({ id: courseShare.id })
+		.from(courseShare)
+		.where(and(eq(courseShare.courseId, courseId), eq(courseShare.teacherId, actor.user.id)))
+		.get();
+
+	return Boolean(share);
+}
+
+export async function listCourseShares(
+	actor: Actor,
+	courseId: string
+): Promise<{ teacherId: string; name: string; email: string }[]> {
+	await assertCanEditCourse(actor, courseId);
+
+	return db
+		.select({ teacherId: courseShare.teacherId, name: user.name, email: user.email })
+		.from(courseShare)
+		.innerJoin(user, eq(user.id, courseShare.teacherId))
+		.where(eq(courseShare.courseId, courseId))
+		.orderBy(asc(user.name));
+}
+
+export async function shareCourse(
+	actor: Actor,
+	courseId: string,
+	teacherId: string
+): Promise<void> {
+	await assertCanEditCourse(actor, courseId);
+	if (teacherId === actor.user.id) return;
+
+	await db.insert(courseShare).values({ courseId, teacherId }).onConflictDoNothing();
+}
+
+export async function unshareCourse(
+	actor: Actor,
+	courseId: string,
+	teacherId: string
+): Promise<void> {
+	await assertCanEditCourse(actor, courseId);
+	await db
+		.delete(courseShare)
+		.where(and(eq(courseShare.courseId, courseId), eq(courseShare.teacherId, teacherId)));
+}
+
+/**
+ * A copy: the whole tree duplicated, owned by the person who asked for it.
+ *
+ * Every id is minted fresh and each level blob's `data.id` is rewritten to match
+ * its new row — the same rule `saveLevel` enforces, so the copy is as valid as
+ * anything the designer writes. A **linked** level is copied as a link, not
+ * deep-copied: it was never the source course's to hand on.
+ *
+ * The copy starts unpublished. Somebody else's course appearing live in your
+ * catalogue the instant you duplicate it is not what anyone means by "copy".
+ */
+export async function duplicateCourse(actor: Actor, courseId: string): Promise<string> {
+	if (!(await canViewCourse(actor, courseId))) {
+		throw new Forbidden('That course has not been shared with you.');
+	}
+
+	const source = await db.select().from(course).where(eq(course.id, courseId)).get();
+	if (!source) throw new Forbidden('No such course.');
+
+	const stages = await db
+		.select()
+		.from(stage)
+		.where(eq(stage.courseId, courseId))
+		.orderBy(asc(stage.position));
+
+	const items =
+		stages.length === 0
+			? []
+			: await db
+					.select({
+						item: stageItem,
+						level: levelTable
+					})
+					.from(stageItem)
+					.leftJoin(levelTable, eq(levelTable.itemId, stageItem.id))
+					.where(
+						inArray(
+							stageItem.stageId,
+							stages.map((row) => row.id)
+						)
+					)
+					.orderBy(asc(stageItem.position));
+
+	const newCourseId = crypto.randomUUID();
+
+	// Synchronous throughout: better-sqlite3 throws if the callback returns a
+	// promise, so every id is minted before the transaction opens.
+	db.transaction((tx) => {
+		tx.insert(course)
+			.values({
+				id: newCourseId,
+				title: `${source.title} (copy)`,
+				description: source.description,
+				ownerId: actor.user.id,
+				copiedFromId: source.id,
+				published: false
+			})
+			.run();
+
+		for (const sourceStage of stages) {
+			const newStageId = crypto.randomUUID();
+			tx.insert(stage)
+				.values({
+					id: newStageId,
+					courseId: newCourseId,
+					title: sourceStage.title,
+					description: sourceStage.description,
+					position: sourceStage.position,
+					gated: sourceStage.gated,
+					ordered: sourceStage.ordered
+				})
+				.run();
+
+			for (const row of items) {
+				if (row.item.stageId !== sourceStage.id) continue;
+
+				const newItemId = crypto.randomUUID();
+				tx.insert(stageItem)
+					.values({
+						id: newItemId,
+						stageId: newStageId,
+						kind: row.item.kind,
+						title: row.item.title,
+						body: row.item.body,
+						position: row.item.position,
+						// A borrowed level stays borrowed — copying a course does not
+						// give you a level its author only lent to it.
+						linkedLevelId: row.item.linkedLevelId
+					})
+					.run();
+
+				if (row.level) {
+					const newLevelId = crypto.randomUUID();
+					tx.insert(levelTable)
+						.values({
+							id: newLevelId,
+							itemId: newItemId,
+							name: row.level.name,
+							description: row.level.description,
+							// `data.id` must equal the row id, exactly as `saveLevel` keeps it.
+							data: { ...row.level.data, id: newLevelId }
+						})
+						.run();
+				}
+			}
+		}
+	});
+
+	return newCourseId;
+}
+
+// ============================================================
+// Sharing levels
+// ============================================================
+
+export type SharedLevel = {
+	id: string;
+	name: string;
+	description: string | null;
+	ownerName: string | null;
+	courseTitle: string | null;
+};
+
+/** Levels other teachers have shared with this one, for the "add a level" picker. */
+export async function listSharedLevels(actor: Actor): Promise<SharedLevel[]> {
+	return db
+		.select({
+			id: levelTable.id,
+			name: levelTable.name,
+			description: levelTable.description,
+			ownerName: user.name,
+			courseTitle: course.title
+		})
+		.from(levelShare)
+		.innerJoin(levelTable, eq(levelTable.id, levelShare.levelId))
+		.leftJoin(stageItem, eq(stageItem.id, levelTable.itemId))
+		.leftJoin(stage, eq(stage.id, stageItem.stageId))
+		.leftJoin(course, eq(course.id, stage.courseId))
+		.leftJoin(user, eq(user.id, course.ownerId))
+		.where(eq(levelShare.teacherId, actor.user.id))
+		.orderBy(asc(levelTable.name));
+}
+
+/**
+ * The level's own course decides who may edit or share it.
+ *
+ * A level belonging to no course belongs to nobody in particular, so any teacher
+ * may work on it — the same reasoning `canEditCourse` applies to a course
+ * written before ownership was read.
+ */
+export async function assertCanEditLevel(actor: Actor, levelId: string): Promise<void> {
+	const row = await db
+		.select({ courseId: stage.courseId })
+		.from(levelTable)
+		.innerJoin(stageItem, eq(stageItem.id, levelTable.itemId))
+		.innerJoin(stage, eq(stage.id, stageItem.stageId))
+		.where(eq(levelTable.id, levelId))
+		.get();
+
+	if (!row) return;
+	await assertCanEditCourse(actor, row.courseId);
+}
+
+export async function shareLevel(actor: Actor, levelId: string, teacherId: string): Promise<void> {
+	await assertCanEditLevel(actor, levelId);
+	if (teacherId === actor.user.id) return;
+
+	await db.insert(levelShare).values({ levelId, teacherId }).onConflictDoNothing();
+}
+
+export async function unshareLevel(
+	actor: Actor,
+	levelId: string,
+	teacherId: string
+): Promise<void> {
+	await assertCanEditLevel(actor, levelId);
+	await db
+		.delete(levelShare)
+		.where(and(eq(levelShare.levelId, levelId), eq(levelShare.teacherId, teacherId)));
+}
+
+export async function listLevelShares(
+	actor: Actor,
+	levelId: string
+): Promise<{ teacherId: string; name: string }[]> {
+	await assertCanEditLevel(actor, levelId);
+
+	return db
+		.select({ teacherId: levelShare.teacherId, name: user.name })
+		.from(levelShare)
+		.innerJoin(user, eq(user.id, levelShare.teacherId))
+		.where(eq(levelShare.levelId, levelId))
+		.orderBy(asc(user.name));
+}
+
+/** Whether this teacher holds a share on this level. */
+async function holdsLevelShare(actor: Actor, levelId: string): Promise<boolean> {
+	const share = await db
+		.select({ id: levelShare.id })
+		.from(levelShare)
+		.where(and(eq(levelShare.levelId, levelId), eq(levelShare.teacherId, actor.user.id)))
+		.get();
+	return Boolean(share);
+}
+
+/**
+ * Adds a shared level to a stage as a **live link** — the item points at the
+ * original, which keeps updating, and the borrowing teacher cannot edit it.
+ */
+export async function linkLevel(actor: Actor, stageId: string, levelId: string): Promise<string> {
+	await assertCanEditStage(actor, stageId);
+	if (!(await holdsLevelShare(actor, levelId))) {
+		throw new Forbidden('That level has not been shared with you.');
+	}
+
+	const itemId = crypto.randomUUID();
+	db.transaction((tx) => {
+		tx.insert(stageItem)
+			.values({
+				id: itemId,
+				stageId,
+				kind: 'level',
+				position: nextItemPosition(tx, stageId),
+				linkedLevelId: levelId
+			})
+			.run();
+	});
+
+	return itemId;
+}
+
+/** Adds a shared level as an independent duplicate the borrowing teacher owns. */
+export async function copyLevel(
+	actor: Actor,
+	stageId: string,
+	levelId: string
+): Promise<{ itemId: string; levelId: string }> {
+	await assertCanEditStage(actor, stageId);
+	if (!(await holdsLevelShare(actor, levelId))) {
+		throw new Forbidden('That level has not been shared with you.');
+	}
+
+	const source = await db.select().from(levelTable).where(eq(levelTable.id, levelId)).get();
+	if (!source) throw new Forbidden('No such level.');
+
+	const itemId = crypto.randomUUID();
+	const newLevelId = crypto.randomUUID();
+
+	db.transaction((tx) => {
+		tx.insert(stageItem)
+			.values({ id: itemId, stageId, kind: 'level', position: nextItemPosition(tx, stageId) })
+			.run();
+
+		tx.insert(levelTable)
+			.values({
+				id: newLevelId,
+				itemId,
+				name: source.name,
+				description: source.description,
+				data: { ...source.data, id: newLevelId }
+			})
+			.run();
+	});
+
+	return { itemId, levelId: newLevelId };
 }
 
 // ============================================================
@@ -283,6 +835,8 @@ export async function updateStage(
 }
 
 export async function deleteStage(stageId: string): Promise<void> {
+	await assertNoBorrowedLevels(await levelIdsOfStage(stageId));
+
 	db.transaction((tx) => {
 		const [row] = tx
 			.select({ courseId: stage.courseId })
@@ -406,6 +960,8 @@ export async function updateTheoryItem(
 
 /** The cascade takes the owned level with it. */
 export async function deleteItem(itemId: string): Promise<void> {
+	await assertNoBorrowedLevels(await levelIdsOfItem(itemId));
+
 	db.transaction((tx) => {
 		const [row] = tx
 			.select({ stageId: stageItem.stageId })

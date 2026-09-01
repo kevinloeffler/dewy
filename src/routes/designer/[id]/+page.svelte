@@ -2,7 +2,7 @@
 	import { untrack } from 'svelte';
 	import { goto } from '$app/navigation';
 	import { enhance } from '$app/forms';
-	import { Panel, Topbar } from '$lib/components/index.js';
+	import { Button, Callout, Modal, Panel, Topbar } from '$lib/components/index.js';
 	import DesignerCanvas from '$lib/components/designer/DesignerCanvas.svelte';
 	import GoalEditor from '$lib/components/designer/GoalEditor.svelte';
 	import LevelInspector from '$lib/components/designer/LevelInspector.svelte';
@@ -27,6 +27,13 @@
 	// Created once. Re-deriving it whenever `data` is invalidated would throw
 	// away the undo history along with any unsaved work.
 	const draft = createLevelDraft(untrack(() => data.level));
+
+	// False when this level was reached through a share — its author keeps it.
+	const canEdit = $derived(data.canEdit);
+
+	let sharing = $state(false);
+	const sharedWith = $derived(new Set(data.shares.map((row) => row.teacherId)));
+	const shareable = $derived(data.teachers.filter((row) => !sharedWith.has(row.id)));
 
 	let selected = $state<BrushId>('wall');
 	let options = $state(defaultBrushOptions());
@@ -140,7 +147,9 @@
 				<a class="back" href="/admin/courses">‹ Courses</a>
 			{/if}
 			<span class="name">{draft.level.name}</span>
-			{#if draft.dirty}
+			{#if !canEdit}
+				<span class="chip">Read-only</span>
+			{:else if draft.dirty}
 				<span class="chip">Unsaved</span>
 			{/if}
 		{/snippet}
@@ -170,6 +179,10 @@
 			</span>
 
 			<button class="btn btn-ghost" type="button" onclick={testPlay}>Test play</button>
+
+			{#if canEdit}
+				<button class="btn btn-ghost" type="button" onclick={() => (sharing = true)}>Share</button>
+			{/if}
 
 			<form
 				bind:this={saveForm}
@@ -205,12 +218,21 @@
 					};
 				}}
 			>
-				<button class="btn btn-primary" type="submit" disabled={saving}>
+				<button class="btn btn-primary" type="submit" disabled={saving || !canEdit}>
 					{saving ? 'Saving…' : 'Save'}
 				</button>
 			</form>
 		{/snippet}
 	</Topbar>
+
+	{#if !canEdit}
+		<div class="notice">
+			<Callout>
+				<strong>This level belongs to another teacher.</strong> You are looking at the live original,
+				so their edits show here. To change it, add a copy to one of your stages instead of a link.
+			</Callout>
+		</div>
+	{/if}
 
 	{#if saveError}
 		<p class="save-error">{saveError}</p>
@@ -259,7 +281,80 @@
 	</div>
 </div>
 
+<Modal bind:open={sharing} title="Share “{draft.level.name}”">
+	<p class="share-note">
+		A shared teacher can add this level to their own stages — as a <strong>live link</strong>, which
+		keeps taking your edits, or as their own editable copy. Either way they cannot change this one.
+	</p>
+
+	{#if data.shares.length > 0}
+		<ul class="share-list">
+			{#each data.shares as row (row.teacherId)}
+				<li>
+					<span>{row.name}</span>
+					<form method="POST" action="?/unshare" use:enhance>
+						<input type="hidden" name="teacherId" value={row.teacherId} />
+						<button class="btn btn-ghost" type="submit">Revoke</button>
+					</form>
+				</li>
+			{/each}
+		</ul>
+	{:else}
+		<p class="share-note">Not shared with anyone yet.</p>
+	{/if}
+
+	{#if shareable.length > 0}
+		<form class="share-add" method="POST" action="?/share" use:enhance>
+			<select class="field" name="teacherId" aria-label="Teacher to share with">
+				{#each shareable as teacher (teacher.id)}
+					<option value={teacher.id}>{teacher.name}</option>
+				{/each}
+			</select>
+			<Button type="submit" variant="ghost">Share</Button>
+		</form>
+	{/if}
+</Modal>
+
 <style>
+	.notice {
+		padding: 12px 20px 0;
+	}
+
+	.share-note {
+		margin: 0;
+		font-size: 0.8125rem;
+		color: var(--text-muted);
+		line-height: 1.55;
+	}
+
+	.share-list {
+		list-style: none;
+		margin: 0;
+		padding: 0;
+		display: flex;
+		flex-direction: column;
+		gap: 6px;
+	}
+
+	.share-list li {
+		display: flex;
+		align-items: center;
+		gap: 10px;
+		font-size: 0.875rem;
+	}
+
+	.share-list li form {
+		margin-left: auto;
+	}
+
+	.share-add {
+		display: flex;
+		gap: 8px;
+		align-items: center;
+		border-top: 1px solid var(--panel-border);
+		padding-top: 12px;
+	}
+
 	.shell {
 		display: flex;
 		flex-direction: column;

@@ -138,5 +138,18 @@ export async function deleteLevel(id: string): Promise<void> {
         throw new Error('That level belongs to a course — remove it from its stage instead.');
     }
 
+    // A level another teacher's stage is showing live cannot be deleted out from
+    // under them. The `restrict` foreign key would refuse anyway; saying so here
+    // turns a constraint violation into a sentence.
+    const [borrowed] = await db
+        .select({ id: stageItem.id })
+        .from(stageItem)
+        .where(eq(stageItem.linkedLevelId, id))
+        .limit(1);
+
+    if (borrowed) {
+        throw new Error('Another course is using this level — unshare it there first.');
+    }
+
     await db.delete(levelTable).where(eq(levelTable.id, id));
 }

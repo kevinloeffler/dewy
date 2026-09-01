@@ -40,8 +40,6 @@
 
 <Topbar>
 	{#snippet left()}
-		<a class="topbar-wordmark" href="/admin/courses">Dewy</a>
-		<span class="divider-v"></span>
 		<a class="crumb" href="/admin/courses/{data.context.course.id}">{data.context.course.title}</a>
 		<span class="crumb-sep">›</span>
 		<span class="crumb-current">{data.context.stage.title}</span>
