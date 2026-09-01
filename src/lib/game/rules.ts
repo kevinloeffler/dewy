@@ -1,6 +1,6 @@
 import type { Coord, Direction, DropOffTile, Level } from './level';
 import type { CrateState, KeycardState, LevelState } from './level-state';
-import { coordKey, sameCoord, tileAt } from './grid';
+import { coordKey, opposite, sameCoord, tileAt } from './grid';
 import { isCrate } from './level';
 
 /**
@@ -114,17 +114,32 @@ export function crateBlockedBy(level: Level, state: LevelState, coord: Coord): B
  * tile is not a belt that moves it.
  *
  * A cargo belt is crate-only — the robot cannot stand on one at all, so
- * asking for the robot always answers `null`.
+ * asking for the robot always answers `null`. That holds whether the belt is
+ * running or not: crate-only is the shape of the machine, not its power.
+ *
+ * A *driven* belt answers from `BeltState` instead of its authored direction:
+ * stopped is `null` — inert floor, carrying nothing — and reversed is the
+ * other way round.
  */
 export function beltDirection(
     level: Level,
+    state: LevelState,
     coord: Coord,
     subject: 'robot' | 'crate',
 ): Direction | null {
     const tile = tileAt(level, coord);
-    if (tile?.kind === 'conveyor') return tile.direction;
-    if (tile?.kind === 'cargo_conveyor' && subject === 'crate') return tile.direction;
-    return null;
+    if (!tile) return null;
+    if (tile.kind === 'cargo_conveyor') {
+        if (subject !== 'crate') return null;
+    } else if (tile.kind !== 'conveyor') {
+        return null;
+    }
+
+    if (!tile.control) return tile.direction;
+
+    const belt = state.belts.find((live) => live.beltId === tile.control!.beltId);
+    if (!belt?.running) return null;
+    return belt.reversed ? opposite(tile.direction) : tile.direction;
 }
 
 
@@ -181,11 +196,33 @@ export function validateLevel(level: Level): string[] {
     const problems: string[] = [];
 
     const hasGoalTile = Object.values(level.tiles).some((tile) => tile?.kind === 'goal');
-    const doorIds = new Set(
-        Object.values(level.tiles)
-            .filter((tile) => tile?.kind === 'door')
-            .map((tile) => (tile as { doorId: string }).doorId),
-    );
+    const doorIds = new Set<string>();
+    // What a switch or a plate may point at. Three namespaces share one
+    // `targetId` field, so a typo is otherwise a control that silently does
+    // nothing — exactly the mistake a visual editor makes easy to commit.
+    const targetIds = new Set<string>(level.motionSensors.map((sensor) => sensor.sensorId));
+
+    for (const tile of Object.values(level.tiles)) {
+        if (tile?.kind === 'door') {
+            doorIds.add(tile.doorId);
+            targetIds.add(tile.doorId);
+        } else if (tile?.kind === 'conveyor' || tile?.kind === 'cargo_conveyor') {
+            if (tile.control) targetIds.add(tile.control.beltId);
+        }
+    }
+
+    for (const [key, tile] of Object.entries(level.tiles)) {
+        if (tile?.kind !== 'switch' && tile?.kind !== 'pressure_plate') continue;
+        if (targetIds.has(tile.targetId)) continue;
+
+        const what = tile.kind === 'switch' ? 'switch' : 'pressure plate';
+        problems.push(
+            tile.targetId === ''
+                ? `the ${what} at ${key} is not linked to anything`
+                : `the ${what} at ${key} is linked to "${tile.targetId}", which is no door, belt or motion sensor`,
+        );
+    }
+
     const seenIds = new Set<string>();
     const seenCoords = new Set<string>();
 

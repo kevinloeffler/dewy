@@ -30,8 +30,8 @@ describe('parseLevel', () => {
                 '1,0': { kind: 'pit' },
                 '2,0': { kind: 'robot_gap' },
                 '3,0': { kind: 'goal' },
-                '4,0': { kind: 'conveyor', direction: 'north' },
-                '5,0': { kind: 'cargo_conveyor', direction: 'west' },
+                '4,0': { kind: 'conveyor', direction: 'north', control: null },
+                '5,0': { kind: 'cargo_conveyor', direction: 'west', control: null },
                 '6,0': { kind: 'door', doorId: 'door-1', initiallyOpen: false },
                 '0,1': { kind: 'pressure_plate', targetId: 'door-1' },
                 '1,1': { kind: 'switch', targetId: 'door-1', initiallyOn: true },
@@ -43,6 +43,50 @@ describe('parseLevel', () => {
         const result = parseLevel(level);
         expect(result.ok).toBe(true);
         if (result.ok) expect(Object.keys(result.level.tiles)).toHaveLength(11);
+    });
+
+    it('round-trips a driven belt', () => {
+        const control = { beltId: 'belt-1', effect: 'reverse', initiallyOn: false };
+        const level = {
+            ...roundTrip(emptyLevel('belt', 'Belt')),
+            tiles: { '1,1': { kind: 'conveyor', direction: 'east', control } },
+        };
+
+        const result = parseLevel(level);
+        expect(result.ok).toBe(true);
+        if (result.ok) expect(result.level.tiles['1,1']).toEqual({
+            kind: 'conveyor', direction: 'east', control,
+        });
+    });
+
+    it('reads a belt stored before controls existed as undriven', () => {
+        // `control` is the one field allowed to be missing — rows written
+        // before belts could be driven have no key at all.
+        const level = {
+            ...roundTrip(emptyLevel('old', 'Old')),
+            tiles: { '1,1': { kind: 'cargo_conveyor', direction: 'south' } },
+        };
+
+        const result = parseLevel(level);
+        expect(result.ok).toBe(true);
+        if (result.ok) expect(result.level.tiles['1,1']).toEqual({
+            kind: 'cargo_conveyor', direction: 'south', control: null,
+        });
+    });
+
+    it('rejects a belt control with an unknown effect', () => {
+        const level = {
+            ...roundTrip(emptyLevel('x', 'X')),
+            tiles: {
+                '1,1': {
+                    kind: 'conveyor',
+                    direction: 'east',
+                    control: { beltId: 'b', effect: 'sideways', initiallyOn: true },
+                },
+            },
+        };
+
+        expect(parseLevel(level).ok).toBe(false);
     });
 
     it('drops a stored floor tile, keeping `tiles` sparse', () => {

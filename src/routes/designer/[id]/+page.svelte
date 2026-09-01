@@ -13,9 +13,13 @@
 		BRUSH_GROUPS,
 		buildBrush,
 		defaultBrushOptions,
-		type BrushId
+		type BrushId,
+		type BrushOptions
 	} from '$lib/game/editor/brush';
+	import { armIds, deleteSelection, setSelectionOption } from '$lib/game/editor/operations';
+	import { selectAt } from '$lib/game/editor/selection';
 	import { validateLevel } from '$lib/game/rules';
+	import type { Coord } from '$lib/game/level';
 	import type { PageServerData } from './$types';
 
 	let { data }: { data: PageServerData } = $props();
@@ -27,6 +31,33 @@
 	let selected = $state<BrushId>('wall');
 	let options = $state(defaultBrushOptions());
 	let brush = $derived(buildBrush(selected, options));
+
+	// Only the clicked tile is remembered; the selection itself is re-read from
+	// the current level. That is what keeps it honest for free — deleting a
+	// belt empties it, and undoing the delete brings it back.
+	let seed = $state<Coord | null>(null);
+	let selection = $derived(seed && selected === 'select' ? selectAt(draft.level, seed) : null);
+
+	/**
+	 * Move the palette on to a free id once the level has claimed the one it
+	 * was holding. Called from the keyboard and after every stroke; the palette
+	 * does the same for its own clicks. A no-op unless there is work to do.
+	 */
+	function armBrush() {
+		options = armIds(draft.level, selected, options);
+	}
+
+	function editSelection(patch: Partial<BrushOptions>) {
+		if (!selection) return;
+		const target = selection;
+		draft.edit((level) => setSelectionOption(level, target, patch));
+	}
+
+	function removeSelection() {
+		if (!selection) return;
+		const doomed = selection;
+		draft.edit((level) => deleteSelection(level, doomed));
+	}
 
 	let problems = $derived(validateLevel(draft.level));
 
@@ -72,13 +103,24 @@
 			return;
 		}
 
+		if (selection && (event.key === 'Backspace' || event.key === 'Delete')) {
+			event.preventDefault();
+			removeSelection();
+			return;
+		}
+
 		if (event.key === 'Escape') {
-			selected = 'erase';
+			// One Escape drops the selection, a second reaches for the eraser.
+			if (selection) seed = null;
+			else selected = 'erase';
 			return;
 		}
 
 		const slot = Number(event.key);
-		if (slot >= 1 && slot <= shortcutBrushes.length) selected = shortcutBrushes[slot - 1];
+		if (slot >= 1 && slot <= shortcutBrushes.length) {
+			selected = shortcutBrushes[slot - 1];
+			armBrush();
+		}
 	}
 </script>
 
@@ -177,12 +219,25 @@
 	<div class="editor">
 		<aside class="column">
 			<Panel padding="sm">
-				<TilePalette level={draft.level} bind:selected bind:options />
+				<TilePalette
+					level={draft.level}
+					bind:selected
+					bind:options
+					{selection}
+					onedit={editSelection}
+					ondelete={removeSelection}
+				/>
 			</Panel>
 		</aside>
 
 		<main class="stage">
-			<DesignerCanvas {draft} {brush} />
+			<DesignerCanvas
+				{draft}
+				{brush}
+				{selection}
+				onselect={(coord) => (seed = coord)}
+				onstroke={armBrush}
+			/>
 		</main>
 
 		<aside class="column">

@@ -86,8 +86,8 @@ describe('TileFactory belts', () => {
         const factory = new TileFactory();
 
         for (const tile of [
-            { kind: 'conveyor', direction: 'east' },
-            { kind: 'cargo_conveyor', direction: 'north' },
+            { kind: 'conveyor', direction: 'east', control: null },
+            { kind: 'cargo_conveyor', direction: 'north', control: null },
         ] as const) {
             const belt = factory.create(tile, { x: 0, y: 0 })!;
             const chevrons = belt.getObjectByName('beltChevrons');

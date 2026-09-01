@@ -5,6 +5,7 @@
 	import { createLevelState } from '$lib/game/level-state';
 	import { applyBrush } from '$lib/game/editor/operations';
 	import type { Brush } from '$lib/game/editor/brush';
+	import type { Selection } from '$lib/game/editor/selection';
 	import type { LevelDraft } from '$lib/game/editor/draft.svelte';
 	import { sameCoord } from '$lib/game/grid';
 	import type { Coord } from '$lib/game/level';
@@ -12,9 +13,18 @@
 	interface Props {
 		draft: LevelDraft;
 		brush: Brush;
+		/** What the select tool has picked, drawn as an outline over the tiles. */
+		selection: Selection | null;
+		/** A click with the select tool active. `null` clears the selection. */
+		onselect: (coord: Coord | null) => void;
+		/**
+		 * A paint or erase stroke has finished. The palette re-arms the ids it
+		 * authors here rather than per tile, so a dragged belt run stays one belt.
+		 */
+		onstroke: () => void;
 	}
 
-	let { draft, brush }: Props = $props();
+	let { draft, brush, selection, onselect, onstroke }: Props = $props();
 
 	let canvas: HTMLCanvasElement;
 
@@ -44,6 +54,12 @@
 		world?.loadLevel(level, createLevelState(level));
 	});
 
+	// The editor overlay outlives `loadLevel`, so the selection is pushed
+	// separately — and stays put across a rebuild of the scene.
+	$effect(() => {
+		world?.setSelection(selection?.coords ?? [], selection?.linked ?? []);
+	});
+
 	function paint(event: PointerEvent, mode: 'paint' | 'erase') {
 		const coord = world?.pickTile(event.clientX, event.clientY) ?? null;
 		if (!coord || (lastPainted && sameCoord(lastPainted, coord))) return;
@@ -54,6 +70,12 @@
 
 	function onpointerdown(event: PointerEvent) {
 		if (event.button !== 0 && event.button !== 2) return;
+
+		// Selecting is a click, not a stroke: there is nothing to drag.
+		if (brush.kind === 'select' && event.button === 0) {
+			onselect(world?.pickTile(event.clientX, event.clientY) ?? null);
+			return;
+		}
 
 		stroke = event.button === 2 ? 'erase' : 'paint';
 		lastPainted = null;
@@ -67,17 +89,22 @@
 	}
 
 	function endStroke(event: PointerEvent) {
+		// A pointerup with no stroke behind it is a select click, which paints
+		// nothing and so has nothing to re-arm.
+		const painted = stroke !== null;
 		stroke = null;
 		lastPainted = null;
 		if (canvas.hasPointerCapture(event.pointerId)) {
 			canvas.releasePointerCapture(event.pointerId);
 		}
+		if (painted) onstroke();
 	}
 </script>
 
 <!-- Right-click is the eraser, so the browser menu has to stay out of the way. -->
 <canvas
 	bind:this={canvas}
+	class:picking={brush.kind === 'select'}
 	{onpointerdown}
 	{onpointermove}
 	onpointerup={endStroke}
@@ -95,5 +122,9 @@
 		background: var(--panel);
 		touch-action: none;
 		cursor: crosshair;
+	}
+
+	canvas.picking {
+		cursor: pointer;
 	}
 </style>

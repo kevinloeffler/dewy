@@ -1,6 +1,17 @@
-import type { Brush, ItemTemplate } from './brush';
+import {
+    buildBrush,
+    itemOptions,
+    mintedIdKey,
+    tileOptions,
+    type Brush,
+    type BrushId,
+    type BrushOptions,
+    type ItemTemplate,
+} from './brush';
+import type { Selection } from './selection';
 import { coordKey, inBounds, parseTileKey, sameCoord } from '$lib/game/grid';
 import type {
+    BeltControl,
     Coord,
     Direction,
     GoalCondition,
@@ -29,13 +40,19 @@ import type {
 // Tiles
 // ============================================================
 
+function sameBeltControl(a: BeltControl | null, b: BeltControl | null): boolean {
+    if (a === null || b === null) return a === b;
+    return a.beltId === b.beltId && a.effect === b.effect && a.initiallyOn === b.initiallyOn;
+}
+
 /** Field-by-field, so two separately-built `{ kind: 'wall' }` count as equal. */
 function sameTile(a: Tile, b: Tile): boolean {
     if (a.kind !== b.kind) return false;
     switch (a.kind) {
         case 'conveyor':
         case 'cargo_conveyor':
-            return a.direction === (b as typeof a).direction;
+            return a.direction === (b as typeof a).direction
+                && sameBeltControl(a.control, (b as typeof a).control);
         case 'door':
             return a.doorId === (b as typeof a).doorId
                 && a.initiallyOpen === (b as typeof a).initiallyOpen;
@@ -110,6 +127,72 @@ export function nextDoorId(level: Level): string {
     let n = 1;
     while (used.has(`door-${n}`)) n++;
     return `door-${n}`;
+}
+
+/** Every `beltId` on a driven belt tile — what a switch or plate can drive. */
+export function beltIds(level: Level): string[] {
+    const ids = new Set<string>();
+    for (const tile of Object.values(level.tiles)) {
+        if (tile?.kind === 'conveyor' || tile?.kind === 'cargo_conveyor') {
+            if (tile.control) ids.add(tile.control.beltId);
+        }
+    }
+    return [...ids].sort();
+}
+
+export function nextBeltId(level: Level): string {
+    const used = new Set(beltIds(level));
+    let n = 1;
+    while (used.has(`belt-${n}`)) n++;
+    return `belt-${n}`;
+}
+
+/**
+ * Point the palette's id fields at something sensible for the brush in hand.
+ *
+ * Called when a brush is picked, when its options change, and when a stroke
+ * ends — never *during* one, because tiles sharing a `beltId` run as one belt
+ * and a dragged run has to go on painting the id it started with.
+ *
+ * A brush that authors an id moves on to a free one as soon as the level has
+ * claimed the one it was holding, so the second door you paint is `door-2`
+ * rather than another tile of `door-1`. A keycard shares the `doorId` field
+ * but only refers to it, so it is pulled the other way — back onto a door that
+ * exists, since the door brush moving on would otherwise leave the keycard
+ * pointing at a door yet to be built.
+ *
+ * Returns the very same options when there is nothing to do, so callers can
+ * assign the result unconditionally.
+ */
+export function armIds(level: Level, id: BrushId, options: BrushOptions): BrushOptions {
+    const key = mintedIdKey(id, options);
+
+    if (key === null) {
+        if (id !== 'keycard') return options;
+        const doors = doorIds(level);
+        if (doors.length === 0 || doors.includes(options.doorId)) return options;
+        return { ...options, doorId: doors.at(-1)! };
+    }
+
+    const taken = key === 'doorId' ? doorIds(level) : beltIds(level);
+    if (!taken.includes(options[key])) return options;
+
+    return { ...options, [key]: key === 'doorId' ? nextDoorId(level) : nextBeltId(level) };
+}
+
+/**
+ * Everything a switch or a pressure plate may legally point at, in one list.
+ *
+ * Doors, belts and motion sensors share the single `targetId` namespace, so
+ * this is what the palette offers and what `validateLevel` checks against.
+ */
+export function targetIds(level: Level): string[] {
+    const ids = new Set<string>([
+        ...doorIds(level),
+        ...beltIds(level),
+        ...level.motionSensors.map((sensor) => sensor.sensorId),
+    ]);
+    return [...ids].sort();
 }
 
 /** Coordinates of every drop-off bay, for the `deliver_specific` bay picker. */
@@ -189,6 +272,78 @@ export function applyBrush(level: Level, brush: Brush, coord: Coord): Level {
             return setRobot(level, coord, brush.facing);
         case 'erase':
             return removeItemAt(clearTile(level, coord), coord);
+        case 'select':
+            // The select tool edits nothing; the canvas routes its clicks to
+            // `selectAt` instead. Listed so the switch stays exhaustive.
+            return level;
+    }
+}
+
+/**
+ * Erase everything a selection covers, in one history entry.
+ *
+ * Tiles go back to floor and leave whatever stands on them behind — deleting
+ * the belt a crate was riding should not take the crate with it. The robot is
+ * never deleted: a level has exactly one, and `resize` clamps it rather than
+ * dropping it for the same reason.
+ */
+export function deleteSelection(level: Level, selection: Selection): Level {
+    switch (selection.kind) {
+        case 'tiles':
+            // `linked` is deliberately untouched: deleting a switch takes the
+            // switch, not the door it happened to open.
+            return selection.coords.reduce(clearTile, level);
+        case 'item': {
+            const items = level.items.filter((item) => item.id !== selection.item.id);
+            return items.length === level.items.length ? level : { ...level, items };
+        }
+        case 'robot':
+            return level;
+    }
+}
+
+/**
+ * Re-author a selection with some of its options changed.
+ *
+ * The patch is applied *per tile*, against the options that tile already
+ * carries — so re-pointing a switch leaves each plate's own start value alone,
+ * and giving a belt run a drive keeps every tile's direction, corners and all.
+ * Only a field the patch actually names is overwritten, on every tile at once.
+ *
+ * Items keep their id and position: those are not the palette's to change, and
+ * the renderer keys its objects by the id.
+ */
+export function setSelectionOption(
+    level: Level,
+    selection: Selection,
+    patch: Partial<BrushOptions>,
+): Level {
+    switch (selection.kind) {
+        case 'tiles':
+            return selection.coords.reduce((next, coord) => {
+                const tile = next.tiles[coordKey(coord)];
+                if (!tile) return next;
+
+                const brush = buildBrush(tile.kind, { ...tileOptions(tile), ...patch });
+                return brush.kind === 'tile' ? setTile(next, coord, brush.tile) : next;
+            }, level);
+
+        case 'item': {
+            const current = selection.item;
+            const brush = buildBrush(current.kind, { ...itemOptions(current), ...patch });
+            if (brush.kind !== 'item') return level;
+
+            const replacement = { ...brush.item, id: current.id, position: current.position };
+            return {
+                ...level,
+                items: level.items.map((item) => (item.id === current.id ? replacement : item)),
+            };
+        }
+
+        case 'robot':
+            return patch.facing === undefined
+                ? level
+                : setRobot(level, level.robot.position, patch.facing);
     }
 }
 

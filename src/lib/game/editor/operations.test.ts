@@ -2,10 +2,13 @@ import { describe, expect, it } from 'vitest';
 import {
     addGoal,
     applyBrush,
+    armIds,
+    beltIds,
     clearTile,
     doorIds,
     dropOffBays,
     emptyLevel,
+    nextBeltId,
     nextDoorId,
     nextItemId,
     placeItem,
@@ -16,7 +19,9 @@ import {
     setOptions,
     setRobot,
     setTile,
+    targetIds,
 } from './operations';
+import { buildBrush, defaultBrushOptions, type BrushOptions } from './brush';
 import { tileAt } from '../grid';
 import type { Level } from '../level';
 
@@ -46,11 +51,11 @@ describe('setTile', () => {
     });
 
     it('notices a changed field on a tile of the same kind', () => {
-        const level = setTile(base(), { x: 1, y: 1 }, { kind: 'conveyor', direction: 'north' });
-        const turned = setTile(level, { x: 1, y: 1 }, { kind: 'conveyor', direction: 'east' });
+        const level = setTile(base(), { x: 1, y: 1 }, { kind: 'conveyor', direction: 'north', control: null });
+        const turned = setTile(level, { x: 1, y: 1 }, { kind: 'conveyor', direction: 'east', control: null });
 
         expect(turned).not.toBe(level);
-        expect(turned.tiles['1,1']).toEqual({ kind: 'conveyor', direction: 'east' });
+        expect(turned.tiles['1,1']).toEqual({ kind: 'conveyor', direction: 'east', control: null });
     });
 
     it('does not mutate the level it was given', () => {
@@ -106,6 +111,49 @@ describe('doors and bays', () => {
         expect(nextDoorId(level)).toBe('door-2');
     });
 
+    it('collects belt ids, suggests a free one, and lists every link target', () => {
+        const drive = { beltId: 'belt-1', effect: 'power', initiallyOn: true } as const;
+        let level = setTile(base(), { x: 1, y: 1 }, {
+            kind: 'conveyor', direction: 'east', control: drive,
+        });
+        level = setTile(level, { x: 2, y: 1 }, {
+            kind: 'cargo_conveyor', direction: 'east', control: drive,
+        });
+        level = setTile(level, { x: 3, y: 1 }, {
+            kind: 'conveyor', direction: 'east', control: null,
+        });
+        level = setTile(level, { x: 0, y: 0 }, {
+            kind: 'door', doorId: 'door-1', initiallyOpen: false,
+        });
+
+        expect(beltIds(level)).toEqual(['belt-1']);
+        expect(nextBeltId(level)).toBe('belt-2');
+        // Doors, belts and sensors share one namespace, sorted.
+        expect(targetIds({ ...level, motionSensors: [
+            { sensorId: 'alarm', forbiddenTiles: [], initiallyActive: true },
+        ] })).toEqual(['alarm', 'belt-1', 'door-1']);
+    });
+
+    it('notices a belt whose drive changed but whose direction did not', () => {
+        const level = setTile(base(), { x: 1, y: 1 }, {
+            kind: 'conveyor', direction: 'east', control: null,
+        });
+        const driven = setTile(level, { x: 1, y: 1 }, {
+            kind: 'conveyor',
+            direction: 'east',
+            control: { beltId: 'belt-1', effect: 'power', initiallyOn: true },
+        });
+        const renamed = setTile(driven, { x: 1, y: 1 }, {
+            kind: 'conveyor',
+            direction: 'east',
+            control: { beltId: 'belt-2', effect: 'power', initiallyOn: true },
+        });
+
+        expect(driven).not.toBe(level);
+        expect(renamed).not.toBe(driven);
+        expect(setTile(renamed, { x: 1, y: 1 }, renamed.tiles['1,1']!)).toBe(renamed);
+    });
+
     it('lists drop-off bays in reading order', () => {
         let level = setTile(base(), { x: 3, y: 2 }, { kind: 'drop_off', color: null });
         level = setTile(level, { x: 1, y: 0 }, { kind: 'drop_off', color: 'red' });
@@ -114,6 +162,67 @@ describe('doors and bays', () => {
             { coord: { x: 1, y: 0 }, color: 'red' },
             { coord: { x: 3, y: 2 }, color: null },
         ]);
+    });
+});
+
+describe('armIds', () => {
+    const belt = (id: string) =>
+        ({
+            kind: 'conveyor',
+            direction: 'east',
+            control: { beltId: id, effect: 'power', initiallyOn: true },
+        }) as const;
+
+    const driving = { ...defaultBrushOptions(), beltEffect: 'power' as const };
+
+    it('leaves an id alone while nothing answers to it', () => {
+        expect(armIds(base(), 'conveyor', driving)).toBe(driving);
+    });
+
+    it('moves on to a free belt id once the level has claimed the one in hand', () => {
+        const level = setTile(base(), { x: 1, y: 1 }, belt('belt-1'));
+        expect(armIds(level, 'conveyor', driving).beltId).toBe('belt-2');
+    });
+
+    it('keeps one stroke on one id, and starts the next stroke on a new one', () => {
+        // What a drag does: every tile of the stroke paints the id in hand,
+        // and only the end of the stroke re-arms.
+        let level = base();
+        let options: BrushOptions = driving;
+        for (const x of [1, 2, 3]) {
+            level = applyBrush(level, buildBrush('conveyor', options), { x, y: 1 });
+        }
+        options = armIds(level, 'conveyor', options);
+
+        expect(beltIds(level)).toEqual(['belt-1']);
+        expect(options.beltId).toBe('belt-2');
+
+        level = applyBrush(level, buildBrush('conveyor', options), { x: 1, y: 3 });
+        expect(beltIds(level)).toEqual(['belt-1', 'belt-2']);
+    });
+
+    it('leaves a belt with no drive alone — it has no id to author', () => {
+        const level = setTile(base(), { x: 1, y: 1 }, belt('belt-1'));
+        const undriven = defaultBrushOptions();
+        expect(armIds(level, 'conveyor', undriven)).toBe(undriven);
+    });
+
+    it('moves the door brush on, and pulls the keycard back onto a door that exists', () => {
+        const level = setTile(base(), { x: 1, y: 1 }, {
+            kind: 'door', doorId: 'door-1', initiallyOpen: false,
+        });
+
+        const options = armIds(level, 'door', defaultBrushOptions());
+        expect(options.doorId).toBe('door-2');
+
+        // The two brushes share the field, so without this the keycard would
+        // be left opening a door nobody has painted yet.
+        expect(armIds(level, 'keycard', options).doorId).toBe('door-1');
+    });
+
+    it('leaves the keycard alone when there is no door to point it at', () => {
+        const options = { ...defaultBrushOptions(), doorId: 'door-9' };
+        expect(armIds(base(), 'keycard', options)).toBe(options);
     });
 });
 

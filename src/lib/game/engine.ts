@@ -1,6 +1,8 @@
 import type { Coord, Level, TileKey } from './level';
 import type { CrateColor } from './crate-color';
-import type { LevelState, DoorState, MotionSensorState, GoalConditionState } from './level-state';
+import type {
+    LevelState, BeltState, DoorState, MotionSensorState, GoalConditionState,
+} from './level-state';
 import type { WorldEvent } from './events';
 import { createLevelState } from './level-state';
 import { ahead, coordKey, sameCoord, tileAt, turn } from './grid';
@@ -99,9 +101,11 @@ export class GameEngine {
      */
     private readonly rideCap: number;
 
-    /** Authored door/sensor values, so settle can express either polarity. */
+    /** Authored door/sensor/belt values, so settle can express either polarity. */
     private readonly initialDoorOpen = new Map<string, boolean>();
     private readonly initialSensorActive = new Map<string, boolean>();
+    private readonly initialBeltOn = new Map<string, boolean>();
+    private readonly beltEffect = new Map<string, 'power' | 'reverse'>();
 
     constructor(level: Level, options: { energy?: number | null } = {}) {
         this.level = level;
@@ -109,7 +113,13 @@ export class GameEngine {
         this.rideCap = level.width * level.height + 1;
 
         for (const tile of Object.values(level.tiles)) {
-            if (tile?.kind === 'door') this.initialDoorOpen.set(tile.doorId, tile.initiallyOpen);
+            if (tile?.kind === 'door') {
+                this.initialDoorOpen.set(tile.doorId, tile.initiallyOpen);
+            } else if (tile?.kind === 'conveyor' || tile?.kind === 'cargo_conveyor') {
+                if (!tile.control) continue;
+                this.initialBeltOn.set(tile.control.beltId, tile.control.initiallyOn);
+                this.beltEffect.set(tile.control.beltId, tile.control.effect);
+            }
         }
         for (const sensor of level.motionSensors) {
             this.initialSensorActive.set(sensor.sensorId, sensor.initiallyActive);
@@ -471,6 +481,22 @@ export class GameEngine {
                 changed = true;
             }
 
+            // Before the doors: a belt and the door it feeds should settle in
+            // one pass, so the ride never meets a door that is one tick behind.
+            for (const belt of state.belts) {
+                const next = this.beltShouldRun(belt);
+                if (next.running === belt.running && next.reversed === belt.reversed) continue;
+                belt.running = next.running;
+                belt.reversed = next.reversed;
+                events.push({
+                    kind: 'belt',
+                    beltId: belt.beltId,
+                    running: belt.running,
+                    reversed: belt.reversed,
+                });
+                changed = true;
+            }
+
             for (const door of state.doors) {
                 const open = this.doorShouldBeOpen(door);
                 if (open === door.open) continue;
@@ -519,6 +545,24 @@ export class GameEngine {
         if (door.unlocked) return true;
         const initial = this.initialDoorOpen.get(door.doorId) ?? false;
         return this.anyControlAsserted(door.doorId) ? !initial : initial;
+    }
+
+    /**
+     * A driven belt's two live flags.
+     *
+     * Same polarity rule as doors and sensors — an asserted control *inverts*
+     * the authored value — so the author picks what the switch does by picking
+     * the starting value. `effect` picks which axis it flips: `power` gates the
+     * ride, `reverse` sends it the other way and never stops the belt.
+     */
+    private beltShouldRun(belt: BeltState): { running: boolean; reversed: boolean } {
+        const initial = this.initialBeltOn.get(belt.beltId) ?? true;
+        const value = this.anyControlAsserted(belt.beltId) ? !initial : initial;
+
+        if (this.beltEffect.get(belt.beltId) === 'reverse') {
+            return { running: true, reversed: !value };
+        }
+        return { running: value, reversed: false };
     }
 
     private sensorShouldBeActive(sensor: MotionSensorState): boolean {
@@ -589,7 +633,7 @@ export class GameEngine {
             return seen;
         };
 
-        const robotBelt = beltDirection(this.level, state.robot.position, 'robot');
+        const robotBelt = beltDirection(this.level, state, state.robot.position, 'robot');
         if (robotBelt) {
             trail(ROBOT_KEY, state.robot.position);
             riders.push({
@@ -604,7 +648,7 @@ export class GameEngine {
             // A carried crate rides in the robot's hands; a delivered one is
             // inert and the belt runs underneath it.
             if (crate.carried || crate.delivered) continue;
-            const belt = beltDirection(this.level, crate.position, 'crate');
+            const belt = beltDirection(this.level, state, crate.position, 'crate');
             if (!belt) continue;
             trail(crateKey(crate.id), crate.position);
             riders.push({

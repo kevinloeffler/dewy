@@ -66,6 +66,11 @@ export function turn(facing: Direction, side: 'left' | 'right'): Direction {
     return TURN_ORDER[(i + (side === 'right' ? 1 : 3)) % 4];
 }
 
+/** The direction facing the other way — what a reversed belt travels. */
+export function opposite(facing: Direction): Direction {
+    return TURN_ORDER[(TURN_ORDER.indexOf(facing) + 2) % 4];
+}
+
 export function ahead(c: Coord, facing: Direction): Coord {
     const d = DIRECTION_DELTA[facing];
     return { x: c.x + d.x, y: c.y + d.y };

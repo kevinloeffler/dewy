@@ -69,6 +69,26 @@ export type PlateState = {
 }
 
 // ============================================================
+// Belt state
+// ============================================================
+
+/**
+ * The live state of one driven belt, keyed by `beltId` — several tiles share
+ * one entry, the way several door tiles share one `DoorState`.
+ *
+ * Both flags are *derived* every step from the belt's authored `BeltControl`
+ * plus whatever switches and plates point at it; a belt with no control never
+ * gets an entry at all, because nothing about it can change.
+ */
+export type BeltState = {
+    beltId: string;
+    /** A stopped belt is inert floor — it carries nothing. */
+    running: boolean;
+    /** Travelling against the authored `direction`. */
+    reversed: boolean;
+}
+
+// ============================================================
 // Motion sensor state
 // ============================================================
 
@@ -115,6 +135,7 @@ export type LevelState = {
     doors: DoorState[];
     switches: SwitchState[];
     plates: PlateState[];
+    belts: BeltState[];
     motionSensors: MotionSensorState[];
     goals: GoalConditionState[];
     /** Commands run, i.e. energy spent. Cleared by reset for free. */
@@ -137,7 +158,7 @@ export type LevelState = {
  * would let the first `moveForward()` silently rewrite the level definition
  * and break reset.
  *
- * Derived values (`DoorState.open`, `PlateState.pressed`,
+ * Derived values (`DoorState.open`, `PlateState.pressed`, `BeltState`,
  * `MotionSensorState.active`) are seeded from the authored values here and
  * then brought to a fixpoint by `GameEngine.initialize()`. Build state
  * through the engine rather than calling this directly, or a crate authored
@@ -147,6 +168,7 @@ export type LevelState = {
  */
 export function createLevelState(level: Level): LevelState {
     const doors = new Map<string, DoorState>();
+    const belts = new Map<string, BeltState>();
     const switches: SwitchState[] = [];
     const plates: PlateState[] = [];
 
@@ -165,6 +187,17 @@ export function createLevelState(level: Level): LevelState {
                 targetId: tile.targetId,
                 pressed: false,
             });
+        } else if (tile.kind === 'conveyor' || tile.kind === 'cargo_conveyor') {
+            // Only driven belts get an entry — a belt with no control can
+            // never change, and `beltDirection` reads its tile directly.
+            const control = tile.control;
+            if (control) {
+                belts.set(control.beltId, {
+                    beltId: control.beltId,
+                    running: control.effect === 'reverse' || control.initiallyOn,
+                    reversed: control.effect === 'reverse' && !control.initiallyOn,
+                });
+            }
         }
     }
 
@@ -197,6 +230,7 @@ export function createLevelState(level: Level): LevelState {
         doors: [...doors.values()],
         switches,
         plates,
+        belts: [...belts.values()],
         motionSensors: level.motionSensors.map((sensor) => ({
             sensorId: sensor.sensorId,
             active: sensor.initiallyActive,

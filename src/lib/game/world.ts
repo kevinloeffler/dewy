@@ -18,7 +18,7 @@ import { pickTileFrom } from './editor/picking'
 import { createRoboter, type Roboter } from '$lib/game/models/roboter'
 import { createCrate } from '$lib/game/models/crate'
 import { createKeycard } from '$lib/game/models/keycard'
-import { TileFactory } from '$lib/game/models/tiles'
+import { COLORS, TileFactory } from '$lib/game/models/tiles'
 
 
 const ROBOT_SCALE = 1.5
@@ -51,6 +51,18 @@ const ZOOM_SENSITIVITY = 0.0015
  */
 const BELT_SCROLL = 0.45
 
+/**
+ * The select tool's outline colours. Warm, so a selection never reads as the
+ * white hover highlight it usually sits under — and a second, cooler one for
+ * the tiles a selection only *points* at, which an edit and a delete leave
+ * alone.
+ */
+const SELECTION_COLOR = 0xffa53c
+const LINKED_COLOR = 0x7fb2ff
+
+/** What a stopped belt's chevrons fade into: the slab they sit on. */
+const BELT_DARK = new THREE.Color(COLORS.conveyor)
+
 /** Seconds at speed 1. The queue applies the speed multiplier. */
 const DURATIONS: Record<WorldEventKind, number> = {
     move:        0.40,
@@ -63,6 +75,7 @@ const DURATIONS: Record<WorldEventKind, number> = {
     deliver:     0.45,
     pickKeycard: 0.25,
     door:        0.35,
+    belt:        0.25,
     switch:      0.25,
     plate:       0.15,
     sensor:      0.30,
@@ -70,6 +83,23 @@ const DURATIONS: Record<WorldEventKind, number> = {
     bump:        0.25,
     crash:       0.90,
     goalReached: 0.50,
+}
+
+
+/**
+ * One belt tile, as the renderer sees it.
+ *
+ * `beltId` is null for a belt nothing drives — it always runs forward and is
+ * never dimmed, so it needs no material of its own and `material` is null too.
+ */
+type BeltVisual = {
+    beltId: string | null
+    chevrons: THREE.Object3D
+    material: THREE.MeshLambertMaterial | null
+    /** Base colour to fade back to when the belt is running. */
+    litColor: THREE.Color
+    running: boolean
+    reversed: boolean
 }
 
 
@@ -103,6 +133,11 @@ export class World implements EventPlayer {
     /** Editor overlays. Outlives a level, so `disposeLevel` leaves it alone. */
     private editorRoot = new THREE.Group()
     private highlight: THREE.LineSegments | null = null
+    /** One outline per selected tile, pooled — see `setSelection`. */
+    private selectionOutlines: THREE.LineSegments[] = []
+    private linkedOutlines: THREE.LineSegments[] = []
+    private outlineGeometry: THREE.BufferGeometry | null = null
+    private outlineMaterials = new Map<number, THREE.LineBasicMaterial>()
     /** The ground plane. Outlives a level, like the lights. */
     private base: THREE.Mesh
     private raycaster = new THREE.Raycaster()
@@ -118,8 +153,8 @@ export class World implements EventPlayer {
     private switchLevers = new Map<TileKey, THREE.Object3D>()
     private platePads = new Map<TileKey, THREE.Object3D>()
     private sensorZones = new Map<string, THREE.Object3D[]>()
-    /** The 'beltChevrons' group of every conveyor tile, scrolled by `tick`. */
-    private beltChevrons: THREE.Object3D[] = []
+    /** One entry per conveyor tile, scrolled by `tick` and dimmed by `setBeltState`. */
+    private belts: BeltVisual[] = []
 
     private lastZoom: number
 
@@ -213,6 +248,7 @@ export class World implements EventPlayer {
         for (const door of state.doors) this.setDoorOpen(door.doorId, door.open, 1)
         for (const sw of state.switches) this.setSwitchOn(coordKey(sw.position), sw.on, 1)
         for (const plate of state.plates) this.setPlatePressed(coordKey(plate.position), plate.pressed, 1)
+        for (const belt of state.belts) this.setBeltState(belt.beltId, belt.running, belt.reversed, 1)
         for (const sensor of state.motionSensors) this.setSensorActive(sensor.sensorId, sensor.active, 1)
         for (const crate of state.crates) {
             if (crate.delivered) this.markDelivered(crate.id)
@@ -282,6 +318,10 @@ export class World implements EventPlayer {
         this.canvas.removeEventListener('wheel', this.onWheel)
         clearGroup(this.editorRoot)
         this.highlight = null
+        this.selectionOutlines = []
+        this.linkedOutlines = []
+        this.outlineGeometry = null
+        this.outlineMaterials.clear()
         this.scene.remove(this.base)
         disposeObject(this.base)
         this.disposeLevel()
@@ -303,11 +343,16 @@ export class World implements EventPlayer {
      * where its neighbour's chevron was leaving, so nothing visibly pops.
      */
     private scrollBelts(delta: number) {
-        if (this.beltChevrons.length === 0) return
+        if (this.belts.length === 0) return
 
-        const step = BELT_SCROLL * delta
-        for (const belt of this.beltChevrons) {
-            for (const chevron of belt.children) {
+        for (const belt of this.belts) {
+            // A stopped belt is the one thing on screen that *should* look
+            // dead: it is inert floor, and the frozen chevrons are how the
+            // student reads that before stepping on.
+            if (!belt.running) continue
+
+            const step = BELT_SCROLL * delta * (belt.reversed ? -1 : 1)
+            for (const chevron of belt.chevrons.children) {
                 // Modulo rather than one subtraction: a backgrounded tab hands
                 // us a delta of several seconds on the frame it wakes up.
                 const z = chevron.position.z + step + 0.5
@@ -353,7 +398,22 @@ export class World implements EventPlayer {
                     if (pad) this.platePads.set(key, pad)
                 } else if (tile.kind === 'conveyor' || tile.kind === 'cargo_conveyor') {
                     const chevrons = object.getObjectByName('beltChevrons')
-                    if (chevrons) this.beltChevrons.push(chevrons)
+                    if (chevrons) {
+                        // `TileFactory` clones the material for a driven belt
+                        // precisely so this one can be faded on its own.
+                        const mesh = chevrons.children[0] as THREE.Mesh | undefined
+                        const material = tile.control
+                            ? (mesh?.material as THREE.MeshLambertMaterial ?? null)
+                            : null
+                        this.belts.push({
+                            beltId: tile.control?.beltId ?? null,
+                            chevrons,
+                            material,
+                            litColor: material?.color.clone() ?? new THREE.Color(),
+                            running: true,
+                            reversed: false,
+                        })
+                    }
                 }
             }
         }
@@ -433,7 +493,7 @@ export class World implements EventPlayer {
         this.switchLevers.clear()
         this.platePads.clear()
         this.sensorZones.clear()
-        this.beltChevrons = []
+        this.belts = []
         this.level = null
     }
 
@@ -471,6 +531,67 @@ export class World implements EventPlayer {
         const outline = this.highlight ??= this.createHighlight()
         outline.visible = coord !== null
         if (coord) outline.position.set(coord.x, 0, coord.y)
+    }
+
+    /**
+     * Outline a selection, or clear it with empty lists.
+     *
+     * `linked` is drawn in its own colour: those tiles are what the selected
+     * thing drives, shown so the mechanism is visible, but an edit and a delete
+     * only ever reach `coords`. Two colours is the only honest way to say that.
+     */
+    setSelection(coords: readonly Coord[], linked: readonly Coord[] = []) {
+        this.placeOutlines(this.selectionOutlines, coords, SELECTION_COLOR)
+        this.placeOutlines(this.linkedOutlines, linked, LINKED_COLOR)
+    }
+
+    /**
+     * Move a pool of outlines onto `coords`, growing it if it is short.
+     *
+     * Pooled rather than rebuilt: a selection changes on every click of the
+     * select tool, and growing to the largest selection seen costs a handful of
+     * line loops. Surplus outlines are hidden, not removed, so the next
+     * selection reuses them.
+     */
+    private placeOutlines(
+        pool: THREE.LineSegments[],
+        coords: readonly Coord[],
+        color: number,
+    ) {
+        while (pool.length < coords.length) pool.push(this.createOutline(color))
+
+        pool.forEach((outline, index) => {
+            const coord = coords[index]
+            outline.visible = coord !== undefined
+            if (coord) outline.position.set(coord.x, 0, coord.y)
+        })
+    }
+
+    /**
+     * Geometry and material are made once and shared by every outline of a
+     * colour — a selection is one object, and it should look like one.
+     */
+    private createOutline(color: number): THREE.LineSegments {
+        if (!this.outlineGeometry) {
+            const box = new THREE.BoxGeometry(1.04, 0.06, 1.04)
+            this.outlineGeometry = new THREE.EdgesGeometry(box)
+            box.dispose()
+        }
+
+        let material = this.outlineMaterials.get(color)
+        if (!material) {
+            material = new THREE.LineBasicMaterial({ color, depthTest: false })
+            this.outlineMaterials.set(color, material)
+        }
+
+        const outline = new THREE.LineSegments(this.outlineGeometry, material)
+        // Above the hover highlight, which shares these tiles while the
+        // pointer is over the selection.
+        outline.renderOrder = 1000
+        outline.visible = false
+
+        this.editorRoot.add(outline)
+        return outline
     }
 
     private createHighlight(): THREE.LineSegments {
@@ -703,6 +824,13 @@ export class World implements EventPlayer {
                     onUpdate: (t) => this.setDoorOpen(event.doorId, event.open, t),
                 })]
 
+            case 'belt':
+                return [tween({
+                    durationSeconds: seconds,
+                    ease: easeOutCubic,
+                    onUpdate: (t) => this.setBeltState(event.beltId, event.running, event.reversed, t),
+                })]
+
             case 'switch': {
                 const key = coordKey(event.position)
                 return [tween({
@@ -795,6 +923,28 @@ export class World implements EventPlayer {
         const from = pressed ? 0.035 : 0.012
         const to = pressed ? 0.012 : 0.035
         pad.position.y = lerp(from, to, t)
+    }
+
+    /**
+     * Fade a driven belt's chevrons between lit and the slab colour underneath,
+     * and hand `scrollBelts` the flags it reads next frame.
+     *
+     * The running/reversed flags flip at `t === 0` rather than at the end, so
+     * the belt visibly starts moving as it lights up instead of after. Which
+     * way it travels reads purely from the scroll: the chevrons are symmetric
+     * slabs, so there is no arrow to turn round.
+     */
+    private setBeltState(beltId: string, running: boolean, reversed: boolean, t: number) {
+        for (const belt of this.belts) {
+            if (belt.beltId !== beltId) continue
+            belt.running = running
+            belt.reversed = reversed
+            if (!belt.material) continue
+
+            const from = running ? BELT_DARK : belt.litColor
+            const to = running ? belt.litColor : BELT_DARK
+            belt.material.color.lerpColors(from, to, t)
+        }
     }
 
     private setSensorActive(sensorId: string, active: boolean, t: number) {

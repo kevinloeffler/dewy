@@ -15,8 +15,8 @@
 |------|-------------|
 | Floor | Standard walkable tile for robot and crates |
 | Pit | No tile — robot crashes if it steps here |
-| Conveyor belt | Moves robot and crates one tile in a fixed direction automatically |
-| Cargo belt | Conveyor for crates only — robot cannot step on it |
+| Conveyor belt | Moves robot and crates one tile in a fixed direction automatically. May be driven by a switch or plate |
+| Cargo belt | Conveyor for crates only — robot cannot step on it. May be driven the same way |
 
 ---
 
@@ -50,6 +50,30 @@ than running forever.
 
 A belt that carries a crate onto a matching bay delivers it, exactly as a push
 would.
+
+### Driven belts
+
+A belt may name a **belt id**, which makes it a target a switch or a pressure
+plate can drive — the same way one names a door. Every belt tile sharing an id
+is one belt and starts, stops and turns round together. A belt with no id
+always runs, in the direction it was drawn.
+
+The author picks what an asserted control does to it:
+
+- **power** — the belt stops, or starts. A stopped belt is *inert floor*: it
+  carries nothing, but it is not a wall, and the robot may stand on it. A
+  stopped cargo belt is still crate-only, since that is the shape of the
+  machine rather than its power.
+- **reverse** — the belt never stops; it travels the other way instead.
+
+Either way the belt has an authored starting value that the control **inverts**
+while it is asserted, exactly as a door does — so "the switch starts the belt"
+and "the switch stops the belt" are the same rule with different starting
+values.
+
+A belt can be driven by a plate its own ride crosses, which ends the ride
+there: the world settles between tiles, so the belt is already dead by the time
+the next tile would have been claimed.
 
 ---
 
@@ -89,17 +113,17 @@ would.
 | Element | Description |
 |---------|-------------|
 | Motion sensor | Has a fixed set of forbidden tiles clearly marked on the map — robot entering any of them fails the level immediately. Only *active* sensors fire; crates are ignored |
-| Pressure plate | Active while a robot or crate stands on it — linked to a door, sensor, or conveyor |
-| Switch | Flipped via `toggle()` — linked to a door, motion sensor, or conveyor belt. The switch tile is solid: the robot faces it, never stands on it |
+| Pressure plate | Active while a robot or crate stands on it — linked to a door, sensor, or belt |
+| Switch | Flipped via `toggle()` — linked to a door, motion sensor, or belt. The switch tile is solid: the robot faces it, never stands on it |
 | Drop-off bay | Goal tile for cargo — plain bays accept any crate, colour bays accept only the matching colour |
 
 ---
 
 ## Linked Triggers
 
-A switch or pressure plate names a `targetId` — a door or a motion sensor. While any linked
-control is **asserted** (switch on, plate held down) the target's authored starting value is
-**inverted**. So a door authored closed opens while the plate is pressed, and a door authored
+A switch or pressure plate names a `targetId` — a door, a motion sensor, or a belt. While any
+linked control is **asserted** (switch on, plate held down) the target's authored starting value
+is **inverted**. So a door authored closed opens while the plate is pressed, and a door authored
 open closes instead — the author picks the polarity by choosing the starting value.
 
 Several controls on one target compose as OR: the second cannot undo the first.

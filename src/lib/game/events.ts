@@ -29,6 +29,12 @@ export type WorldEvent =
     | { kind: 'drop';        crateId: string; to: Coord }
     | { kind: 'deliver';     crateId: string; to: Coord }
     | { kind: 'door';        doorId: string; open: boolean }
+    /**
+     * A driven belt starting, stopping or turning round. It moves nothing by
+     * itself — the ride it enables is still `conveyRobot` / `conveyCrate`,
+     * one step per tile.
+     */
+    | { kind: 'belt';        beltId: string; running: boolean; reversed: boolean }
     | { kind: 'switch';      position: Coord; on: boolean }
     | { kind: 'plate';       position: Coord; pressed: boolean }
     | { kind: 'sensor';      sensorId: string; active: boolean }

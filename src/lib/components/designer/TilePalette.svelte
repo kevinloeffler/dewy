@@ -1,26 +1,40 @@
 <script lang="ts">
 	import { CRATE_COLORS, type CrateColor } from '$lib/game/crate-color';
 	import { COLORS } from '$lib/game/models/tiles';
-	import { doorIds, nextDoorId } from '$lib/game/editor/operations';
+	import OptionFields from './OptionFields.svelte';
+	import { armIds, nextBeltId } from '$lib/game/editor/operations';
 	import {
 		BRUSH_GROUPS,
 		BRUSH_LABELS,
 		brushOptionKeys,
+		defaultBrushOptions,
+		itemOptions,
+		tileOptions,
 		type BrushId,
 		type BrushOptions
 	} from '$lib/game/editor/brush';
-	import type { Direction, Level } from '$lib/game/level';
+	import type { Selection } from '$lib/game/editor/selection';
+	import type { Level } from '$lib/game/level';
 
 	interface Props {
 		level: Level;
 		selected: BrushId;
 		options: BrushOptions;
+		/** What the select tool has picked, if it is the active tool. */
+		selection: Selection | null;
+		/** One changed setting on the selection — applied to every tile it covers. */
+		onedit: (patch: Partial<BrushOptions>) => void;
+		ondelete: () => void;
 	}
 
-	let { level, selected = $bindable(), options = $bindable() }: Props = $props();
-
-	const DIRECTIONS: Direction[] = ['north', 'east', 'south', 'west'];
-	const COLOR_NAMES = Object.keys(CRATE_COLORS) as CrateColor[];
+	let {
+		level,
+		selected = $bindable(),
+		options = $bindable(),
+		selection,
+		onedit,
+		ondelete
+	}: Props = $props();
 
 	const hex = (value: number) => `#${value.toString(16).padStart(6, '0')}`;
 
@@ -42,6 +56,7 @@
 		crate_colour: hex(CRATE_COLORS.red),
 		keycard: '#f0c419',
 		robot: '#ff9600',
+		select: 'transparent',
 		erase: 'transparent'
 	};
 
@@ -54,8 +69,51 @@
 		return SWATCHES[id];
 	};
 
-	let doors = $derived(doorIds(level));
-	let optionKeys = $derived(brushOptionKeys(selected));
+	let optionKeys = $derived(brushOptionKeys(selected, options));
+
+	/**
+	 * Picking a brush re-arms the id it would author, so the next door painted
+	 * is a new door rather than another tile of the last one.
+	 */
+	function pick(id: BrushId) {
+		selected = id;
+		options = armIds(level, id, options);
+	}
+
+	/**
+	 * The same on a changed setting — switching a belt's drive on has to find
+	 * it a free id. Except when the change *is* an id: that is the author
+	 * saying "this one joins that belt", and is not to be second-guessed.
+	 */
+	function changeOption(patch: Partial<BrushOptions>) {
+		const next = { ...options, ...patch };
+		options =
+			patch.beltId === undefined && patch.doorId === undefined
+				? armIds(level, selected, next)
+				: next;
+	}
+
+	/**
+	 * The selected thing as the option fields want it: which settings to show,
+	 * and the values it was authored with. The same controls the brushes use,
+	 * so a switch offers its link whether you are about to paint one or are
+	 * looking at one.
+	 */
+	let selectedThing = $derived.by(() => {
+		if (!selection) return null;
+		switch (selection.kind) {
+			case 'tiles': {
+				// A belt with no drive yet is offered a *free* belt id, so
+				// switching one on cannot quietly enrol it in `belt-1`.
+				const base = { ...defaultBrushOptions(), beltId: nextBeltId(level) };
+				return { id: selection.tile.kind, options: tileOptions(selection.tile, base) };
+			}
+			case 'item':
+				return { id: selection.item.kind, options: itemOptions(selection.item) };
+			case 'robot':
+				return { id: 'robot' as const, options: { ...options, facing: selection.facing } };
+		}
+	});
 </script>
 
 <div class="palette">
@@ -68,11 +126,12 @@
 						class="brush"
 						class:active={selected === id}
 						type="button"
-						onclick={() => (selected = id)}
+						onclick={() => pick(id)}
 					>
 						<span
 							class="swatch"
 							class:empty={id === 'erase'}
+							class:marquee={id === 'select'}
 							style="background: {swatch(id)}"
 						></span>
 						{BRUSH_LABELS[id]}
@@ -82,71 +141,45 @@
 		</div>
 	{/each}
 
+	{#if selected === 'select'}
+		<div class="group options">
+			<h3 class="group-title">Selection</h3>
+
+			{#if selection && selectedThing}
+				<p class="selected-thing">
+					{selection.label}
+					{#if selection.linked.length > 0}
+						<span class="count">drives {selection.linked.length}</span>
+					{:else if selection.coords.length > 1}
+						<span class="count">{selection.coords.length} tiles</span>
+					{/if}
+				</p>
+
+				<!-- The same controls the brushes use, writing to what is selected
+				     instead of to the next thing painted. -->
+				<OptionFields {level} id={selectedThing.id} options={selectedThing.options} onchange={onedit} />
+
+				{#if selection.kind === 'robot'}
+					<p class="hint">Every level keeps its robot — move it with the Robot start brush.</p>
+				{:else}
+					<button class="btn btn-ghost danger-btn" type="button" onclick={ondelete}>
+						Delete (⌫)
+					</button>
+				{/if}
+			{:else}
+				<p class="hint">
+					Click a thing to select it. A belt, a door or a wall comes as one, and a switch
+					brings along whatever it drives.
+				</p>
+			{/if}
+		</div>
+	{/if}
+
 	{#if optionKeys.length > 0}
 		<div class="group options">
 			<h3 class="group-title">{BRUSH_LABELS[selected]} options</h3>
 
-			{#each optionKeys as key (key)}
-				{#if key === 'direction' || key === 'facing'}
-					<label class="option">
-						{key === 'facing' ? 'Facing' : 'Direction'}
-						<select bind:value={options[key]}>
-							{#each DIRECTIONS as direction (direction)}
-								<option value={direction}>{direction}</option>
-							{/each}
-						</select>
-					</label>
-				{:else if key === 'crateColor'}
-					<label class="option">
-						Colour
-						<select bind:value={options.crateColor}>
-							{#each COLOR_NAMES as color (color)}
-								<option value={color}>{color}</option>
-							{/each}
-						</select>
-					</label>
-				{:else if key === 'bayColor'}
-					<label class="option">
-						Accepts
-						<select bind:value={options.bayColor}>
-							<option value={null}>any colour</option>
-							{#each COLOR_NAMES as color (color)}
-								<option value={color}>{color}</option>
-							{/each}
-						</select>
-					</label>
-				{:else if key === 'doorId' || key === 'targetId'}
-					<label class="option">
-						{key === 'doorId' && selected === 'keycard' ? 'Opens door' : 'Links to'}
-						<span class="id-field">
-							<input list="designer-door-ids" bind:value={options[key]} autocomplete="off" />
-							{#if selected === 'door'}
-								<button
-									class="btn btn-ghost tiny"
-									type="button"
-									onclick={() => (options.doorId = nextDoorId(level))}
-								>
-									New
-								</button>
-							{/if}
-						</span>
-					</label>
-					{#if doors.length === 0 && selected !== 'door'}
-						<p class="hint">No door tiles yet — paint a door first.</p>
-					{/if}
-				{:else if key === 'initiallyOpen' || key === 'initiallyOn'}
-					<label class="option check">
-						<input type="checkbox" bind:checked={options[key]} />
-						{key === 'initiallyOpen' ? 'Starts open' : 'Starts on'}
-					</label>
-				{/if}
-			{/each}
-
-			<datalist id="designer-door-ids">
-				{#each doors as id (id)}
-					<option value={id}></option>
-				{/each}
-			</datalist>
+			<OptionFields {level} id={selected} {options} onchange={changeOption} />
 		</div>
 	{/if}
 
@@ -216,49 +249,36 @@
 		box-shadow: inset 0 0 0 1px var(--danger);
 	}
 
+	.swatch.marquee {
+		border: 1px dashed var(--accent);
+		box-shadow: none;
+	}
+
+	.selected-thing {
+		display: flex;
+		align-items: baseline;
+		justify-content: space-between;
+		gap: 8px;
+		margin: 0 0 10px;
+		font-size: 13px;
+		font-weight: 600;
+		color: var(--text);
+	}
+
+	.count {
+		font-size: 12px;
+		font-weight: 400;
+		color: var(--text-faint);
+	}
+
+	.danger-btn {
+		width: 100%;
+		color: var(--danger);
+	}
+
 	.options {
 		padding-top: 14px;
 		border-top: 1px solid var(--panel-border);
-	}
-
-	.option {
-		display: flex;
-		flex-direction: column;
-		gap: 4px;
-		margin-bottom: 10px;
-		font-size: 12px;
-		color: var(--text-muted);
-	}
-
-	.option.check {
-		flex-direction: row;
-		align-items: center;
-		gap: 8px;
-	}
-
-	.option :global(select),
-	.option :global(input[type='text']),
-	.option :global(input:not([type])) {
-		font: inherit;
-		font-family: var(--font-ui);
-		font-size: 13px;
-		color: var(--text);
-		background: var(--bg);
-		border: 1px solid var(--panel-border);
-		border-radius: calc(var(--radius) - 8px);
-		padding: 5px 7px;
-		width: 100%;
-	}
-
-	.id-field {
-		display: flex;
-		gap: 6px;
-	}
-
-	.tiny {
-		padding: 4px 8px;
-		font-size: 12px;
-		white-space: nowrap;
 	}
 
 	.hint {

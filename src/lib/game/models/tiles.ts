@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import type { Coord, Direction, Tile } from '$lib/game/level';
+import type { CargoConveyorTile, ConveyorTile, Coord, Tile } from '$lib/game/level';
 import { DIRECTION_YAW } from '$lib/game/grid';
 import { createDropOffBay } from '$lib/game/models/drop-off-bay';
 
@@ -61,9 +61,9 @@ export class TileFactory {
             case 'robot_gap':
                 return this.robotGap(coord);
             case 'conveyor':
-                return this.conveyor(tile.direction, COLORS.chevron);
+                return this.conveyor(tile, COLORS.chevron);
             case 'cargo_conveyor':
-                return this.conveyor(tile.direction, COLORS.cargo);
+                return this.conveyor(tile, COLORS.cargo);
             case 'door':
                 return this.door(coord);
             case 'pressure_plate':
@@ -155,9 +155,19 @@ export class TileFactory {
         return group;
     }
 
-    private conveyor(direction: Direction, chevronColor: number) {
+    /**
+     * A driven belt gets its own chevron material rather than the memoised
+     * shared one: `World` dims a stopped belt by fading that colour, and a
+     * shared material would take every other belt in the level with it. The
+     * clone is not in `shared()`, so `clearGroup` disposes it with the level.
+     */
+    private conveyor(tile: ConveyorTile | CargoConveyorTile, chevronColor: number) {
         const group = new THREE.Group();
         group.add(this.box(TILE, SLAB, TILE, COLORS.conveyor, SLAB_Y));
+
+        const material = tile.control
+            ? new THREE.MeshLambertMaterial({ color: chevronColor })
+            : this.mat(chevronColor);
 
         // The chevrons live in their own named group so `World` can scroll
         // them. The tile is rotated, not the chevrons, so local +Z is always
@@ -165,13 +175,17 @@ export class TileFactory {
         const chevrons = new THREE.Group();
         chevrons.name = 'beltChevrons';
         for (let i = -1; i <= 1; i++) {
-            const chevron = this.box(0.5, 0.03, 0.12, chevronColor, 0.02);
+            const chevron = new THREE.Mesh(
+                this.geo('box:0.5,0.03,0.12', () => new THREE.BoxGeometry(0.5, 0.03, 0.12)),
+                material,
+            );
+            chevron.position.y = 0.02;
             chevron.position.z = i * CHEVRON_SPACING;
             chevrons.add(chevron);
         }
         group.add(chevrons);
 
-        group.rotation.y = DIRECTION_YAW[direction];
+        group.rotation.y = DIRECTION_YAW[tile.direction];
         return group;
     }
 

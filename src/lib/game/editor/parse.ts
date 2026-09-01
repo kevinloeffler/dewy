@@ -1,5 +1,6 @@
 import { CRATE_COLORS, type CrateColor } from '$lib/game/crate-color';
 import type {
+    BeltControl,
     Coord,
     Direction,
     GoalCondition,
@@ -107,6 +108,26 @@ function positiveInteger(value: unknown, path: string): number {
     return n;
 }
 
+/**
+ * The one exception to the rule above, for a field added after levels were
+ * already in the database.
+ *
+ * Reading is tolerant — a row written before belts could be driven has no
+ * `control` key and means `null`. Writing stays strict: `buildBrush` always
+ * emits the field, so a level saved once is fully shaped and never drifts
+ * again. Reach for this only when there really are stored rows without the key.
+ */
+function optional<T>(
+    source: Record<string, unknown>,
+    key: string,
+    path: string,
+    parse: (value: unknown, path: string) => T,
+    fallback: T,
+): T {
+    if (!(key in source)) return fallback;
+    return parse(source[key], `${path}.${key}`);
+}
+
 function nullable<T>(
     value: unknown,
     path: string,
@@ -148,6 +169,17 @@ function coord(value: unknown, path: string): Coord {
     };
 }
 
+const BELT_EFFECTS = ['power', 'reverse'] as const;
+
+function beltControl(value: unknown, path: string): BeltControl {
+    const source = object(value, path);
+    return {
+        beltId: string(field(source, 'beltId', path), `${path}.beltId`),
+        effect: literal(field(source, 'effect', path), `${path}.effect`, BELT_EFFECTS),
+        initiallyOn: boolean(field(source, 'initiallyOn', path), `${path}.initiallyOn`),
+    };
+}
+
 function tile(value: unknown, path: string): Tile {
     const source = object(value, path);
     const kind = string(field(source, 'kind', path), `${path}.kind`);
@@ -165,6 +197,13 @@ function tile(value: unknown, path: string): Tile {
             return {
                 kind,
                 direction: direction(field(source, 'direction', path), `${path}.direction`),
+                control: optional(
+                    source,
+                    'control',
+                    path,
+                    (value, at) => nullable(value, at, beltControl),
+                    null,
+                ),
             };
 
         case 'door':

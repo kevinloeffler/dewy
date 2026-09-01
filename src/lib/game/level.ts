@@ -23,14 +23,36 @@ export type PitTile      = { kind: 'pit' };
 export type WallTile     = { kind: 'wall' };
 export type RobotGapTile = { kind: 'robot_gap' };
 
+/**
+ * Makes a belt drivable by a switch or a pressure plate.
+ *
+ * Every belt tile sharing a `beltId` is one belt, the same way every tile
+ * sharing a `doorId` is one door. A belt with no control always runs, in its
+ * authored direction — which is every belt authored before this existed.
+ */
+export type BeltControl = {
+    /** Groups belt tiles into one driven belt; also what a control names. */
+    beltId: string;
+    /** What an asserted control does: cut the power, or flip the direction. */
+    effect: 'power' | 'reverse';
+    /**
+     * Authored starting value — running, or travelling the authored way. The
+     * live flags live in `BeltState`.
+     */
+    initiallyOn: boolean;
+};
+
 export type ConveyorTile = {
     kind: 'conveyor';
     direction: Direction;
+    /** `null` for a belt nothing drives. */
+    control: BeltControl | null;
 };
 
 export type CargoConveyorTile = {
     kind: 'cargo_conveyor';
     direction: Direction;
+    control: BeltControl | null;
 };
 
 export type DoorTile = {

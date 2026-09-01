@@ -5,7 +5,8 @@ import { nullPlayer, RunCancelled, type EventPlayer } from './events';
 import { validateLevel } from './rules';
 import { tutorial01 } from './levels/tutorial-01';
 import type {
-    Coord, Direction, GoalCondition, Item, Level, MotionSensor, RobotConfig, Tile, TileKey,
+    BeltControl, Coord, Direction, GoalCondition, Item, Level, MotionSensor, RobotConfig,
+    Tile, TileKey,
 } from './level';
 
 
@@ -41,6 +42,12 @@ function makeLevel(opts: {
     };
 }
 
+const belt = (direction: Direction, control: BeltControl | null = null): Tile =>
+    ({ kind: 'conveyor', direction, control });
+
+const cargo = (direction: Direction, control: BeltControl | null = null): Tile =>
+    ({ kind: 'cargo_conveyor', direction, control });
+
 /** Event kinds per step — the shape assertions care about. */
 function shape(outcome: StepOutcome): string[][] {
     return outcome.events.map((step) => step.map((event) => event.kind));
@@ -72,7 +79,7 @@ describe('moveForward', () => {
             [{ kind: 'goal' },                            { x: 2, y: 1 }],
             [{ kind: 'drop_off', color: null },           { x: 2, y: 1 }],
             [{ kind: 'pressure_plate', targetId: 'none' }, { x: 2, y: 1 }],
-            [{ kind: 'conveyor', direction: 'east' },     { x: 3, y: 1 }],
+            [belt('east'),                                { x: 3, y: 1 }],
             [{ kind: 'robot_gap' },                       { x: 2, y: 1 }],
         ];
 
@@ -87,7 +94,7 @@ describe('moveForward', () => {
         ['wall',           { kind: 'wall' },                                'wall'],
         ['closed door',    { kind: 'door', doorId: 'd', initiallyOpen: false }, 'door_closed'],
         ['switch',         { kind: 'switch', targetId: 't', initiallyOn: false }, 'switch_blocked'],
-        ['cargo belt',     { kind: 'cargo_conveyor', direction: 'east' },    'cargo_belt'],
+        ['cargo belt',     cargo('east'),                                   'cargo_belt'],
     ];
 
     for (const [label, tile, code] of blockers) {
@@ -200,17 +207,17 @@ describe('pushing', () => {
     });
 
     it('pushes a crate onto a cargo belt but will not follow it there', () => {
-        const belt: Tile = { kind: 'cargo_conveyor', direction: 'east' };
+        const onCargo = cargo('east');
         const onto = new GameEngine(makeLevel({
             robot: { position: { x: 2, y: 1 }, facing: 'east' },
-            tiles: { '4,1': belt },
+            tiles: { '4,1': onCargo },
             items: crateAtThree(),
         }));
         expect(onto.moveForward().status).toBe('ok');
 
         const follow = new GameEngine(makeLevel({
             robot: { position: { x: 2, y: 1 }, facing: 'east' },
-            tiles: { '3,1': belt },
+            tiles: { '3,1': onCargo },
             items: crateAtThree(),
         }));
         expect(follow.moveForward().reason?.code).toBe('cargo_belt');
@@ -731,9 +738,6 @@ describe('motion sensors', () => {
 
 
 describe('conveyors', () => {
-    const belt  = (direction: Direction): Tile => ({ kind: 'conveyor', direction });
-    const cargo = (direction: Direction): Tile => ({ kind: 'cargo_conveyor', direction });
-
     function crate(engine: GameEngine, id: string): Coord {
         return engine.state.crates.find((c) => c.id === id)!.position;
     }
@@ -1069,6 +1073,151 @@ describe('conveyors', () => {
 
 
 // ============================================================
+// Driven belts
+//
+// A belt naming a `beltId` is a control target like a door or a sensor: while
+// any linked switch or plate is asserted, its authored starting value is
+// inverted. `effect` picks which axis that flips.
+// ============================================================
+
+describe('driven belts', () => {
+    const power = (beltId: string, initiallyOn: boolean): BeltControl =>
+        ({ beltId, effect: 'power', initiallyOn });
+
+    const reverse = (beltId: string, initiallyOn: boolean): BeltControl =>
+        ({ beltId, effect: 'reverse', initiallyOn });
+
+    const lever = (targetId: string, initiallyOn = false): Tile =>
+        ({ kind: 'switch', targetId, initiallyOn });
+
+    const plate = (targetId: string): Tile => ({ kind: 'pressure_plate', targetId });
+
+    /** Robot at 1,1 facing east, so `moveForward` steps onto 2,1. */
+    function run(tiles: Partial<Record<TileKey, Tile>>, items: Item[] = []) {
+        return new GameEngine(makeLevel({ tiles, items }));
+    }
+
+    it('carries as usual while nothing is asserted', () => {
+        const engine = run({ '2,1': belt('east', power('b', true)) });
+
+        expect(engine.moveForward().status).toBe('ok');
+        expect(at(engine)).toEqual({ x: 3, y: 1 });
+    });
+
+    it('is inert floor while stopped — the robot just stands on it', () => {
+        const engine = run({ '2,1': belt('east', power('b', false)) });
+        const outcome = engine.moveForward();
+
+        expect(shape(outcome)).toEqual([['move']]);
+        expect(at(engine)).toEqual({ x: 2, y: 1 });
+        expect(engine.state.belts).toEqual([{ beltId: 'b', running: false, reversed: false }]);
+    });
+
+    it('starts on the same command that flips the switch', () => {
+        // The switch is at 2,1 and the belt behind the robot at 0,1, so the
+        // ride is the settle *after* `toggle()` rather than a second command.
+        const engine = new GameEngine(makeLevel({
+            tiles: { '2,1': lever('b'), '1,1': belt('west', power('b', false)) },
+        }));
+        const outcome = engine.toggle();
+
+        expect(shape(outcome)).toEqual([['switch'], ['belt'], ['conveyRobot']]);
+        expect(at(engine)).toEqual({ x: 0, y: 1 });
+    });
+
+    it('stops a belt authored running when a plate is pressed', () => {
+        // The crate holds the plate down from the start, so the belt at 2,1 is
+        // already dead by the time the robot steps onto it.
+        const engine = run(
+            { '2,1': belt('east', power('b', true)), '3,3': plate('b') },
+            [{ kind: 'crate_grey', id: 'weight', position: { x: 3, y: 3 } }],
+        );
+
+        expect(engine.state.belts[0].running).toBe(false);
+        expect(engine.moveForward().status).toBe('ok');
+        expect(at(engine)).toEqual({ x: 2, y: 1 });
+    });
+
+    it('reverses rather than stopping when that is the authored effect', () => {
+        const forward = run({ '2,1': belt('east', reverse('b', true)) });
+        forward.moveForward();
+        expect(at(forward)).toEqual({ x: 3, y: 1 });
+
+        const backward = run({ '2,1': belt('east', reverse('b', false)) });
+        backward.moveForward();
+        // Reversed, so the belt carries it back the way it came — and the
+        // no-revisited-tile trail stops it at 1,1 rather than looping.
+        expect(backward.state.belts[0]).toEqual({ beltId: 'b', running: true, reversed: true });
+        expect(at(backward)).toEqual({ x: 1, y: 1 });
+    });
+
+    it('ends the ride on a plate the ride itself crosses', () => {
+        // 2,1 and 3,1 are one belt; the plate at 3,1 cuts its own power the
+        // moment the robot lands on it, so the ride stops one tile short.
+        const engine = run({
+            '2,1': belt('east', power('b', true)),
+            '3,1': plate('b'),
+            '4,1': belt('east', power('b', true)),
+        });
+        const outcome = engine.moveForward();
+
+        // Plate and belt in one step: `settle` is a fixpoint and emits
+        // everything it reached together, so they animate at once.
+        expect(shape(outcome)).toEqual([['move'], ['conveyRobot'], ['plate', 'belt']]);
+        expect(at(engine)).toEqual({ x: 3, y: 1 });
+    });
+
+    it('drives every tile sharing an id, and leaves other belts alone', () => {
+        const engine = run({
+            '2,1': belt('east', power('b', true)),
+            '3,1': belt('east', power('b', true)),
+            '2,3': belt('east', power('other', false)),
+            '4,4': lever('b', true),
+        });
+
+        // One asserted switch inverts `b` end to end, so neither tile carries.
+        expect(engine.state.belts).toEqual([
+            { beltId: 'b', running: false, reversed: false },
+            { beltId: 'other', running: false, reversed: false },
+        ]);
+        engine.moveForward();
+        expect(at(engine)).toEqual({ x: 2, y: 1 });
+    });
+
+    it('keeps a stopped cargo belt crate-only', () => {
+        // Power is not what makes a cargo belt impassable — its shape is.
+        const engine = run({ '2,1': cargo('east', power('b', false)) });
+        expect(engine.moveForward().reason?.code).toBe('cargo_belt');
+    });
+
+    it('seeds a belt held stopped by an authored crate before anything runs', () => {
+        const engine = run(
+            { '1,3': belt('east', power('b', true)), '2,3': plate('b') },
+            [
+                { kind: 'crate_grey', id: 'weight', position: { x: 2, y: 3 } },
+                { kind: 'crate_grey', id: 'rider', position: { x: 1, y: 3 } },
+            ],
+        );
+
+        // No first move needed: `initialize()` settles the plate and the belt,
+        // so the rider is still where it was authored.
+        expect(engine.state.belts[0].running).toBe(false);
+        expect(engine.state.crates.find((c) => c.id === 'rider')!.position).toEqual({ x: 1, y: 3 });
+    });
+
+    it('carries crates on a driven cargo belt exactly as on an undriven one', () => {
+        const engine = run(
+            { '1,3': cargo('east', power('b', true)), '2,3': cargo('east', power('b', true)) },
+            [{ kind: 'crate_grey', id: 'c', position: { x: 1, y: 3 } }],
+        );
+        engine.turnLeft();
+
+        expect(engine.state.crates[0].position).toEqual({ x: 3, y: 3 });
+    });
+});
+
+
+// ============================================================
 // Sensing
 // ============================================================
 
@@ -1079,7 +1228,7 @@ describe('sensing', () => {
             { kind: 'wall' },
             { kind: 'pit' },
             { kind: 'switch', targetId: 't', initiallyOn: false },
-            { kind: 'cargo_conveyor', direction: 'east' },
+            cargo('east'),
             { kind: 'door', doorId: 'd', initiallyOpen: false },
             { kind: 'door', doorId: 'd', initiallyOpen: true },
             { kind: 'goal' },
@@ -1439,5 +1588,26 @@ describe('validateLevel', () => {
             items: [{ kind: 'keycard', id: 'k', doorId: 'ghost', position: { x: 2, y: 1 } }],
         }));
         expect(problems.join(' ')).toContain('has no door tile');
+    });
+
+    it('flags a control linked to nothing', () => {
+        const problems = validateLevel(makeLevel({
+            tiles: { '2,2': { kind: 'switch', targetId: 'ghost', initiallyOn: false } },
+        }));
+        expect(problems.join(' ')).toContain('no door, belt or motion sensor');
+    });
+
+    it('accepts a control linked to a door, a belt or a sensor', () => {
+        const problems = validateLevel(makeLevel({
+            tiles: {
+                '0,0': { kind: 'door', doorId: 'door-1', initiallyOpen: false },
+                '1,0': belt('east', { beltId: 'belt-1', effect: 'power', initiallyOn: true }),
+                '2,2': { kind: 'switch', targetId: 'door-1', initiallyOn: false },
+                '3,2': { kind: 'switch', targetId: 'belt-1', initiallyOn: false },
+                '4,2': { kind: 'pressure_plate', targetId: 'alarm' },
+            },
+            motionSensors: [{ sensorId: 'alarm', forbiddenTiles: [], initiallyActive: true }],
+        }));
+        expect(problems).toEqual([]);
     });
 });
