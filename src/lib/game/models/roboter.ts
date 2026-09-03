@@ -2,38 +2,90 @@ import * as THREE from 'three';
 import { disposeObject } from '$lib/game/three-utils';
 
 /**
- * Rounded-rectangle prism built from ExtrudeGeometry + bevel.
- * w/h/d are the OUTER dimensions; r is the corner/edge radius.
- * Centred at origin. Low-poly: 3 curve segments, 2 bevel steps.
+ * Low-poly rounded box: an extruded rounded rectangle whose bevel does all
+ * the rounding (1 bevel segment, 2 curve segments). Chamfered rather than
+ * filleted — at isometric game size that reads as "rounded" for a fraction
+ * of the triangles, which is the whole point of Tug's build.
+ *
+ * w/h/d are the OUTER dimensions; r is the corner/edge radius. Centred at
+ * the origin.
  */
-function roundedBoxGeo(w: number, h: number, d: number, r: number): THREE.BufferGeometry {
+function chamferBox(w: number, h: number, d: number, r: number): THREE.BufferGeometry {
+	const bevel = Math.min(r, d / 2 - 0.001);
+	const rr = Math.max(0.001, r - bevel);
+	const x = w / 2 - bevel, y = h / 2 - bevel;
+
 	const shape = new THREE.Shape();
-	const hw = w / 2, hh = h / 2;
-	shape.moveTo(-hw + r, -hh);
-	shape.lineTo( hw - r, -hh);
-	shape.quadraticCurveTo( hw, -hh,  hw, -hh + r);
-	shape.lineTo( hw,  hh - r);
-	shape.quadraticCurveTo( hw,  hh,  hw - r,  hh);
-	shape.lineTo(-hw + r,  hh);
-	shape.quadraticCurveTo(-hw,  hh, -hw,  hh - r);
-	shape.lineTo(-hw, -hh + r);
-	shape.quadraticCurveTo(-hw, -hh, -hw + r, -hh);
+	shape.moveTo(-x + rr, -y);
+	shape.lineTo( x - rr, -y);
+	shape.quadraticCurveTo( x, -y,  x, -y + rr);
+	shape.lineTo( x,  y - rr);
+	shape.quadraticCurveTo( x,  y,  x - rr,  y);
+	shape.lineTo(-x + rr,  y);
+	shape.quadraticCurveTo(-x,  y, -x,  y - rr);
+	shape.lineTo(-x, -y + rr);
+	shape.quadraticCurveTo(-x, -y, -x + rr, -y);
+
+	const geo = new THREE.ExtrudeGeometry(shape, {
+		depth: d - bevel * 2,
+		bevelEnabled: true,
+		bevelSize: bevel,
+		bevelThickness: bevel,
+		bevelSegments: 1,
+		curveSegments: 2,
+	});
+	geo.translate(0, 0, -(d - bevel * 2) / 2);
+	return geo;
+}
+
+/**
+ * Stadium (capsule cross-section) extrusion — the tank treads.
+ * `len` runs along X, `h` along Y, `d` along Z.
+ */
+function stadium(len: number, h: number, d: number, segs: number): THREE.BufferGeometry {
+	const r = h / 2, x = len / 2 - r;
+	const shape = new THREE.Shape();
+	shape.absarc( x, 0, r, -Math.PI / 2, Math.PI / 2, false);
+	shape.absarc(-x, 0, r, Math.PI / 2, (Math.PI * 3) / 2, false);
 
 	const geo = new THREE.ExtrudeGeometry(shape, {
 		depth: d,
 		bevelEnabled: true,
-		bevelSize: r,
-		bevelThickness: r,
-		bevelSegments: 2,
-		curveSegments: 3,
+		bevelSize: 0.012,
+		bevelThickness: 0.012,
+		bevelSegments: 1,
+		curveSegments: segs,
 	});
 	geo.translate(0, 0, -d / 2);
 	return geo;
 }
 
-const ARM_REST   = -0.28;  // pivot rotation.x at idle (slight forward tilt)
-const ARM_RAISED = -1.42;  // pivot rotation.x when carrying (arms extend toward +Z front)
-const ARM_SMOOTH = 8;      // exponential smoothing rate (higher = snappier)
+// The loader is one rigid boom off a shoulder mounted on the chassis flank.
+// It points along local +Z, so a *positive* rotation.x swings it down toward
+// the floor and a negative one lifts it.
+//
+// Where the crate is carried is not a free choice. Dewy's crate is a 0.5-unit
+// cube — over two thirds of Tug's chassis depth — so the only pocket of space
+// that clears the tracks, the chassis and the head at once is low and well out
+// in front. Carried any higher it hides Tug's face from the isometric camera;
+// any closer and it intersects the hull. Hence the long reach: BOOM_LENGTH is
+// what it takes to put the jaws in that pocket.
+const BOOM_LENGTH = 0.479;  // shoulder → jaw centre, where the crate is held
+
+const BOOM_REST   =  0.470; // idle — jaws dropped toward the floor, scoop-ready
+const BOOM_RAISED = -0.113; // carrying — jaws up to the carry pocket
+
+const ARM_SMOOTH = 8;       // exponential smoothing rate (higher = snappier)
+
+/** Radius the hubs roll on, model-local. */
+const HUB_RADIUS = 0.095;
+
+/**
+ * The stadium bevel rounds the tread outline outward on every side, dropping
+ * its underside below the shape's nominal bottom edge. Lift the tracks by that
+ * much so the model still rests exactly on y = 0.
+ */
+const TRACK_Y = 0.15 + 0.012;
 
 /** How long the crash animation runs, in seconds. */
 export const PANIC_DURATION = 0.9;
@@ -46,7 +98,7 @@ const PANIC_HZ    = 14;     // shake frequency
  *
  * The model exposes *poses*, not tweens: `World` owns all timing and drives
  * `setPosition` / `setYaw` from its animation queue. Only the self-timed,
- * cosmetic motion (arm swing, crash shake) lives in here, and none of it
+ * cosmetic motion (boom swing, crash shake) lives in here, and none of it
  * ever gates the queue.
  */
 export interface Roboter {
@@ -62,15 +114,20 @@ export interface Roboter {
 	 */
 	setYaw(radians: number): void;
 	getYaw(): number;
-	/** Roll the wheels as if the robot had travelled `distance` world units. */
+	/** Spin the drive hubs as if the robot had travelled `distance` world units. */
 	rollWheels(distance: number): void;
 
-	/** Animate arms up to carry position */
-	pickUp(): void;
-	/** Animate arms back down to rest */
-	lower(): void;
 	/**
-	 * Anchor for a carried crate — swings with the arms.
+	 * Raise the boom to carry position.
+	 * `immediate` snaps there instead of easing — for `applyState`, which
+	 * restores a carried crate with no animation and would otherwise leave it
+	 * clipping through the chassis for the length of the ease.
+	 */
+	pickUp(immediate?: boolean): void;
+	/** Lower the boom back to rest. `immediate` snaps, as above. */
+	lower(immediate?: boolean): void;
+	/**
+	 * Anchor for a carried crate — swings with the boom.
 	 * Parent objects with `.attach()`, never `.add()`: the robot group is
 	 * scaled, and only `attach()` preserves the object's world size.
 	 */
@@ -92,22 +149,31 @@ export interface Roboter {
 }
 
 /**
- * Creates the Dewy robot character — Wall·E inspired design.
- * Binocular cylindrical eye housings, accordion neck, rounded boxy body.
+ * Creates the Dewy robot character — "Tug", a tracked hauler.
+ *
+ * The silhouette is what has to read at isometric game size, so the detail
+ * budget goes there: wide treads, a blocky chassis, a big visor head, and two
+ * forward claws on a lifting boom. Everything is chamfered boxes and coarse
+ * cylinders — no smooth fillets, no stalks, no ear caps.
+ *
+ * Materials stay at metalness ≤ 0.35 on purpose: the scene has no environment
+ * map, so anything more metallic has nothing to reflect and renders near-black.
+ * The metal look is carried by a brighter base colour instead.
  *
  * Origin convention: base-center — y=0 is the floor plane.
- * Footprint fits within a 1×1 world tile.
+ * At scale 1 the tracks span 0.88 × 0.86 and the head tops out at 0.93; the
+ * claws reach ahead of the tracks, as a loader's should.
  *
  * Named sub-groups via group.getObjectByName():
- *   "chassis" | "neck" | "head" | "eyes" | "wheels" | "armL" | "armR"
+ *   "chassis" | "head" | "eyes" | "wheels" | "armL" | "armR"
  *
  * @param options
  * @param options.scale       Uniform scale factor (default 1)
- * @param options.bodyColor   Primary chassis colour hex (default 0xd4a028 — Wall·E ochre)
- * @param options.accentColor Trim / joint colour hex   (default 0x2a2a32 — dark gunmetal)
- * @param options.wheelColor  Wheel colour hex          (default 0x1a1a22 — near-black)
- * @param options.eyeColor    Emissive lens colour      (default 0xffe070 — warm amber)
- * @param options.armsRaised  Start with arms in carry position (default false)
+ * @param options.bodyColor   Shell / hull colour hex   (default 0xf3e9da — cream)
+ * @param options.accentColor Stripe, hubs, claw colour (default 0xe8703a — burnt orange)
+ * @param options.wheelColor  Tread colour hex          (default 0x24282c — rubber)
+ * @param options.eyeColor    Emissive lens colour      (default 0x7ff0d8 — mint)
+ * @param options.armsRaised  Start with the boom in carry position (default false)
  * @returns Roboter
  */
 export function createRoboter(options: {
@@ -120,297 +186,189 @@ export function createRoboter(options: {
 } = {}): Roboter {
 	const {
 		scale       = 1,
-		bodyColor   = 0xd4a028,
-		accentColor = 0x2a2a32,
-		wheelColor  = 0x1a1a22,
-		eyeColor    = 0xffe070,
+		bodyColor   = 0xf3e9da,
+		accentColor = 0xe8703a,
+		wheelColor  = 0x24282c,
+		eyeColor    = 0x7ff0d8,
 		armsRaised  = false,
 	} = options;
 
 	const group = new THREE.Group();
-	// Arm animation state — shared across both pivots
-	let targetAngle = armsRaised ? ARM_RAISED : ARM_REST;
-	const armPivots: THREE.Group[] = [];
+	// Loader animation state — shared across both arms and the carry chain.
+	let raised = armsRaised;
+	const boomPivots: THREE.Group[] = [];
 
 	// ─── Materials ───────────────────────────────────────────────────────────────
-	const matBody      = new THREE.MeshStandardMaterial({ color: bodyColor,   roughness: 0.60, metalness: 0.45, flatShading: true });
-	const matAccent    = new THREE.MeshStandardMaterial({ color: accentColor, roughness: 0.70, metalness: 0.55, flatShading: true });
-	const matWheel     = new THREE.MeshStandardMaterial({ color: wheelColor,  roughness: 0.90, metalness: 0.10, flatShading: true });
-	const matEye       = new THREE.MeshStandardMaterial({ color: eyeColor, emissive: new THREE.Color(eyeColor), emissiveIntensity: 0.95, roughness: 0.10, metalness: 0.00, flatShading: true });
-	const matDark      = new THREE.MeshStandardMaterial({ color: 0x111116,    roughness: 0.85, metalness: 0.30, flatShading: true });
-	const matShine     = new THREE.MeshStandardMaterial({ color: 0xffffff, emissive: new THREE.Color(0xffffff), emissiveIntensity: 0.60, roughness: 0.20, flatShading: true });
-	const matBlush     = new THREE.MeshStandardMaterial({ color: 0xf499a8,    roughness: 0.70, metalness: 0.00, flatShading: true });
-	const matIndicator = new THREE.MeshStandardMaterial({ color: 0xff7030, emissive: new THREE.Color(0xff6020), emissiveIntensity: 0.85, roughness: 0.20, flatShading: true });
+	const matShell  = new THREE.MeshStandardMaterial({ color: bodyColor,   roughness: 0.45, metalness: 0.05 });
+	const matAccent = new THREE.MeshStandardMaterial({ color: accentColor, roughness: 0.40, metalness: 0.10 });
+	// Slate is lifted well above Tug's 0x3a4047: these parts sit right against
+	// the near-black tracks, and with no environment map the metalness cannot
+	// separate them — only the base colour can.
+	const matMetal  = new THREE.MeshStandardMaterial({ color: 0x5a6472,    roughness: 0.35, metalness: 0.35 });
+	const matRubber = new THREE.MeshStandardMaterial({ color: wheelColor,  roughness: 0.85, metalness: 0.00 });
+	const matGlass  = new THREE.MeshStandardMaterial({ color: 0x1d2933,    roughness: 0.15, metalness: 0.20 });
+	const matEye    = new THREE.MeshStandardMaterial({ color: eyeColor, emissive: new THREE.Color(eyeColor), emissiveIntensity: 0.60, roughness: 0.30, metalness: 0.00 });
 
-	// ─── Chassis ─────────────────────────────────────────────────────────────────
-	// Compact, boxy Wall·E body — y: 0.195 → 0.420
-	const chassis = new THREE.Group();
-	chassis.name = 'chassis';
-
-	// Rounded body — r=0.032 gives a soft chamfered cube feel
-	const geoBody = roundedBoxGeo(0.38, 0.225, 0.34, 0.032);
-	const meshBody = new THREE.Mesh(geoBody, matBody);
-	meshBody.position.y = 0.308;
-	chassis.add(meshBody);
-
-	// Orange chest indicator — Wall·E battery/power bar
-	const geoIndicatorFrame = new THREE.BoxGeometry(0.110, 0.048, 0.007);
-	const meshIndicatorFrame = new THREE.Mesh(geoIndicatorFrame, matDark);
-	meshIndicatorFrame.position.set(0, 0.377, 0.174);
-	chassis.add(meshIndicatorFrame);
-
-	const geoIndicator = new THREE.BoxGeometry(0.094, 0.034, 0.007);
-	const meshIndicator = new THREE.Mesh(geoIndicator, matIndicator);
-	meshIndicator.position.set(0, 0.377, 0.177);
-	chassis.add(meshIndicator);
-
-	// Corner bolts — industrial detail
-	const geoBolt = new THREE.BoxGeometry(0.015, 0.015, 0.011);
-	const boltPos: [number, number, number][] = [
-		[ 0.198, 0.408,  0.133], [ 0.198, 0.408, -0.133],
-		[ 0.198, 0.210,  0.133], [ 0.198, 0.210, -0.133],
-		[-0.198, 0.408,  0.133], [-0.198, 0.408, -0.133],
-		[-0.198, 0.210,  0.133], [-0.198, 0.210, -0.133],
-	];
-	for (const [bx, by, bz] of boltPos) {
-		const bolt = new THREE.Mesh(geoBolt, matAccent);
-		bolt.position.set(bx, by, bz);
-		chassis.add(bolt);
-	}
-
-	group.add(chassis);
-
-	// ─── Neck (accordion / segmented — Wall·E folding neck) ─────────────────────
-	const neck = new THREE.Group();
-	neck.name = 'neck';
-
-	// Three stacked rings tapering inward, with dark gaps between
-	const neckRings: [number, number, number, number][] = [
-		[0.175, 0.019, 0.155, 0.432],
-		[0.154, 0.017, 0.134, 0.452],
-		[0.136, 0.015, 0.116, 0.470],
-	];
-	for (const [w, h, d, y] of neckRings) {
-		const mesh = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), matAccent);
-		mesh.position.y = y;
-		neck.add(mesh);
-	}
-	for (const gy of [0.441, 0.460]) {
-		const gap = new THREE.Mesh(new THREE.BoxGeometry(0.13, 0.007, 0.11), matDark);
-		gap.position.y = gy;
-		neck.add(gap);
-	}
-
-	group.add(neck);
-
-	// ─── Head ─────────────────────────────────────────────────────────────────────
-	// Compact boxy head — the binocular eyes dominate the face
-	// y: 0.478 → 0.678, center y = 0.578, front face z = +0.135
-	const head = new THREE.Group();
-	head.name = 'head';
-
-	// Rounded head — slightly tighter radius so it reads as a distinct shape from the body
-	const geoHead = roundedBoxGeo(0.32, 0.20, 0.27, 0.028);
-	const meshHead = new THREE.Mesh(geoHead, matBody);
-	meshHead.position.y = 0.578;
-	head.add(meshHead);
-
-	// Top panel crease
-	const meshTopLine = new THREE.Mesh(new THREE.BoxGeometry(0.325, 0.008, 0.275), matAccent);
-	meshTopLine.position.set(0, 0.594, 0);
-	head.add(meshTopLine);
-
-	// Blush marks on cheeks (below the eye housings)
-	const geoBlush = new THREE.BoxGeometry(0.046, 0.016, 0.005);
-	for (const side of [-1, 1] as const) {
-		const blush = new THREE.Mesh(geoBlush, matBlush);
-		blush.position.set(side * 0.108, 0.534, 0.137);
-		head.add(blush);
-	}
-
-	// Speaker grille at bottom of head face (replaces drawn mouth)
-	const meshGrille = new THREE.Mesh(new THREE.BoxGeometry(0.094, 0.019, 0.006), matDark);
-	meshGrille.position.set(0, 0.490, 0.138);
-	head.add(meshGrille);
-	const geoSlot = new THREE.BoxGeometry(0.018, 0.011, 0.004);
-	for (const sx of [-0.030, 0, 0.030]) {
-		const slot = new THREE.Mesh(geoSlot, matAccent);
-		slot.position.set(sx, 0.490, 0.142);
-		head.add(slot);
-	}
-
-	// Compact antenna with glowing orange tip (Dewy identity marker)
-	const meshAntPole = new THREE.Mesh(new THREE.CylinderGeometry(0.009, 0.009, 0.080, 6), matAccent);
-	meshAntPole.position.set(0.058, 0.718, 0);
-	head.add(meshAntPole);
-	const meshAntBall = new THREE.Mesh(new THREE.SphereGeometry(0.026, 6, 4), matIndicator);
-	meshAntBall.position.set(0.058, 0.758, 0);
-	head.add(meshAntBall);
-
-	// ── Binocular eye housings (Wall·E) ─────────────────────────────────────────
-	// Origin of the eyes group sits at the head's front-face centre.
-	// rotation.x = 0.14 gives a slight downward tilt — Wall·E's curious look.
-	// All child positions are local to this rotated frame.
-	const eyes = new THREE.Group();
-	eyes.name = 'eyes';
-	eyes.position.set(0, 0.578, 0.135);
-	eyes.rotation.x = 0.14;
-
-	// Shared eye geometries
-	const geoHousing = new THREE.CylinderGeometry(0.054, 0.054, 0.082, 8);
-	const geoBezel   = new THREE.CylinderGeometry(0.061, 0.061, 0.010, 8);
-	const geoRecess  = new THREE.CylinderGeometry(0.046, 0.046, 0.022, 8);
-	const geoLens    = new THREE.SphereGeometry(0.040, 6, 4);
-	const geoShineGeo = new THREE.BoxGeometry(0.014, 0.014, 0.004);
-
-	// Bridge connecting both housings
-	const meshBridge = new THREE.Mesh(new THREE.BoxGeometry(0.132, 0.060, 0.082), matAccent);
-	meshBridge.position.set(0, 0, 0.041);
-	eyes.add(meshBridge);
-
-	for (const ex of [-0.078, 0.078]) {
-		// Octagonal outer housing — oriented along local Z via rotation.x = π/2
-		// Spans local z: 0 (flush with head face) → 0.082 (protrudes forward)
-		const housing = new THREE.Mesh(geoHousing, matAccent);
-		housing.rotation.x = Math.PI / 2;
-		housing.position.set(ex, 0, 0.041);
-		eyes.add(housing);
-
-		// Front bezel ring — slightly wider, dark
-		const bezel = new THREE.Mesh(geoBezel, matDark);
-		bezel.rotation.x = Math.PI / 2;
-		bezel.position.set(ex, 0, 0.087);
-		eyes.add(bezel);
-
-		// Dark inner recess — creates depth/pupil illusion
-		const recess = new THREE.Mesh(geoRecess, matDark);
-		recess.rotation.x = Math.PI / 2;
-		recess.position.set(ex, 0, 0.076);
-		eyes.add(recess);
-
-		// Glowing amber lens — the warm Wall·E eye
-		const lens = new THREE.Mesh(geoLens, matEye);
-		lens.position.set(ex, 0, 0.090);
-		eyes.add(lens);
-
-		// White shine dot — upper-right of lens for liveliness
-		const shine = new THREE.Mesh(geoShineGeo, matShine);
-		shine.position.set(ex + 0.018, 0.016, 0.098);
-		eyes.add(shine);
-	}
-
-	head.add(eyes);
-	group.add(head);
-
-	// ─── Wheels ──────────────────────────────────────────────────────────────────
+	// ─── Tracks ──────────────────────────────────────────────────────────────────
+	// One stadium shell per side with two drive hubs each. The shells are static
+	// scenery; only the hubs turn, which is what a sprocket inside a track does.
 	const wheelsGroup = new THREE.Group();
 	wheelsGroup.name = 'wheels';
 
-	const wRadius = 0.090;
-	const wThick  = 0.080;
+	// stadium() lays the capsule out along X; rotate it so the length runs along
+	// Z (forward) and the extrusion depth becomes the track's width.
+	const geoTread = stadium(0.86, 0.30, 0.22, 6);
+	geoTread.rotateY(Math.PI / 2);
 
-	const geoWheelRim   = new THREE.CylinderGeometry(wRadius, wRadius, wThick, 8);
-	const geoWheelTread = new THREE.CylinderGeometry(wRadius + 0.010, wRadius + 0.010, wThick * 0.44, 8);
-	const geoWheelHub   = new THREE.CylinderGeometry(wRadius * 0.38, wRadius * 0.38, wThick + 0.006, 6);
+	const geoHub = new THREE.CylinderGeometry(HUB_RADIUS, HUB_RADIUS, 0.25, 10);
+	geoHub.rotateZ(Math.PI / 2);   // axis along X, so mesh.rotation.x is the roll
+	const geoHubBar = new THREE.BoxGeometry(0.020, 0.090, 0.020);
 
-	const wCorners: [number, number][] = [
-		[ 0.196,  0.132],
-		[-0.196,  0.132],
-		[ 0.196, -0.132],
-		[-0.196, -0.132],
-	];
+	/** Hubs only — `rollWheels` turns these, never the track shells. */
+	const hubs: THREE.Group[] = [];
 
-	for (const [wx, wz] of wCorners) {
-		const wg = new THREE.Group();
-		const rim   = new THREE.Mesh(geoWheelRim,   matWheel);
-		const tread = new THREE.Mesh(geoWheelTread, matAccent);
-		const hub   = new THREE.Mesh(geoWheelHub,   matBody);
-		rim.rotation.z   = Math.PI / 2;
-		tread.rotation.z = Math.PI / 2;
-		hub.rotation.z   = Math.PI / 2;
-		wg.add(rim, tread, hub);
-		wg.position.set(wx, wRadius, wz);
-		wheelsGroup.add(wg);
+	for (const side of [-1, 1] as const) {
+		const tread = new THREE.Mesh(geoTread, matRubber);
+		tread.position.set(side * 0.33, TRACK_Y, 0);
+		wheelsGroup.add(tread);
+
+		for (const hz of [-0.26, 0.26]) {
+			const hub = new THREE.Group();
+			hub.add(new THREE.Mesh(geoHub, matAccent));
+
+			// A bar across the outer face — a bare decagon gives the eye nothing
+			// to track, so without this the roll is invisible.
+			const bar = new THREE.Mesh(geoHubBar, matMetal);
+			bar.position.x = side * 0.132;
+			hub.add(bar);
+
+			hub.position.set(side * 0.33, TRACK_Y, hz);
+			wheelsGroup.add(hub);
+			hubs.push(hub);
+		}
 	}
 
 	group.add(wheelsGroup);
 
-	// ─── Arms ────────────────────────────────────────────────────────────────────
-	// Shoulder pivot at (±0.225, 0.382, 0.010).
-	// Prominent round elbow + wrist cylinder joints (Wall·E mechanical aesthetic).
-	// Scoop-style two-prong claw at the end.
-	// At rest (rotation.x = 0.28) claw tips sit ≈ y 0.055 above floor — no clipping.
+	// ─── Chassis ─────────────────────────────────────────────────────────────────
+	// Blocky hull, y: 0.25 → 0.61, with the accent stripe wrapping its waist.
+	const chassis = new THREE.Group();
+	chassis.name = 'chassis';
 
-	const buildArm = (side: 1 | -1, name: string): THREE.Group => {
-		const arm = new THREE.Group();
-		arm.name = name;
+	const meshHull = new THREE.Mesh(chamferBox(0.62, 0.36, 0.78, 0.07), matShell);
+	meshHull.position.y = 0.43;
+	chassis.add(meshHull);
 
-		const meshShoulderCap = new THREE.Mesh(new THREE.BoxGeometry(0.064, 0.064, 0.064), matAccent);
-		arm.add(meshShoulderCap);
+	const meshStripe = new THREE.Mesh(chamferBox(0.64, 0.09, 0.60, 0.03), matAccent);
+	meshStripe.position.y = 0.30;
+	chassis.add(meshStripe);
+
+	group.add(chassis);
+
+	// ─── Head ────────────────────────────────────────────────────────────────────
+	// The group's origin sits at the chassis/head seam (y 0.61), so the panic
+	// tilt reads as the head rocking on its mount rather than sliding sideways.
+	const head = new THREE.Group();
+	head.name = 'head';
+	head.position.set(0, 0.61, 0.03);
+
+	const meshHead = new THREE.Mesh(chamferBox(0.48, 0.32, 0.36, 0.08), matShell);
+	meshHead.position.y = 0.16;
+	head.add(meshHead);
+
+	const meshVisor = new THREE.Mesh(chamferBox(0.38, 0.20, 0.06, 0.05), matGlass);
+	meshVisor.position.set(0, 0.18, 0.17);
+	head.add(meshVisor);
+
+	// Two low-res glow spheres sunk into the visor — the whole face, no stalks.
+	const eyes = new THREE.Group();
+	eyes.name = 'eyes';
+	const geoEye = new THREE.SphereGeometry(0.05, 10, 6);
+	for (const ex of [-0.09, 0.09]) {
+		const eye = new THREE.Mesh(geoEye, matEye);
+		eye.position.set(ex, 0.18, 0.195);
+		eyes.add(eye);
+	}
+	head.add(eyes);
+
+	group.add(head);
+
+	// ─── Loader boom ─────────────────────────────────────────────────────────────
+	// Shoulder sits on the chassis flank, forward of centre and just inside the
+	// tracks. The boom is built along local +Z, so the pivot's `rotation.x` is
+	// its angle. At BOOM_REST the jaw tips clear the floor by ≈ 0.04.
+
+	const geoShoulder = new THREE.CylinderGeometry(0.090, 0.090, 0.130, 8);
+	geoShoulder.rotateZ(Math.PI / 2);
+
+	// Deliberately chunky. Thinner sections and a wider jaw gap made the pair
+	// read as legs on a walking robot rather than as hydraulics on a hauler.
+	const geoBoom     = chamferBox(0.13, 0.15, 0.44, 0.045);
+	const geoJawUpper = chamferBox(0.17, 0.10, 0.30, 0.035);
+	const geoJawLower = chamferBox(0.17, 0.10, 0.30, 0.035);
+
+	/**
+	 * A shoulder with the boom hanging off it. `x` is where the shoulder sits;
+	 * pass 0 for the invisible carry chain.
+	 */
+	const buildBoom = (x: number) => {
+		const root = new THREE.Group();
+		root.position.set(x, 0.42, 0.25);
 
 		const pivot = new THREE.Group();
-		pivot.rotation.x = armsRaised ? ARM_RAISED : ARM_REST;
-		armPivots.push(pivot);
+		pivot.rotation.x = armsRaised ? BOOM_RAISED : BOOM_REST;
+		boomPivots.push(pivot);
+		root.add(pivot);
 
-		// Upper arm
-		const meshUpperArm = new THREE.Mesh(new THREE.BoxGeometry(0.058, 0.130, 0.058), matBody);
-		meshUpperArm.position.y = -0.074;
-		pivot.add(meshUpperArm);
+		return { root, pivot };
+	};
 
-		// Elbow — short cylinder oriented along X (visible axle joint)
-		const geoElbow = new THREE.CylinderGeometry(0.036, 0.036, 0.075, 8);
-		const meshElbow = new THREE.Mesh(geoElbow, matAccent);
-		meshElbow.rotation.z = Math.PI / 2;
-		meshElbow.position.y = -0.148;
-		pivot.add(meshElbow);
+	const buildArm = (side: 1 | -1, name: string): THREE.Group => {
+		const { root, pivot } = buildBoom(side * 0.38);
+		root.name = name;
 
-		// Forearm
-		const meshForearm = new THREE.Mesh(new THREE.BoxGeometry(0.050, 0.110, 0.050), matBody);
-		meshForearm.position.y = -0.220;
-		pivot.add(meshForearm);
+		// Shoulder cap stays on the root — it is the joint, so it must not turn.
+		// Accent, matching the boom, so the arm visibly mounts to the hull
+		// instead of floating alongside it.
+		root.add(new THREE.Mesh(geoShoulder, matAccent));
 
-		// Wrist — round disc joint
-		const geoWrist = new THREE.CylinderGeometry(0.030, 0.030, 0.060, 8);
-		const meshWrist = new THREE.Mesh(geoWrist, matAccent);
-		meshWrist.rotation.z = Math.PI / 2;
-		meshWrist.position.y = -0.285;
-		pivot.add(meshWrist);
+		// Accent, not metal: the boom runs the length of the tracks, and it is
+		// the only part that moves — it has to be the thing the eye catches.
+		const meshBoom = new THREE.Mesh(geoBoom, matAccent);
+		meshBoom.position.z = 0.22;
+		pivot.add(meshBoom);
 
-		// Scoop claw — vertical stem + forward-pointing tip (Wall·E scooper)
-		const geoClawStem = new THREE.BoxGeometry(0.016, 0.044, 0.016);
-		const geoClawTip  = new THREE.BoxGeometry(0.016, 0.014, 0.038);
-		for (const px of [-0.020, 0.020]) {
-			const stem = new THREE.Mesh(geoClawStem, matAccent);
-			stem.position.set(px, -0.318, 0);
-			pivot.add(stem);
+		// Light jaw over dark jaw — the two-tone split is what makes the claw
+		// legible against the crate it is holding. Both jaws clear the crate in
+		// x, so they bracket it rather than passing through it.
+		const jawUpper = new THREE.Mesh(geoJawUpper, matShell);
+		jawUpper.position.set(0, 0.065, BOOM_LENGTH);
+		jawUpper.rotation.x = -0.22;
+		pivot.add(jawUpper);
 
-			const tip = new THREE.Mesh(geoClawTip, matAccent);
-			tip.position.set(px, -0.342, 0.019);
-			pivot.add(tip);
-		}
+		const jawLower = new THREE.Mesh(geoJawLower, matMetal);
+		jawLower.position.set(0, -0.055, BOOM_LENGTH + 0.01);
+		jawLower.rotation.x = 0.20;
+		pivot.add(jawLower);
 
-		arm.add(pivot);
-		arm.position.set(side * 0.225, 0.382, 0.010);
-		return arm;
+		return root;
 	};
 
 	group.add(buildArm( 1, 'armR'));
 	group.add(buildArm(-1, 'armL'));
 
 	// ─── Carry slot ──────────────────────────────────────────────────────────────
-	// An invisible third pivot on the same `armPivots` list, so a held crate
-	// inherits the arm smoothing for free — no per-frame work in World.
-	const carryPivot = new THREE.Group();
-	carryPivot.name = 'carryPivot';
-	carryPivot.rotation.x = armsRaised ? ARM_RAISED : ARM_REST;
-	carryPivot.position.set(0, 0.382, 0.010);   // shoulder height, centred
-	armPivots.push(carryPivot);
+	// A third, invisible boom on the centre line, its pivot on the same list as
+	// the arms'. A held crate inherits the boom smoothing for free — no per-frame
+	// work in World, and it can never drift out of the jaws.
+	const carryBoom = buildBoom(0);
+	carryBoom.root.name = 'carryBoom';
 
 	const carrySlot = new THREE.Group();
 	carrySlot.name = 'carry';
-	carrySlot.position.set(0, -0.34, 0.02);     // between the claw tips
-	carryPivot.add(carrySlot);
-	group.add(carryPivot);
+	carrySlot.position.z = BOOM_LENGTH;   // between the jaws
+	carryBoom.pivot.add(carrySlot);
+	group.add(carryBoom.root);
 
 	group.scale.setScalar(scale);
 
@@ -421,10 +379,13 @@ export function createRoboter(options: {
 	let yaw   = 0;
 	let panicRemaining = 0;
 
-	const headGroup = group.getObjectByName('head')!;
-	const wheels    = group.getObjectByName('wheels')!;
 	const eyeRestColor = new THREE.Color(eyeColor);
 	const eyePanicColor = new THREE.Color(0xff2a2a);
+
+	/** Drop both links straight onto the current target pose, no easing. */
+	const snapPose = () => {
+		for (const pivot of boomPivots) pivot.rotation.x = raised ? BOOM_RAISED : BOOM_REST;
+	};
 
 	const applyTransform = () => {
 		group.position.set(baseX, group.position.y, baseZ);
@@ -440,14 +401,14 @@ export function createRoboter(options: {
 		getYaw()                          { return yaw; },
 
 		rollWheels(distance: number) {
-			// `distance` is in world units but the wheel radius is model-local,
+			// `distance` is in world units but the hub radius is model-local,
 			// so undo the group scale before converting to radians.
-			const radians = distance / (wRadius * scale);
-			for (const wheel of wheels.children) wheel.rotation.x += radians;
+			const radians = distance / (HUB_RADIUS * scale);
+			for (const hub of hubs) hub.rotation.x += radians;
 		},
 
-		pickUp() { targetAngle = ARM_RAISED; },
-		lower()  { targetAngle = ARM_REST; },
+		pickUp(immediate = false) { raised = true;  if (immediate) snapPose(); },
+		lower(immediate = false)  { raised = false; if (immediate) snapPose(); },
 
 		panic() {
 			panicRemaining = PANIC_DURATION;
@@ -456,11 +417,11 @@ export function createRoboter(options: {
 
 		resetPose() {
 			panicRemaining = 0;
-			headGroup.rotation.z = 0;
+			head.rotation.z = 0;
 			matEye.emissive.copy(eyeRestColor);
-			matEye.emissiveIntensity = 0.95;
-			targetAngle = ARM_REST;
-			for (const pivot of armPivots) pivot.rotation.x = ARM_REST;
+			matEye.emissiveIntensity = 0.60;
+			raised = false;
+			snapPose();
 			applyTransform();
 		},
 
@@ -468,8 +429,9 @@ export function createRoboter(options: {
 			// Exponential smoothing — framerate-independent ease-out.
 			// Asymptotic on purpose: this is ambient motion and is never awaited.
 			const t = 1 - Math.exp(-ARM_SMOOTH * deltaSeconds);
-			for (const pivot of armPivots) {
-				pivot.rotation.x += (targetAngle - pivot.rotation.x) * t;
+			const target = raised ? BOOM_RAISED : BOOM_REST;
+			for (const pivot of boomPivots) {
+				pivot.rotation.x += (target - pivot.rotation.x) * t;
 			}
 
 			if (panicRemaining <= 0) return;
@@ -481,14 +443,16 @@ export function createRoboter(options: {
 
 			group.position.x = baseX + Math.sin(phase) * amplitude;
 			group.position.z = baseZ + Math.cos(phase * 0.7) * amplitude * 0.6;
-			headGroup.rotation.z = Math.sin(phase * 0.5) * 0.25 * progress;
+			// Shallow on purpose: the head's underside sits flush on the chassis,
+			// so a wider rock would crack a gap open at the seam.
+			head.rotation.z = Math.sin(phase * 0.5) * 0.14 * progress;
 			matEye.emissive.copy(eyeRestColor).lerp(eyePanicColor, progress);
-			matEye.emissiveIntensity = 0.95 + Math.abs(Math.sin(phase * 0.5)) * progress;
+			matEye.emissiveIntensity = 0.60 + Math.abs(Math.sin(phase * 0.5)) * progress;
 
 			if (panicRemaining === 0) {
-				headGroup.rotation.z = 0;
+				head.rotation.z = 0;
 				matEye.emissive.copy(eyeRestColor);
-				matEye.emissiveIntensity = 0.95;
+				matEye.emissiveIntensity = 0.60;
 				applyTransform();
 			}
 		},

@@ -117,72 +117,74 @@
 {/snippet}
 
 <div class="controls">
-	{#if running}
-		<Button onclick={onstop}>
+	<div class="controls-wrapper">
+		{#if running}
+			<Button onclick={onstop}>
+				{#snippet icon()}
+					<svg width="11" height="11" viewBox="0 0 12 12" aria-hidden="true">
+						<rect x="0.5" y="0.5" width="11" height="11" rx="2" fill="currentColor" />
+					</svg>
+				{/snippet}
+				Stop
+			</Button>
+		{:else}
+			<Button onclick={onrun} disabled={blocked}>
+				{#snippet icon()}
+					<svg width="11" height="11.9" viewBox="0 0 12 13" fill="none" aria-hidden="true">
+						<path
+								d="M6.58919e-08 1.44478C-7.815e-05 1.19064 0.0694786 0.940979 0.201647 0.721007C0.333816 0.501035 0.523917 0.318539 0.752755 0.191946C0.981593 0.0653532 1.24107 -0.000854397 1.50498 8.32463e-06C1.76888 0.000871046 2.02789 0.0687736 2.25583 0.19686L11.2529 5.25064C11.4799 5.37751 11.6684 5.55954 11.7995 5.77855C11.9307 5.99756 11.9998 6.24586 12 6.49866C12.0002 6.75145 11.9316 6.99987 11.8008 7.21909C11.6701 7.43832 11.482 7.62067 11.2551 7.74792L2.25583 12.8031C2.02789 12.9312 1.76888 12.9991 1.50498 13C1.24107 13.0009 0.981593 12.9346 0.752755 12.8081C0.523917 12.6815 0.333816 12.499 0.201647 12.279C0.0694786 12.059 -7.815e-05 11.8094 6.58919e-08 11.5552V1.44478Z"
+								fill="currentColor"
+						/>
+					</svg>
+				{/snippet}
+				Run
+			</Button>
+		{/if}
+
+		<Button variant="ghost" onclick={onstep} disabled={blocked}>
 			{#snippet icon()}
-				<svg width="11" height="11" viewBox="0 0 12 12" aria-hidden="true">
-					<rect x="0.5" y="0.5" width="11" height="11" rx="2" fill="currentColor" />
-				</svg>
-			{/snippet}
-			Stop
-		</Button>
-	{:else}
-		<Button onclick={onrun} disabled={blocked}>
-			{#snippet icon()}
-				<svg width="11" height="11.9" viewBox="0 0 12 13" fill="none" aria-hidden="true">
+				<svg
+						width="12.5"
+						height="11.3"
+						viewBox="0 0 14 12.6667"
+						fill="none"
+						stroke="currentColor"
+						stroke-width="2"
+						stroke-linecap="round"
+						stroke-linejoin="round"
+						aria-hidden="true"
+				>
+					<path d="M13 1V11.6667" />
 					<path
-						d="M6.58919e-08 1.44478C-7.815e-05 1.19064 0.0694786 0.940979 0.201647 0.721007C0.333816 0.501035 0.523917 0.318539 0.752755 0.191946C0.981593 0.0653532 1.24107 -0.000854397 1.50498 8.32463e-06C1.76888 0.000871046 2.02789 0.0687736 2.25583 0.19686L11.2529 5.25064C11.4799 5.37751 11.6684 5.55954 11.7995 5.77855C11.9307 5.99756 11.9998 6.24586 12 6.49866C12.0002 6.75145 11.9316 6.99987 11.8008 7.21909C11.6701 7.43832 11.482 7.62067 11.2551 7.74792L2.25583 12.8031C2.02789 12.9312 1.76888 12.9991 1.50498 13C1.24107 13.0009 0.981593 12.9346 0.752755 12.8081C0.523917 12.6815 0.333816 12.499 0.201647 12.279C0.0694786 12.059 -7.815e-05 11.8094 6.58919e-08 11.5552V1.44478Z"
-						fill="currentColor"
+							d="M3.01933 1.19001C2.81701 1.06862 2.58609 1.00308 2.35016 1.00011C2.11422 0.997129 1.88172 1.05681 1.6764 1.17307C1.47107 1.28932 1.30028 1.45798 1.18144 1.66182C1.06261 1.86567 0.999998 2.09739 1 2.33335V10.3333C0.999998 10.5693 1.06261 10.801 1.18144 11.0049C1.30028 11.2087 1.47107 11.3774 1.6764 11.4936C1.88172 11.6099 2.11422 11.6696 2.35016 11.6666C2.58609 11.6636 2.81701 11.5981 3.01933 11.4767L9.684 7.47801C9.88185 7.3598 10.0457 7.19233 10.1595 6.99193C10.2733 6.79153 10.3333 6.56505 10.3335 6.33458C10.3337 6.10411 10.2741 5.87752 10.1607 5.67692C10.0472 5.47633 9.88364 5.30857 9.686 5.19001L3.01933 1.19001Z"
 					/>
 				</svg>
 			{/snippet}
-			Run
+			Schritt
 		</Button>
-	{/if}
 
-	<Button variant="ghost" onclick={onstep} disabled={blocked}>
-		{#snippet icon()}
-			<svg
-				width="12.5"
-				height="11.3"
-				viewBox="0 0 14 12.6667"
-				fill="none"
-				stroke="currentColor"
-				stroke-width="2"
-				stroke-linecap="round"
-				stroke-linejoin="round"
-				aria-hidden="true"
-			>
-				<path d="M13 1V11.6667" />
-				<path
-					d="M3.01933 1.19001C2.81701 1.06862 2.58609 1.00308 2.35016 1.00011C2.11422 0.997129 1.88172 1.05681 1.6764 1.17307C1.47107 1.28932 1.30028 1.45798 1.18144 1.66182C1.06261 1.86567 0.999998 2.09739 1 2.33335V10.3333C0.999998 10.5693 1.06261 10.801 1.18144 11.0049C1.30028 11.2087 1.47107 11.3774 1.6764 11.4936C1.88172 11.6099 2.11422 11.6696 2.35016 11.6666C2.58609 11.6636 2.81701 11.5981 3.01933 11.4767L9.684 7.47801C9.88185 7.3598 10.0457 7.19233 10.1595 6.99193C10.2733 6.79153 10.3333 6.56505 10.3335 6.33458C10.3337 6.10411 10.2741 5.87752 10.1607 5.67692C10.0472 5.47633 9.88364 5.30857 9.686 5.19001L3.01933 1.19001Z"
-				/>
-			</svg>
-		{/snippet}
-		Schritt
-	</Button>
-
-	<Button variant="ghost" onclick={onreset}>
-		{#snippet icon()}
-			<svg
-				width="14"
-				height="14"
-				viewBox="0 0 16 16"
-				fill="none"
-				stroke="currentColor"
-				stroke-width="2"
-				stroke-linecap="round"
-				stroke-linejoin="round"
-				aria-hidden="true"
-			>
-				<path
-					d="M2 8C2 9.18669 2.35189 10.3467 3.01118 11.3334C3.67047 12.3201 4.60754 13.0892 5.7039 13.5433C6.80026 13.9974 8.00666 14.1162 9.17054 13.8847C10.3344 13.6532 11.4035 13.0818 12.2426 12.2426C13.0818 11.4035 13.6532 10.3344 13.8847 9.17054C14.1162 8.00666 13.9974 6.80026 13.5433 5.7039C13.0892 4.60754 12.3201 3.67047 11.3334 3.01118C10.3467 2.35189 9.18669 2 8 2C6.32263 2.00631 4.71265 2.66082 3.50667 3.82667L2 5.33333"
-				/>
-				<path d="M2 2V5.33333H5.33333" />
-			</svg>
-		{/snippet}
-		Reset
-	</Button>
+		<Button variant="ghost" onclick={onreset}>
+			{#snippet icon()}
+				<svg
+						width="14"
+						height="14"
+						viewBox="0 0 16 16"
+						fill="none"
+						stroke="currentColor"
+						stroke-width="2"
+						stroke-linecap="round"
+						stroke-linejoin="round"
+						aria-hidden="true"
+				>
+					<path
+							d="M2 8C2 9.18669 2.35189 10.3467 3.01118 11.3334C3.67047 12.3201 4.60754 13.0892 5.7039 13.5433C6.80026 13.9974 8.00666 14.1162 9.17054 13.8847C10.3344 13.6532 11.4035 13.0818 12.2426 12.2426C13.0818 11.4035 13.6532 10.3344 13.8847 9.17054C14.1162 8.00666 13.9974 6.80026 13.5433 5.7039C13.0892 4.60754 12.3201 3.67047 11.3334 3.01118C10.3467 2.35189 9.18669 2 8 2C6.32263 2.00631 4.71265 2.66082 3.50667 3.82667L2 5.33333"
+					/>
+					<path d="M2 2V5.33333H5.33333" />
+				</svg>
+			{/snippet}
+			Reset
+		</Button>
+	</div>
 
 	<div class="readout">
 		<!--
@@ -221,8 +223,10 @@
 	.controls {
 		display: flex;
 		align-items: center;
-		gap: 8px;
+		gap: 4px;
 		flex-wrap: wrap;
+		justify-content: space-between;
+		width: 100%;
 	}
 
 	/*
@@ -232,21 +236,31 @@
 	*/
 	.controls :global(.btn) {
 		gap: 9px;
-		padding: 8px 13px;
+		padding: 12px 13px;
 		border-radius: 8px;
 		font-size: 0.8125rem;
 		font-weight: 500;
+		/*height: 100%;*/
 	}
 
 	.controls :global(.btn-primary) {
 		border: 1px solid transparent;
+		padding: 11px 13px;
+	}
+
+	.controls-wrapper {
+		/*height: 100%;*/
 	}
 
 	.readout {
 		margin-left: auto;
 		display: flex;
 		align-items: center;
-		gap: 30px;
+		gap: 18px;
+		padding: 11px 13px;
+		border: 1px solid var(--btn-ghost-border);
+		border-radius: 8px;
+		/*height: 100%;*/
 	}
 
 	.gauge {

@@ -367,19 +367,21 @@
 				</div>
 			</div>
 
-			<RunControls
-				{running}
-				steps={hud.steps}
-				energy={level.options.energy}
-				memory={level.options.memory}
-				{memoryUsed}
-				blocked={overMemory}
-				bind:speed={view.speed}
-				onrun={run}
-				onstep={step}
-				onstop={stop}
-				onreset={reset}
-			/>
+			<div class="controls-cell">
+				<RunControls
+					{running}
+					steps={hud.steps}
+					energy={level.options.energy}
+					memory={level.options.memory}
+					{memoryUsed}
+					blocked={overMemory}
+					bind:speed={view.speed}
+					onrun={run}
+					onstep={step}
+					onstop={stop}
+					onreset={reset}
+				/>
+			</div>
 		</section>
 
 		<section class="arena">
@@ -398,13 +400,13 @@
 		</section>
 	</main>
 
-	<footer class="footer">
-		<p class="hint">
-			<Kbd>⌘</Kbd>
-			<Kbd>↵</Kbd>
-			<span>run</span>
-		</p>
-	</footer>
+<!--	<footer class="footer">-->
+<!--		<p class="hint">-->
+<!--			<Kbd>⌘</Kbd>-->
+<!--			<Kbd>↵</Kbd>-->
+<!--			<span>run</span>-->
+<!--		</p>-->
+<!--	</footer>-->
 </div>
 
 <style>
@@ -466,26 +468,41 @@
 
 	/* ── Main split ─────────────────────────────────────────── */
 
+	/*
+		Four cells, not two columns of two: the bottom row is shared, so the
+		control strip and the goals panel are always exactly as tall as each
+		other — however many goals wrap onto a second line — and the editor and
+		the arena above them end at the same y.
+	*/
 	.stage {
 		flex: 1;
 		min-height: 0;
 		display: grid;
-		grid-template-columns: minmax(360px, 460px) 1fr;
+		grid-template-columns: 480px 1fr;
+		grid-template-rows: 48px minmax(0, 1fr);
+		grid-template-areas:
+			'controls goals'
+			'editor viewport';
 		gap: 16px;
 		padding: 16px;
 	}
 
-	.column {
-		display: flex;
-		flex-direction: column;
-		gap: 12px;
-		min-height: 0;
+	/* The sections group the markup; the grid places their children. */
+	.column,
+	.arena {
+		display: contents;
 	}
 
 	.editor {
+		grid-area: editor;
 		position: relative;
-		flex: 1;
 		min-height: 0;
+	}
+
+	.controls-cell {
+		grid-area: controls;
+		display: flex;
+		align-items: stretch;
 	}
 
 	/* Bottom-left of the editor, clear of the caret and the control row. */
@@ -518,20 +535,13 @@
 		--toast: var(--success);
 	}
 
-	.arena {
-		display: flex;
-		flex-direction: column;
-		gap: 16px;
-		min-height: 0;
-	}
-
 	/*
 		No panel chrome: the world is the scene and nothing else. The background
 		only shows through before the first frame is painted.
 	*/
 	.viewport {
+		grid-area: viewport;
 		position: relative;
-		flex: 1;
 		min-height: 0;
 		background: var(--accent-soft);
 		border-radius: var(--radius);
@@ -545,12 +555,13 @@
 	}
 
 	.goals {
+		grid-area: goals;
 		display: flex;
 		flex-wrap: wrap;
 		align-items: center;
 		gap: 12px 36px;
 		margin: 0;
-		padding: 18px 24px;
+		padding: 8px 24px;
 		list-style: none;
 	}
 
@@ -611,10 +622,15 @@
 
 		.stage {
 			grid-template-columns: 1fr;
+			grid-template-rows: auto;
+			grid-template-areas:
+				'editor'
+				'controls'
+				'viewport'
+				'goals';
 		}
 
 		.editor {
-			flex: none;
 			height: 360px;
 		}
 

@@ -21,7 +21,12 @@ import { createKeycard } from '$lib/game/models/keycard'
 import { COLORS, TileFactory } from '$lib/game/models/tiles'
 
 
-const ROBOT_SCALE = 1.5
+/**
+ * Tug is authored wide and squat — 0.88 across the tracks at scale 1, against
+ * the 1-unit tile. This keeps the tracks inside the tile with a little margin
+ * and leaves the loader claws reaching ahead of it, which is where they belong.
+ */
+const ROBOT_SCALE = 0.95
 
 /** The ground the world sits on, and the colour behind it. */
 const BASE_COLOR = 0xcae5c5
@@ -207,9 +212,11 @@ export class World implements EventPlayer {
         this.buildSensors(level)
 
         this.roboter = createRoboter({
+            // Cream shell and mint lenses are Tug's own palette; the accent is
+            // overridden to Dewy's orange so the stripe, hubs and claws still
+            // carry the product colour.
             scale: ROBOT_SCALE,
-            bodyColor: 0xFF9600,
-            accentColor: 0x402700,
+            accentColor: 0xFF9600,
         })
         this.actorRoot.add(this.roboter.group)
 
@@ -232,7 +239,7 @@ export class World implements EventPlayer {
             if (crate.carried) {
                 robot.carrySlot.attach(mesh)
                 mesh.position.set(0, 0, 0)
-                robot.pickUp()
+                robot.pickUp(true)   // snap: applyState animates nothing
             } else {
                 this.itemRoot.attach(mesh)
                 mesh.position.set(crate.position.x, 0, crate.position.y)

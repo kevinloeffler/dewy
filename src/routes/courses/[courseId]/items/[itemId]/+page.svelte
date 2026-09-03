@@ -18,6 +18,13 @@
 	);
 	const isComplete = $derived(data.progress.state[item.id] === 'complete');
 
+	// The next item can still be locked while this one is open — an ordered stage
+	// only hands it over once this level is recorded as complete. `load` re-runs
+	// after `record`, so this flips on its own the moment the solution lands.
+	const nextLocked = $derived(
+		context.nextItemId ? (data.progress.state[context.nextItemId] ?? 'locked') === 'locked' : false
+	);
+
 	// Levels record completion without navigating: the student should get to
 	// watch their program finish. Submitted from `oncomplete` rather than a
 	// click, which is the same trick `/designer/[id]` uses to save.
@@ -105,14 +112,40 @@
 				{#if prevHref}
 					<a class="btn btn-ghost" href={prevHref}>Zurück</a>
 				{/if}
-				<a
-					class="btn"
-					class:btn-primary={isComplete || justSolved}
-					class:btn-ghost={!(isComplete || justSolved)}
-					href={nextHref}
-				>
-					{context.nextItemId ? 'Weiter' : 'Fertig'}
-				</a>
+				{#if nextLocked}
+					<!-- A span, not a disabled anchor: there is no such thing, and this
+					     one must not navigate. -->
+					<span
+						class="btn btn-ghost is-locked"
+						aria-disabled="true"
+						title="Löse dieses Level, um weiterzumachen."
+					>
+						<svg
+							width="14"
+							height="14"
+							viewBox="0 0 16 16"
+							fill="none"
+							stroke="currentColor"
+							stroke-width="1.6"
+							stroke-linecap="round"
+							stroke-linejoin="round"
+							aria-hidden="true"
+						>
+							<rect x="2.5" y="7" width="11" height="7.5" rx="1.5" />
+							<path d="M5 7V4.75a3 3 0 0 1 6 0V7" />
+						</svg>
+						Weiter
+					</span>
+				{:else}
+					<a
+						class="btn"
+						class:btn-primary={isComplete || justSolved}
+						class:btn-ghost={!(isComplete || justSolved)}
+						href={nextHref}
+					>
+						{context.nextItemId ? 'Weiter' : 'Fertig'}
+					</a>
+				{/if}
 			{/snippet}
 		</LevelPlayer>
 	{/key}
@@ -168,5 +201,11 @@
 	.done {
 		font-size: 13px;
 		color: var(--accent);
+	}
+
+	/* `.btn:disabled` only reaches real buttons; this is the span's version. */
+	.btn.is-locked {
+		opacity: 0.5;
+		cursor: not-allowed;
 	}
 </style>
