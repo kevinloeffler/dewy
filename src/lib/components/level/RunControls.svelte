@@ -125,7 +125,7 @@
 						<rect x="0.5" y="0.5" width="11" height="11" rx="2" fill="currentColor" />
 					</svg>
 				{/snippet}
-				Stop
+				Stopp
 			</Button>
 		{:else}
 			<Button onclick={onrun} disabled={blocked}>
@@ -137,7 +137,7 @@
 						/>
 					</svg>
 				{/snippet}
-				Run
+				Start
 			</Button>
 		{/if}
 
@@ -182,7 +182,7 @@
 					<path d="M2 2V5.33333H5.33333" />
 				</svg>
 			{/snippet}
-			Reset
+			Zurücksetzen
 		</Button>
 	</div>
 

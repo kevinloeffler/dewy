@@ -143,15 +143,15 @@
 
 	{#if selected === 'select'}
 		<div class="group options">
-			<h3 class="group-title">Selection</h3>
+			<h3 class="group-title">Auswahl</h3>
 
 			{#if selection && selectedThing}
 				<p class="selected-thing">
 					{selection.label}
 					{#if selection.linked.length > 0}
-						<span class="count">drives {selection.linked.length}</span>
+						<span class="count">steuert {selection.linked.length}</span>
 					{:else if selection.coords.length > 1}
-						<span class="count">{selection.coords.length} tiles</span>
+						<span class="count">{selection.coords.length} Felder</span>
 					{/if}
 				</p>
 
@@ -160,16 +160,16 @@
 				<OptionFields {level} id={selectedThing.id} options={selectedThing.options} onchange={onedit} />
 
 				{#if selection.kind === 'robot'}
-					<p class="hint">Every level keeps its robot — move it with the Robot start brush.</p>
+					<p class="hint">Jedes Level behält seinen Roboter — verschieb ihn mit dem Pinsel „Roboter-Start“.</p>
 				{:else}
 					<button class="btn btn-ghost danger-btn" type="button" onclick={ondelete}>
-						Delete (⌫)
+						Löschen (⌫)
 					</button>
 				{/if}
 			{:else}
 				<p class="hint">
-					Click a thing to select it. A belt, a door or a wall comes as one, and a switch
-					brings along whatever it drives.
+					Klick etwas an, um es auszuwählen. Ein Band, eine Tür oder eine Wand kommt als Ganzes, und
+					ein Schalter bringt mit, was er steuert.
 				</p>
 			{/if}
 		</div>
@@ -177,13 +177,13 @@
 
 	{#if optionKeys.length > 0}
 		<div class="group options">
-			<h3 class="group-title">{BRUSH_LABELS[selected]} options</h3>
+			<h3 class="group-title">Optionen für {BRUSH_LABELS[selected]}</h3>
 
 			<OptionFields {level} id={selected} {options} onchange={changeOption} />
 		</div>
 	{/if}
 
-	<p class="hint footnote">Drag to paint · right-click to erase</p>
+	<p class="hint footnote">Ziehen zum Malen · Rechtsklick zum Radieren</p>
 </div>
 
 <style>

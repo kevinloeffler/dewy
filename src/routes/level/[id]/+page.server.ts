@@ -15,7 +15,7 @@ export const load: PageServerLoad = async ({ params }) => {
 	if (builtIn) return { level: builtIn };
 
 	const level = await findLevel(params.id);
-	if (!level) error(404, 'No such level.');
+	if (!level) error(404, 'Dieses Level gibt es nicht.');
 
 	return { level };
 };

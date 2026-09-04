@@ -132,7 +132,7 @@
 </script>
 
 <svelte:head>
-	<title>{draft.level.name} · Level designer</title>
+	<title>{draft.level.name} · Level-Designer</title>
 </svelte:head>
 
 <svelte:window {onkeydown} />
@@ -144,13 +144,13 @@
 				<a class="back" href="/admin/courses/{data.owner.courseId}">‹ {data.owner.courseTitle}</a>
 				<span class="stage-crumb">{data.owner.stageTitle}</span>
 			{:else}
-				<a class="back" href="/admin/courses">‹ Courses</a>
+				<a class="back" href="/admin/courses">‹ Kurse</a>
 			{/if}
 			<span class="name">{draft.level.name}</span>
 			{#if !canEdit}
-				<span class="chip">Read-only</span>
+				<span class="chip">Nur lesen</span>
 			{:else if draft.dirty}
-				<span class="chip">Unsaved</span>
+				<span class="chip">Ungespeichert</span>
 			{/if}
 		{/snippet}
 
@@ -159,29 +159,31 @@
 				<button
 					class="btn btn-ghost icon"
 					type="button"
-					title="Undo (⌘Z)"
-					aria-label="Undo"
+					title="Rückgängig (⌘Z)"
+					aria-label="Rückgängig"
 					disabled={!draft.canUndo}
 					onclick={() => draft.undo()}>⟲</button
 				>
 				<button
 					class="btn btn-ghost icon"
 					type="button"
-					title="Redo (⇧⌘Z)"
-					aria-label="Redo"
+					title="Wiederholen (⇧⌘Z)"
+					aria-label="Wiederholen"
 					disabled={!draft.canRedo}
 					onclick={() => draft.redo()}>⟳</button
 				>
 			</div>
 
 			<span class="problems" class:bad={problems.length > 0}>
-				{problems.length === 0 ? 'No problems' : `${problems.length} problem${problems.length === 1 ? '' : 's'}`}
+				{problems.length === 0
+					? 'Keine Probleme'
+					: `${problems.length} ${problems.length === 1 ? 'Problem' : 'Probleme'}`}
 			</span>
 
-			<button class="btn btn-ghost" type="button" onclick={testPlay}>Test play</button>
+			<button class="btn btn-ghost" type="button" onclick={testPlay}>Testen</button>
 
 			{#if canEdit}
-				<button class="btn btn-ghost" type="button" onclick={() => (sharing = true)}>Share</button>
+				<button class="btn btn-ghost" type="button" onclick={() => (sharing = true)}>Teilen</button>
 			{/if}
 
 			<form
@@ -213,13 +215,13 @@
 						playAfterSave = false;
 						saveError =
 							result.type === 'failure'
-								? String(result.data?.message ?? 'Save failed.')
-								: 'Save failed.';
+								? String(result.data?.message ?? 'Speichern fehlgeschlagen.')
+								: 'Speichern fehlgeschlagen.';
 					};
 				}}
 			>
 				<button class="btn btn-primary" type="submit" disabled={saving || !canEdit}>
-					{saving ? 'Saving…' : 'Save'}
+					{saving ? 'Speichern…' : 'Speichern'}
 				</button>
 			</form>
 		{/snippet}
@@ -228,8 +230,9 @@
 	{#if !canEdit}
 		<div class="notice">
 			<Callout>
-				<strong>This level belongs to another teacher.</strong> You are looking at the live original,
-				so their edits show here. To change it, add a copy to one of your stages instead of a link.
+				<strong>Dieses Level gehört einer anderen Lehrperson.</strong> Du siehst das Live-Original,
+				spätere Änderungen erscheinen also auch hier. Um es zu ändern, füg deinem Kapitel eine Kopie
+				statt einer Verknüpfung hinzu.
 			</Callout>
 		</div>
 	{/if}
@@ -269,22 +272,23 @@
 			</Panel>
 
 			<Panel padding="sm">
-				<h3 class="panel-title">Goals</h3>
+				<h3 class="panel-title">Ziele</h3>
 				<GoalEditor {draft} />
 			</Panel>
 
 			<Panel padding="sm">
-				<h3 class="panel-title">Problems</h3>
+				<h3 class="panel-title">Probleme</h3>
 				<ValidationList {problems} />
 			</Panel>
 		</aside>
 	</div>
 </div>
 
-<Modal bind:open={sharing} title="Share “{draft.level.name}”">
+<Modal bind:open={sharing} title="„{draft.level.name}“ teilen">
 	<p class="share-note">
-		A shared teacher can add this level to their own stages — as a <strong>live link</strong>, which
-		keeps taking your edits, or as their own editable copy. Either way they cannot change this one.
+		Eine Lehrperson, mit der du teilst, kann dieses Level in ihre eigenen Kapitel aufnehmen — als
+		<strong>Live-Verknüpfung</strong>, die deine Änderungen weiterhin übernimmt, oder als eigene,
+		bearbeitbare Kopie. So oder so kann sie dieses hier nicht ändern.
 	</p>
 
 	{#if data.shares.length > 0}
@@ -294,23 +298,23 @@
 					<span>{row.name}</span>
 					<form method="POST" action="?/unshare" use:enhance>
 						<input type="hidden" name="teacherId" value={row.teacherId} />
-						<button class="btn btn-ghost" type="submit">Revoke</button>
+						<button class="btn btn-ghost" type="submit">Entziehen</button>
 					</form>
 				</li>
 			{/each}
 		</ul>
 	{:else}
-		<p class="share-note">Not shared with anyone yet.</p>
+		<p class="share-note">Noch mit niemandem geteilt.</p>
 	{/if}
 
 	{#if shareable.length > 0}
 		<form class="share-add" method="POST" action="?/share" use:enhance>
-			<select class="field" name="teacherId" aria-label="Teacher to share with">
+			<select class="field" name="teacherId" aria-label="Lehrperson zum Teilen">
 				{#each shareable as teacher (teacher.id)}
 					<option value={teacher.id}>{teacher.name}</option>
 				{/each}
 			</select>
-			<Button type="submit" variant="ghost">Share</Button>
+			<Button type="submit" variant="ghost">Teilen</Button>
 		</form>
 	{/if}
 </Modal>

@@ -291,7 +291,7 @@
 	function starterCode(target: Level): string {
 		const lines = [`// ${target.name}`];
 		if (target.description) lines.push(`// ${target.description}`);
-		lines.push('//', '// Write your program below, then press Run.', '');
+		lines.push('//', '// Schreib dein Programm hier unten und drück dann auf Start.', '');
 		return lines.join('\n');
 	}
 

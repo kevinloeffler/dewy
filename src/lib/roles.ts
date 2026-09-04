@@ -24,6 +24,13 @@ export function isRole(value: unknown): value is Role {
 	return typeof value === 'string' && (ROLES as readonly string[]).includes(value);
 }
 
+/** What each role is called in the UI. The stored values stay English. */
+export const ROLE_LABELS: Record<Role, string> = {
+	admin: 'Administration',
+	teacher: 'Lehrperson',
+	student: 'Schüler/in'
+};
+
 /**
  * The role on a session user, normalised.
  *

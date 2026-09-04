@@ -39,8 +39,8 @@ export type ClassDetail = ClassSummary & {
 
 function cleanName(value: string): string {
 	const name = value.trim().replace(/\s+/g, ' ');
-	if (!name) throw new InvalidClass(['A class needs a name.']);
-	if (name.length > 80) throw new InvalidClass(['That name is too long.']);
+	if (!name) throw new InvalidClass(['Eine Klasse braucht einen Namen.']);
+	if (name.length > 80) throw new InvalidClass(['Dieser Name ist zu lang.']);
 	return name;
 }
 
@@ -203,7 +203,7 @@ export async function deleteClass(actor: Actor, classId: string): Promise<void> 
 		.where(eq(classMember.classId, classId))
 		.get();
 	if (member) {
-		throw new InvalidClass(['That class still has students — archive it instead.']);
+		throw new InvalidClass(['In dieser Klasse sind noch Schüler/innen — archivier sie stattdessen.']);
 	}
 
 	await db.delete(schoolClass).where(eq(schoolClass.id, classId));
@@ -221,7 +221,7 @@ export async function addMembers(actor: Actor, classId: string, userIds: string[
 		.where(and(inArray(user.id, userIds), eq(user.role, 'student')));
 
 	if (students.length !== userIds.length) {
-		throw new Forbidden('Only students can be added to a class.');
+		throw new Forbidden('Nur Schüler/innen können einer Klasse hinzugefügt werden.');
 	}
 
 	await db

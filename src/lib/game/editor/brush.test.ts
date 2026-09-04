@@ -90,7 +90,7 @@ describe('buildBrush', () => {
             y: 1,
         });
 
-        expect(validateLevel(level)).toContain('the switch at 1,1 is not linked to anything');
+        expect(validateLevel(level)).toContain('Der Schalter bei 1,1 ist mit nichts verknüpft');
     });
 
     it('threads options into the tile it builds', () => {

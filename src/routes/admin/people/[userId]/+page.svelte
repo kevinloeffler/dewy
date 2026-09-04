@@ -2,7 +2,7 @@
 	import { untrack } from 'svelte';
 	import { enhance } from '$app/forms';
 	import { Button, Callout, Panel } from '$lib/components/index.js';
-	import { ROLES } from '$lib/roles';
+	import { ROLES, ROLE_LABELS } from '$lib/roles';
 	import type { ActionData, PageServerData } from './$types';
 
 	let { data, form }: { data: PageServerData; form: ActionData } = $props();
@@ -18,31 +18,31 @@
 	const memberOf = $derived(new Set(data.person.classes.map((row) => row.id)));
 	const joinable = $derived(data.classes.filter((row) => !memberOf.has(row.id)));
 
-	const dateFormat = new Intl.DateTimeFormat(undefined, { dateStyle: 'medium' });
+	const dateFormat = new Intl.DateTimeFormat('de-CH', { dateStyle: 'medium' });
 </script>
 
 <svelte:head>
-	<title>{data.person.name} · People · Dewy</title>
+	<title>{data.person.name} · Benutzer · Dewy</title>
 </svelte:head>
 
 <main class="page">
 	<div class="head">
-		<a class="back" href="/admin/people">‹ People</a>
+		<a class="back" href="/admin/people">‹ Benutzer</a>
 	</div>
 
 	<h1 class="title">
 		{data.person.name}
-		<span class="chip">{data.person.role}</span>
-		{#if data.person.archivedAt}<span class="chip">Archived</span>{/if}
+		<span class="chip">{ROLE_LABELS[data.person.role]}</span>
+		{#if data.person.archivedAt}<span class="chip">Archiviert</span>{/if}
 	</h1>
 
 	<p class="meta">
-		Joined {dateFormat.format(data.person.createdAt)}
-		· {data.person.completedItems} completed
-		{data.person.completedItems === 1 ? 'item' : 'items'}
+		Erstellt am {dateFormat.format(data.person.createdAt)}
+		· {data.person.completedItems}
+		{data.person.completedItems === 1 ? 'Element' : 'Elemente'} erledigt
 		· {data.person.lastSignInAt
-			? `last signed in ${dateFormat.format(data.person.lastSignInAt)}`
-			: 'never signed in'}
+			? `zuletzt angemeldet am ${dateFormat.format(data.person.lastSignInAt)}`
+			: 'noch nie angemeldet'}
 	</p>
 
 	{#if message}
@@ -56,24 +56,24 @@
 			<input class="field" id="name" name="name" bind:value={name} />
 
 			{#if data.person.role === 'student'}
-				<label class="field-label spaced" for="username">Username</label>
+				<label class="field-label spaced" for="username">Benutzername</label>
 				<input class="field" id="username" name="username" bind:value={username} autocapitalize="none" />
 				<p class="field-hint">
-					Changing this changes how they sign in. Their password is unaffected.
+					Das ändert, womit sich die Person anmeldet. Das Passwort bleibt gleich.
 				</p>
 			{:else}
-				<label class="field-label spaced" for="email">Email</label>
+				<label class="field-label spaced" for="email">E-Mail</label>
 				<input class="field" id="email" name="email" type="email" bind:value={email} />
 			{/if}
 
-			<Button type="submit" variant="ghost">Save</Button>
+			<Button type="submit" variant="ghost">Speichern</Button>
 		</form>
 	</Panel>
 
-	<h2 class="section-title">Classes</h2>
+	<h2 class="section-title">Klassen</h2>
 	<Panel>
 		{#if data.person.classes.length === 0}
-			<p class="empty">Not in any class.</p>
+			<p class="empty">In keiner Klasse.</p>
 		{:else}
 			<ul class="chips">
 				{#each data.person.classes as row (row.id)}
@@ -81,7 +81,7 @@
 						<a class="chip" href="/admin/classes/{row.id}">{row.name}</a>
 						<form method="POST" action="?/removeFromClass" use:enhance>
 							<input type="hidden" name="classId" value={row.id} />
-							<button class="btn btn-ghost" type="submit">Remove</button>
+							<button class="btn btn-ghost" type="submit">Entfernen</button>
 						</form>
 					</li>
 				{/each}
@@ -90,42 +90,43 @@
 
 		{#if data.person.role === 'student' && joinable.length > 0}
 			<form class="inline spaced" method="POST" action="?/addToClass" use:enhance>
-				<select class="field" name="classId" aria-label="Class to join">
+				<select class="field" name="classId" aria-label="Klasse, der beigetreten wird">
 					{#each joinable as row (row.id)}
 						<option value={row.id}>{row.name}</option>
 					{/each}
 				</select>
-				<Button type="submit" variant="ghost">Add to class</Button>
+				<Button type="submit" variant="ghost">Zur Klasse hinzufügen</Button>
 			</form>
 		{/if}
 	</Panel>
 
 	{#if data.isAdmin && !data.isSelf}
-		<h2 class="section-title">Role</h2>
+		<h2 class="section-title">Rolle</h2>
 		<Panel>
 			<form class="inline" method="POST" action="?/setRole" use:enhance>
-				<select class="field" name="role" aria-label="Role">
+				<select class="field" name="role" aria-label="Rolle">
 					{#each ROLES as role (role)}
-						<option value={role} selected={data.person.role === role}>{role}</option>
+						<option value={role} selected={data.person.role === role}>{ROLE_LABELS[role]}</option>
 					{/each}
 				</select>
-				<Button type="submit" variant="ghost">Change role</Button>
+				<Button type="submit" variant="ghost">Rolle ändern</Button>
 			</form>
 			<p class="field-hint">
-				A teacher can create and archive students; an admin can do that to teachers too.
+				Eine Lehrperson kann Schüler/innen erstellen und archivieren; die Administration kann das auch
+				mit Lehrpersonen.
 			</p>
 		</Panel>
 	{/if}
 
-	<h2 class="section-title">Access</h2>
+	<h2 class="section-title">Zugang</h2>
 	<Panel>
 		<div class="danger-row">
 			<div>
-				<p class="danger-title">Set a new password</p>
+				<p class="danger-title">Neues Passwort setzen</p>
 				<p class="danger-note">
 					{data.isSelf
-						? 'Choose your own. You stay signed in here.'
-						: 'Choose it yourself and tell them. Signs them out everywhere else.'}
+						? 'Wähl dein eigenes. Du bleibst hier angemeldet.'
+						: 'Wähl es selbst und teile es der Person mit. Sie wird überall abgemeldet.'}
 				</p>
 			</div>
 			<form class="inline" method="POST" action="?/setPassword" use:enhance>
@@ -133,12 +134,12 @@
 					class="field"
 					name="password"
 					type="text"
-					placeholder="New password"
+					placeholder="Neues Passwort"
 					minlength="8"
 					autocomplete="off"
 					required
 				/>
-				<Button type="submit" variant="ghost">{saved ? 'Saved' : 'Set'}</Button>
+				<Button type="submit" variant="ghost">{saved ? 'Gespeichert' : 'Setzen'}</Button>
 			</form>
 		</div>
 
@@ -146,17 +147,17 @@
 			<div class="danger-row">
 				<div>
 					<p class="danger-title">
-						{data.person.archivedAt ? 'Restore account' : 'Archive account'}
+						{data.person.archivedAt ? 'Konto wiederherstellen' : 'Konto archivieren'}
 					</p>
 					<p class="danger-note">
-						Archiving blocks sign-in and ends their sessions. Everything they have done stays —
-						restoring puts them back exactly where they were.
+						Archivieren sperrt die Anmeldung und beendet alle Sitzungen. Alles Erarbeitete bleibt
+						erhalten — beim Wiederherstellen geht es genau dort weiter.
 					</p>
 				</div>
 				<form method="POST" action="?/archive" use:enhance>
 					<input type="hidden" name="archived" value={data.person.archivedAt ? 'false' : 'true'} />
 					<button class="btn btn-ghost" class:danger={!data.person.archivedAt} type="submit">
-						{data.person.archivedAt ? 'Restore' : 'Archive'}
+						{data.person.archivedAt ? 'Wiederherstellen' : 'Archivieren'}
 					</button>
 				</form>
 			</div>

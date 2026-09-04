@@ -17,19 +17,19 @@
 	{#snippet left()}
 		<a class="topbar-wordmark" href="/courses">Dewy</a>
 		<span class="divider-v"></span>
-		<span class="chip">Course</span>
+		<span class="chip">Kurs</span>
 		<span class="mission">{course.title}</span>
 	{/snippet}
 	{#snippet right()}
 		{#if data.signedIn}
-			<span class="hud-label">Progress</span>
+			<span class="hud-label">Fortschritt</span>
 			<span class="chip">{progress.completedCount} / {progress.total}</span>
 		{:else}
-			<a class="btn btn-ghost" href="/login">Sign in to save progress</a>
+			<a class="btn btn-ghost" href="/login">Anmelden, um den Fortschritt zu speichern</a>
 		{/if}
 		{#if progress.nextItemId}
 			<a class="btn btn-primary" href="/courses/{course.id}/items/{progress.nextItemId}">
-				{progress.completedCount > 0 ? 'Continue' : 'Start'}
+				{progress.completedCount > 0 ? 'Weiter' : 'Starten'}
 			</a>
 		{/if}
 	{/snippet}
@@ -45,8 +45,8 @@
 			<div class="bar">
 				<Progress
 					value={progress.completedCount / progress.total}
-					label="Course progress"
-					sublabel="{progress.completedCount} / {progress.total} complete"
+					label="Kursfortschritt"
+					sublabel="{progress.completedCount} / {progress.total} erledigt"
 				/>
 			</div>
 		{/if}
@@ -59,9 +59,9 @@
 				<span class="stage-index">{stageIndex + 1}</span>
 				{stage.title}
 				{#if lock}
-					<span class="stage-lock">🔒 Locked</span>
+					<span class="stage-lock">🔒 Gesperrt</span>
 				{:else if !stage.ordered}
-					<span class="stage-tag">Any order</span>
+					<span class="stage-tag">Beliebige Reihenfolge</span>
 				{/if}
 			</h2>
 			{#if stage.description}
@@ -69,13 +69,15 @@
 			{/if}
 			{#if lock}
 				<p class="stage-gate">
-					Finish {lock.remaining === 1 ? 'the last level' : `all ${lock.remaining} remaining levels`}
-					in “{lock.requiredStageTitle}” to open this stage.
+					Schliess {lock.remaining === 1
+						? 'das letzte Level'
+						: `alle ${lock.remaining} verbleibenden Levels`} in „{lock.requiredStageTitle}“ ab, um
+					dieses Kapitel zu öffnen.
 				</p>
 			{/if}
 
 			{#if stage.items.length === 0}
-				<Panel><p class="empty">Nothing in this stage yet.</p></Panel>
+				<Panel><p class="empty">In diesem Kapitel ist noch nichts drin.</p></Panel>
 			{:else}
 				<ol class="items">
 					{#each stage.items as item (item.id)}
@@ -91,11 +93,11 @@
 											>
 											<p class="item-meta">
 												{#if lock}
-													Locked until “{lock.requiredStageTitle}” is finished.
+													Gesperrt, bis „{lock.requiredStageTitle}“ abgeschlossen ist.
 												{:else if stage.ordered}
-													Finish the item before this one to unlock it.
+													Schliess das Element davor ab, um dieses freizuschalten.
 												{:else}
-													Finish the stage before this one to unlock it.
+													Schliess das Kapitel davor ab, um dieses freizuschalten.
 												{/if}
 											</p>
 										</div>
@@ -113,7 +115,7 @@
 												{#if item.kind === 'theory'}
 													{markdownExcerpt(item.body, 90)}
 												{:else}
-													{item.description ?? 'Write a program to solve it.'}
+													{item.description ?? 'Schreib ein Programm, das es löst.'}
 												{/if}
 											</p>
 										</div>

@@ -7,9 +7,20 @@
 		children: Snippet;
 		/** Buttons for the footer. Left out entirely if the body carries its own form. */
 		actions?: Snippet;
+		/**
+		 * Called whenever the dialog closes, Escape and the backdrop included.
+		 * For callers whose `open` is derived from something richer than a
+		 * boolean — "which stage am I adding to" — and so cannot be bound.
+		 */
+		onclose?: () => void;
 	}
 
-	let { open = $bindable(false), title, children, actions }: Props = $props();
+	let { open = $bindable(false), title, children, actions, onclose }: Props = $props();
+
+	function close() {
+		open = false;
+		onclose?.();
+	}
 
 	let dialog = $state<HTMLDialogElement | undefined>();
 
@@ -22,10 +33,12 @@
 	});
 </script>
 
-<dialog bind:this={dialog} class="modal" onclose={() => (open = false)}>
+<dialog bind:this={dialog} class="modal" onclose={close}>
 	<div class="modal-head">
 		<h2 class="modal-title">{title}</h2>
-		<button class="modal-close" type="button" aria-label="Close" onclick={() => (open = false)}>
+		<!-- Setting `open` routes through `dialog.close()`, so `onclose` fires once
+		     whichever way the dialog was dismissed. -->
+		<button class="modal-close" type="button" aria-label="Schliessen" onclick={() => (open = false)}>
 			×
 		</button>
 	</div>

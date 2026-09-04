@@ -31,20 +31,20 @@
 </script>
 
 <svelte:head>
-	<title>Add people · Dewy</title>
+	<title>Benutzer hinzufügen · Dewy</title>
 </svelte:head>
 
 <main class="page">
 	{#if credentials.length > 0}
 		<CredentialsSheet
 			credentials={credentials}
-			heading={createdIn ? `New accounts · ${className}` : 'New account'}
+			heading={createdIn ? `Neue Konten · ${className}` : 'Neues Konto'}
 		/>
 	{/if}
 
 	{#if failed.length > 0}
 		<Callout variant="danger">
-			<strong>{failed.length} could not be created.</strong>
+			<strong>{failed.length} konnten nicht erstellt werden.</strong>
 			<ul class="failed">
 				{#each failed as row (row.name + row.reason)}
 					<li>{row.name} — {row.reason}</li>
@@ -53,7 +53,7 @@
 		</Callout>
 	{/if}
 
-	<h1 class="title">Add students</h1>
+	<h1 class="title">Schüler/innen hinzufügen</h1>
 
 	<Panel>
 		<form
@@ -74,18 +74,18 @@
 		>
 			{#if data.classes.length === 0}
 				<Callout variant="warn">
-					You have no classes yet. <a href="/admin/classes">Create one first</a> — every student
-					is added to a class, which is what gives them their courses.
+					Du hast noch keine Klassen. <a href="/admin/classes">Leg zuerst eine an</a> — jede Schülerin
+					und jeder Schüler kommt in eine Klasse, und darüber erhalten sie ihre Kurse.
 				</Callout>
 			{:else}
-				<label class="field-label" for="classId">Class</label>
+				<label class="field-label" for="classId">Klasse</label>
 				<select class="field" id="classId" name="classId" bind:value={classId}>
 					{#each data.classes as row (row.id)}
 						<option value={row.id}>{row.name}</option>
 					{/each}
 				</select>
 
-				<label class="field-label spaced" for="roster">Names</label>
+				<label class="field-label spaced" for="roster">Namen</label>
 				<textarea
 					class="field"
 					id="roster"
@@ -95,22 +95,23 @@
 					bind:value={roster}
 				></textarea>
 				<p class="field-hint">
-					One student per line. Usernames and passwords are generated for you. To set a username
-					yourself, put it after a comma: <code>Marie Muster, mmuster</code>
+					Eine Person pro Zeile. Benutzernamen und Passwörter werden automatisch erzeugt. Willst du
+					einen Benutzernamen selbst festlegen, schreib ihn nach einem Komma:
+					<code>Marie Muster, mmuster</code>
 				</p>
 
 				{#if preview.length > 0}
 					<div class="preview">
 						<h2 class="preview-title">
 							{preview.length}
-							{preview.length === 1 ? 'student' : 'students'}
+							{preview.length === 1 ? 'Schüler/in' : 'Schüler/innen'}
 						</h2>
 						<div class="table-wrap">
 							<table class="table">
 								<thead>
 									<tr>
 										<th>Name</th>
-										<th>Username</th>
+										<th>Benutzername</th>
 									</tr>
 								</thead>
 								<tbody>
@@ -132,35 +133,35 @@
 
 				<Button type="submit" disabled={submitting || preview.length === 0}>
 					{submitting
-						? 'Creating…'
-						: `Create ${preview.length || ''} ${preview.length === 1 ? 'account' : 'accounts'}`}
+						? 'Wird erstellt…'
+						: `${preview.length || ''} ${preview.length === 1 ? 'Konto' : 'Konten'} erstellen`}
 				</Button>
 			{/if}
 		</form>
 	</Panel>
 
 	{#if data.canCreateTeachers}
-		<h2 class="section-title">Teachers</h2>
+		<h2 class="section-title">Lehrpersonen</h2>
 		<Panel>
 			{#if !showTeacherForm}
 				<div class="teacher-prompt">
 					<p class="empty">
-						Teachers sign in with a real email address and are created one at a time.
+						Lehrpersonen melden sich mit einer echten E-Mail-Adresse an und werden einzeln erstellt.
 					</p>
-					<Button variant="ghost" onclick={() => (showTeacherForm = true)}>Add a teacher</Button>
+					<Button variant="ghost" onclick={() => (showTeacherForm = true)}>Lehrperson hinzufügen</Button>
 				</div>
 			{:else}
 				<form method="POST" action="?/teacher" use:enhance>
 					<label class="field-label" for="name">Name</label>
 					<input class="field" id="name" name="name" required />
 
-					<label class="field-label spaced" for="email">Email</label>
+					<label class="field-label spaced" for="email">E-Mail</label>
 					<input class="field" id="email" name="email" type="email" required />
 
-					<label class="field-label spaced" for="password">Password</label>
-					<input class="field" id="password" name="password" placeholder="Leave blank to generate one" />
+					<label class="field-label spaced" for="password">Passwort</label>
+					<input class="field" id="password" name="password" placeholder="Leer lassen, um eines zu erzeugen" />
 
-					<Button type="submit">Create teacher</Button>
+					<Button type="submit">Lehrperson erstellen</Button>
 				</form>
 			{/if}
 		</Panel>

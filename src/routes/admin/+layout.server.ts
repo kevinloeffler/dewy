@@ -21,7 +21,7 @@ export const load: LayoutServerLoad = (event) => {
 	}
 
 	if (!isStaff(user)) {
-		error(403, 'This area is for teachers.');
+		error(403, 'Dieser Bereich ist für Lehrpersonen.');
 	}
 
 	return { user, role: roleOf(user) };

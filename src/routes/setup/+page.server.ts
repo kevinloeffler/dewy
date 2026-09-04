@@ -23,22 +23,22 @@ async function userCount(): Promise<number> {
 }
 
 export const load: PageServerLoad = async () => {
-	if ((await userCount()) > 0) error(404, 'Not found.');
+	if ((await userCount()) > 0) error(404, 'Nicht gefunden.');
 	return {};
 };
 
 export const actions: Actions = {
 	default: async (event) => {
-		if ((await userCount()) > 0) error(404, 'Not found.');
+		if ((await userCount()) > 0) error(404, 'Nicht gefunden.');
 
 		const formData = await event.request.formData();
 		const name = formData.get('name')?.toString().trim() ?? '';
 		const email = formData.get('email')?.toString().trim() ?? '';
 		const password = formData.get('password')?.toString() ?? '';
 
-		if (!name || !email) return fail(400, { name, email, message: 'Name and email are required.' });
+		if (!name || !email) return fail(400, { name, email, message: 'Name und E-Mail sind erforderlich.' });
 		if (password.length < 8) {
-			return fail(400, { name, email, message: 'Use a password of at least 8 characters.' });
+			return fail(400, { name, email, message: 'Nimm ein Passwort mit mindestens 8 Zeichen.' });
 		}
 
 		try {
@@ -47,7 +47,7 @@ export const actions: Actions = {
 			await auth.api.createUser({ body: { name, email, password, role: 'admin' } });
 		} catch (cause) {
 			if (cause instanceof APIError) {
-				return fail(400, { name, email, message: cause.message || 'Could not create the account.' });
+				return fail(400, { name, email, message: cause.message || 'Das Konto konnte nicht erstellt werden.' });
 			}
 			throw cause;
 		}

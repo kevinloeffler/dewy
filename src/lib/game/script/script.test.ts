@@ -64,7 +64,7 @@ describe('parseScript', () => {
 
     it('reports an unclosed block on the line that opened it', () => {
         expect(() => parseScript('repeat(2) {\n  moveForward();')).toThrowError(
-            expect.objectContaining({ line: 1, message: expect.stringContaining('never closed') }),
+            expect.objectContaining({ line: 1, message: expect.stringContaining('nie geschlossen') }),
         );
     });
 
@@ -73,7 +73,7 @@ describe('parseScript', () => {
     });
 
     it('rejects a member call with a hint about bare commands', () => {
-        expect(() => parseScript('robot.moveForward();')).toThrowError(/on their own/);
+        expect(() => parseScript('robot.moveForward();')).toThrowError(/für sich/);
     });
 
     it('rejects == in favour of ===', () => {
@@ -93,13 +93,13 @@ describe('language stages', () => {
 
     it('rejects repeat below stage 2', () => {
         expect(() => parseScript('repeat(2) { moveForward(); }', { stage: 1 })).toThrowError(
-            /repeat.*aren't unlocked/,
+            /repeat.*noch nicht freigeschaltet/,
         );
         expect(() => parseScript('repeat(2) { moveForward(); }', { stage: 2 })).not.toThrow();
     });
 
     it('rejects if and sensing below stage 3', () => {
-        expect(() => parseScript('if (true) { drop(); }', { stage: 2 })).toThrowError(/unlocked/);
+        expect(() => parseScript('if (true) { drop(); }', { stage: 2 })).toThrowError(/freigeschaltet/);
         expect(() => parseScript('isBlocked();', { stage: 2 })).toThrowError(/isBlocked/);
         expect(() => parseScript('if (isBlocked()) { drop(); }', { stage: 3 })).not.toThrow();
     });
@@ -110,7 +110,7 @@ describe('language stages', () => {
     });
 
     it('rejects functions below stage 5', () => {
-        expect(() => parseScript('function go() { moveForward(); }', { stage: 4 })).toThrowError(/unlocked/);
+        expect(() => parseScript('function go() { moveForward(); }', { stage: 4 })).toThrowError(/freigeschaltet/);
         expect(() => parseScript('function go() { moveForward(); }', { stage: 5 })).not.toThrow();
     });
 
@@ -201,20 +201,20 @@ describe('runScript', () => {
     it('refuses to let a student redefine a robot command', async () => {
         const { api } = stubApi();
         const result = await runScript('function moveForward() { turnLeft(); }', { api });
-        expect(result).toMatchObject({ status: 'error', message: expect.stringContaining('robot command') });
+        expect(result).toMatchObject({ status: 'error', message: expect.stringContaining('Roboterbefehl') });
     });
 
     it('stops a loop that never ends instead of hanging', async () => {
         const { api, calls } = stubApi();
         const result = await runScript('while (true) { let x = 1; }', { api, maxLoopIterations: 50 });
-        expect(result).toMatchObject({ status: 'error', message: expect.stringContaining('never ends') });
+        expect(result).toMatchObject({ status: 'error', message: expect.stringContaining('hört wohl nie auf') });
         expect(calls).toEqual([]);
     });
 
     it('stops runaway recursion', async () => {
         const { api } = stubApi();
         const result = await runScript('function go() { go(); }\ngo();', { api, maxCallDepth: 8 });
-        expect(result).toMatchObject({ status: 'error', message: expect.stringContaining('calling itself') });
+        expect(result).toMatchObject({ status: 'error', message: expect.stringContaining('selbst auf') });
     });
 
     it('unwinds a loop with no commands in it when aborted', async () => {

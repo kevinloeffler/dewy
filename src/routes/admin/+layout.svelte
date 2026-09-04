@@ -1,72 +1,89 @@
 <script lang="ts">
 	import { page } from '$app/state';
-	import { Topbar } from '$lib/components/index.js';
 	import type { Snippet } from 'svelte';
 	import type { LayoutServerData } from './$types';
 
 	let { data, children }: { data: LayoutServerData; children: Snippet } = $props();
 
 	const tabs = [
-		{ href: '/admin/courses', label: 'Courses' },
-		{ href: '/admin/classes', label: 'Classes' },
-		{ href: '/admin/people', label: 'People' }
+		{ href: '/admin/courses', label: 'Kurse' },
+		{ href: '/admin/classes', label: 'Klassen' },
+		{ href: '/admin/people', label: 'Benutzer' }
 	];
 
 	const current = $derived(page.url.pathname);
 </script>
 
-<Topbar>
-	{#snippet left()}
-		<a class="topbar-wordmark" href="/admin/courses">Dewy</a>
-		<span class="divider-v"></span>
-		<nav class="tabs">
-			{#each tabs as tab (tab.href)}
-				<a class="tab" href={tab.href} class:is-current={current.startsWith(tab.href)}>
-					{tab.label}
-				</a>
-			{/each}
-		</nav>
-	{/snippet}
+<header class="nav">
+	<a class="wordmark" href="/admin/courses">Dewy</a>
+	<span class="nav-divider"></span>
 
-	{#snippet right()}
-		<span class="who">{data.user.name}</span>
-		<span class="chip">{data.role}</span>
-		<form method="POST" action="/logout">
-			<button class="btn btn-ghost" type="submit">Sign out</button>
-		</form>
-	{/snippet}
-</Topbar>
+	<nav class="tabs">
+		{#each tabs as tab (tab.href)}
+			<a class="tab" href={tab.href} class:is-current={current.startsWith(tab.href)}>
+				{tab.label}
+			</a>
+		{/each}
+	</nav>
+
+	<span class="who">{data.user.name}</span>
+	<form method="POST" action="/logout">
+		<button class="btn btn-ghost" type="submit">Abmelden</button>
+	</form>
+</header>
 
 {@render children()}
 
 <style>
+	.nav {
+		display: flex;
+		align-items: center;
+		gap: 20px;
+		height: 82px;
+		padding: 0 40px;
+		background: var(--panel);
+		border-bottom: 1px solid var(--panel-border);
+	}
+
+	.wordmark {
+		font-family: var(--font-display);
+		font-weight: 800;
+		font-size: 1.25rem;
+		letter-spacing: -0.3px;
+		color: var(--text);
+		text-decoration: none;
+	}
+
+	.nav-divider {
+		width: 1px;
+		height: 26px;
+		background: var(--panel-border);
+	}
+
 	.tabs {
 		display: flex;
 		align-items: center;
-		gap: 2px;
+		gap: 28px;
 	}
 
 	.tab {
-		font-size: 0.8125rem;
-		font-weight: 600;
-		color: var(--text-muted);
+		font-size: 0.9375rem;
+		font-weight: 500;
+		color: var(--text);
 		text-decoration: none;
-		padding: 6px 10px;
-		border-radius: calc(var(--radius) - 8px);
 	}
 
 	.tab:hover {
-		background: var(--chip-bg);
-		color: var(--text);
+		color: var(--accent);
 	}
 
 	.tab.is-current {
-		background: var(--chip-bg);
-		color: var(--chip-text);
+		color: var(--accent);
 	}
 
 	.who {
-		font-size: 0.8125rem;
-		color: var(--text-muted);
+		margin-left: auto;
+		font-size: 0.9375rem;
+		color: var(--text);
 	}
 </style>

@@ -57,7 +57,7 @@ export type Actor = {
 };
 
 export class Forbidden extends Error {
-	constructor(message = 'You are not allowed to do that.') {
+	constructor(message = 'Das darfst du nicht.') {
 		super(message);
 	}
 }
@@ -156,13 +156,13 @@ export async function assertOwnsClass(actor: Actor, classId: string): Promise<vo
 		.where(eq(schoolClass.id, classId))
 		.get();
 
-	if (!row) throw new Forbidden('No such class.');
+	if (!row) throw new Forbidden('Diese Klasse gibt es nicht.');
 	if (roleOf(actor.user) === 'admin') return;
-	if (row.ownerId !== actor.user.id) throw new Forbidden('That class belongs to another teacher.');
+	if (row.ownerId !== actor.user.id) throw new Forbidden('Diese Klasse gehört einer anderen Lehrperson.');
 }
 
 function assertAdmin(actor: Actor): void {
-	if (roleOf(actor.user) !== 'admin') throw new Forbidden('Only an administrator can do that.');
+	if (roleOf(actor.user) !== 'admin') throw new Forbidden('Das kann nur die Administration.');
 }
 
 // ============================================================
@@ -354,9 +354,9 @@ export async function createTeacher(
 	const name = input.name.trim();
 	const email = input.email.trim().toLowerCase();
 	const errors: string[] = [];
-	if (!name) errors.push('A name is required.');
-	if (!email.includes('@')) errors.push('A valid email address is required.');
-	if (isStudentEmail(email)) errors.push('That domain is reserved for student accounts.');
+	if (!name) errors.push('Ein Name ist erforderlich.');
+	if (!email.includes('@')) errors.push('Eine gültige E-Mail-Adresse ist erforderlich.');
+	if (isStudentEmail(email)) errors.push('Diese Domain ist für Schüler/innen-Konten reserviert.');
 	if (errors.length > 0) throw new InvalidPerson(errors);
 
 	const password = input.password?.trim() || generatePassword();
@@ -396,7 +396,7 @@ export async function createStudents(
 
 	for (const draft of resolved) {
 		if (!isValidUsername(draft.username)) {
-			failed.push({ name: draft.name, reason: 'Could not build a username from that name.' });
+			failed.push({ name: draft.name, reason: 'Aus diesem Namen liess sich kein Benutzername bilden.' });
 			continue;
 		}
 
@@ -423,7 +423,7 @@ export async function createStudents(
 		} catch (cause) {
 			failed.push({
 				name: draft.name,
-				reason: cause instanceof APIError ? cause.message : 'Could not create the account.'
+				reason: cause instanceof APIError ? cause.message : 'Das Konto konnte nicht erstellt werden.'
 			});
 		}
 	}
@@ -444,7 +444,7 @@ export async function archiveUsers(actor: Actor, userIds: string[]): Promise<voi
 	await assertCanManageAll(actor, userIds);
 
 	for (const userId of userIds) {
-		if (userId === actor.user.id) throw new Forbidden('You cannot archive your own account.');
+		if (userId === actor.user.id) throw new Forbidden('Du kannst dein eigenes Konto nicht archivieren.');
 
 		await auth.api.banUser({
 			body: { userId, banReason: 'Archived' },
@@ -481,7 +481,7 @@ export async function setPassword(
 	password: string
 ): Promise<void> {
 	if (password.length < MIN_PASSWORD_LENGTH) {
-		throw new InvalidPerson([`Use a password of at least ${MIN_PASSWORD_LENGTH} characters.`]);
+		throw new InvalidPerson([`Nimm ein Passwort mit mindestens ${MIN_PASSWORD_LENGTH} Zeichen.`]);
 	}
 
 	await assertCanManageAll(actor, userIds);
@@ -510,7 +510,7 @@ export async function setPassword(
 /** Admins only — a teacher who could set roles could promote themselves. */
 export async function setRole(actor: Actor, userId: string, role: Role): Promise<void> {
 	assertAdmin(actor);
-	if (userId === actor.user.id) throw new Forbidden('You cannot change your own role.');
+	if (userId === actor.user.id) throw new Forbidden('Du kannst deine eigene Rolle nicht ändern.');
 
 	await auth.api.setRole({ body: { userId, role }, headers: actor.headers });
 }
@@ -527,14 +527,14 @@ export async function renamePerson(
 
 	if (input.name !== undefined) {
 		const name = input.name.trim();
-		if (!name) errors.push('A name is required.');
+		if (!name) errors.push('Ein Name ist erforderlich.');
 		else data.name = name;
 	}
 
 	if (input.username !== undefined && input.username.trim()) {
 		const username = input.username.trim().toLowerCase();
 		if (!isValidUsername(username)) {
-			errors.push('A username may only use letters, digits, dots, dashes and underscores.');
+			errors.push('Ein Benutzername darf nur Buchstaben, Ziffern, Punkte, Bindestriche und Unterstriche enthalten.');
 		} else {
 			data.username = username;
 			data.displayUsername = username;
@@ -550,8 +550,8 @@ export async function renamePerson(
 
 	if (input.email !== undefined && input.email.trim()) {
 		const email = input.email.trim().toLowerCase();
-		if (!email.includes('@')) errors.push('A valid email address is required.');
-		else if (isStudentEmail(email)) errors.push('That domain is reserved for student accounts.');
+		if (!email.includes('@')) errors.push('Eine gültige E-Mail-Adresse ist erforderlich.');
+		else if (isStudentEmail(email)) errors.push('Diese Domain ist für Schüler/innen-Konten reserviert.');
 		else data.email = email;
 	}
 
@@ -575,6 +575,6 @@ export function actorOf(event: {
 	locals: { user?: { id: string; role?: string | null } };
 	request: Request;
 }): Actor {
-	if (!event.locals.user) throw new Forbidden('You must be signed in.');
+	if (!event.locals.user) throw new Forbidden('Du musst angemeldet sein.');
 	return { user: event.locals.user, headers: event.request.headers };
 }

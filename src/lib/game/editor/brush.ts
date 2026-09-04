@@ -90,41 +90,41 @@ export function defaultBrushOptions(): BrushOptions {
 
 export const BRUSH_GROUPS: { title: string; ids: BrushId[] }[] = [
     {
-        title: 'Floor',
+        title: 'Boden',
         ids: ['floor', 'pit', 'conveyor', 'cargo_conveyor', 'goal', 'drop_off'],
     },
     {
-        title: 'Structure',
+        title: 'Aufbau',
         ids: ['wall', 'robot_gap', 'door', 'switch', 'pressure_plate'],
     },
     {
-        title: 'Contents',
+        title: 'Inhalt',
         ids: ['crate_grey', 'crate_colour', 'keycard', 'robot'],
     },
     {
-        title: 'Tools',
+        title: 'Werkzeuge',
         ids: ['select', 'erase'],
     },
 ];
 
 export const BRUSH_LABELS: Record<BrushId, string> = {
-    floor: 'Floor',
-    wall: 'Wall',
-    pit: 'Pit',
-    robot_gap: 'Robot gap',
-    goal: 'Goal',
-    conveyor: 'Conveyor',
-    cargo_conveyor: 'Cargo belt',
-    door: 'Door',
-    pressure_plate: 'Pressure plate',
-    switch: 'Switch',
-    drop_off: 'Drop-off bay',
-    crate_grey: 'Grey crate',
-    crate_colour: 'Colour crate',
+    floor: 'Boden',
+    wall: 'Wand',
+    pit: 'Loch',
+    robot_gap: 'Roboterlücke',
+    goal: 'Ziel',
+    conveyor: 'Förderband',
+    cargo_conveyor: 'Kistenband',
+    door: 'Tür',
+    pressure_plate: 'Druckplatte',
+    switch: 'Schalter',
+    drop_off: 'Abgabestelle',
+    crate_grey: 'Graue Kiste',
+    crate_colour: 'Farbige Kiste',
     keycard: 'Keycard',
-    robot: 'Robot start',
-    select: 'Select',
-    erase: 'Erase',
+    robot: 'Roboter-Start',
+    select: 'Auswählen',
+    erase: 'Radieren',
 };
 
 /**

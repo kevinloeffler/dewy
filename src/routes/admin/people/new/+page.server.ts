@@ -32,11 +32,11 @@ export const actions: Actions = {
 		const classId = formData.get('classId')?.toString() ?? '';
 		const roster = formData.get('roster')?.toString() ?? '';
 
-		if (!classId) return fail(400, { roster, message: 'Pick a class first.' });
+		if (!classId) return fail(400, { roster, message: 'Wähle zuerst eine Klasse aus.' });
 
 		const drafts = parseRoster(roster);
 		if (drafts.length === 0) {
-			return fail(400, { roster, message: 'No names found. One student per line.' });
+			return fail(400, { roster, message: 'Keine Namen gefunden. Eine Person pro Zeile.' });
 		}
 
 		try {

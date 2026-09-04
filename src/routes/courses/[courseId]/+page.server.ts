@@ -11,8 +11,8 @@ export const load: PageServerLoad = async (event) => {
 	// An unpublished course is invisible here; it is still editable in /admin.
 	// So is a published one that this student's class was not given — 404 rather
 	// than 403, because "not for you" and "not there" look the same from a URL.
-	if (!course || !course.published) error(404, 'No such course.');
-	if (!(await canSeeCourse(user?.id, course.id))) error(404, 'No such course.');
+	if (!course || !course.published) error(404, 'Diesen Kurs gibt es nicht.');
+	if (!(await canSeeCourse(user?.id, course.id))) error(404, 'Diesen Kurs gibt es nicht.');
 
 	const progress = user
 		? courseProgress(course, await loadCompleted(user.id, course.id))

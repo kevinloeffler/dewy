@@ -22,16 +22,16 @@ export type MarkdownFeature = { syntax: string; result: string };
 
 /** Rendered beside the editor, so the supported subset is documented once. */
 export const MARKDOWN_FEATURES: readonly MarkdownFeature[] = [
-	{ syntax: '# Heading', result: 'Section heading (## and ### go smaller)' },
-	{ syntax: '**bold**', result: 'bold' },
-	{ syntax: '*italic*', result: 'italic' },
-	{ syntax: '`code`', result: 'inline code' },
-	{ syntax: '```\ncode block\n```', result: 'A fenced code block' },
-	{ syntax: '- item', result: 'A bullet list' },
-	{ syntax: '1. item', result: 'A numbered list' },
-	{ syntax: '> quote', result: 'A quote block' },
-	{ syntax: '[text](https://…)', result: 'A link' },
-	{ syntax: '---', result: 'A horizontal rule' }
+	{ syntax: '# Titel', result: 'Überschrift (## und ### werden kleiner)' },
+	{ syntax: '**fett**', result: 'fett' },
+	{ syntax: '*kursiv*', result: 'kursiv' },
+	{ syntax: '`Code`', result: 'Code im Text' },
+	{ syntax: '```\nCodeblock\n```', result: 'Ein Codeblock' },
+	{ syntax: '- Eintrag', result: 'Eine Aufzählung' },
+	{ syntax: '1. Eintrag', result: 'Eine nummerierte Liste' },
+	{ syntax: '> Zitat', result: 'Ein Zitatblock' },
+	{ syntax: '[Text](https://…)', result: 'Ein Link' },
+	{ syntax: '---', result: 'Eine Trennlinie' }
 ];
 
 const MAX_HEADING = 3;

@@ -18,7 +18,7 @@
 
 	const csv = $derived(
 		[
-			'name,username,password',
+			'Name,Benutzername,Passwort',
 			...credentials.map((row) =>
 				[row.name, row.username ?? row.email ?? '', row.password]
 					// Quote every field: names contain commas often enough.
@@ -40,24 +40,24 @@
 <section class="sheet">
 	<div class="sheet-head">
 		<div>
-			<h2 class="sheet-title">{heading ?? 'Sign-in details'}</h2>
+			<h2 class="sheet-title">{heading ?? 'Anmeldedaten'}</h2>
 			<p class="sheet-sub">
 				{credentials.length}
-				{credentials.length === 1 ? 'account' : 'accounts'}
+				{credentials.length === 1 ? 'Konto' : 'Konten'}
 			</p>
 		</div>
 		<div class="sheet-tools">
 			<button class="btn btn-ghost" type="button" onclick={copy}>
-				{copied ? 'Copied' : 'Copy as CSV'}
+				{copied ? 'Kopiert' : 'Als CSV kopieren'}
 			</button>
-			<button class="btn btn-primary" type="button" onclick={() => window.print()}>Print</button>
+			<button class="btn btn-primary" type="button" onclick={() => window.print()}>Drucken</button>
 		</div>
 	</div>
 
 	<Callout variant="warn">
-		<strong>This is the only time these passwords are shown.</strong> They are stored hashed, so
-		nobody — including you — can read them again. Print or copy this list now; if it is lost, reset
-		the password instead.
+		<strong>Diese Passwörter werden nur dieses eine Mal angezeigt.</strong> Sie werden gehasht
+		gespeichert, niemand — auch du nicht — kann sie später nochmals lesen. Druck oder kopier die
+		Liste jetzt; geht sie verloren, setz stattdessen ein neues Passwort.
 	</Callout>
 
 	<div class="table-wrap">
@@ -65,8 +65,8 @@
 			<thead>
 				<tr>
 					<th>Name</th>
-					<th>Username</th>
-					<th>Password</th>
+					<th>Benutzername</th>
+					<th>Passwort</th>
 				</tr>
 			</thead>
 			<tbody>

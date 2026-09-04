@@ -19,10 +19,10 @@ export const load: PageServerLoad = async (event) => {
 	const actor = actorOf(event);
 
 	const group = await findClass(actor, event.params.classId).catch((cause) => {
-		if (cause instanceof Forbidden) error(404, 'No such class.');
+		if (cause instanceof Forbidden) error(404, 'Diese Klasse gibt es nicht.');
 		throw cause;
 	});
-	if (!group) error(404, 'No such class.');
+	if (!group) error(404, 'Diese Klasse gibt es nicht.');
 
 	return {
 		group,
@@ -84,7 +84,7 @@ export const actions: Actions = {
 	assignCourse: async (event) => {
 		const formData = await event.request.formData();
 		const courseId = required(formData, 'courseId');
-		if (!courseId) return fail(400, { message: 'No course to assign.' });
+		if (!courseId) return fail(400, { message: 'Kein Kurs zum Zuweisen.' });
 
 		const result = await run(() => assignCourse(actorOf(event), event.params.classId, courseId));
 		if (!result.ok) return fail(result.status, { message: result.message });
@@ -94,7 +94,7 @@ export const actions: Actions = {
 	unassignCourse: async (event) => {
 		const formData = await event.request.formData();
 		const courseId = required(formData, 'courseId');
-		if (!courseId) return fail(400, { message: 'No course to remove.' });
+		if (!courseId) return fail(400, { message: 'Kein Kurs zum Entfernen.' });
 
 		const result = await run(() => unassignCourse(actorOf(event), event.params.classId, courseId));
 		if (!result.ok) return fail(result.status, { message: result.message });
@@ -104,7 +104,7 @@ export const actions: Actions = {
 	removeStudents: async (event) => {
 		const formData = await event.request.formData();
 		const userIds = selected(formData);
-		if (userIds.length === 0) return fail(400, { message: 'Nobody was selected.' });
+		if (userIds.length === 0) return fail(400, { message: 'Es wurde niemand ausgewählt.' });
 
 		const result = await run(() => removeMembers(actorOf(event), event.params.classId, userIds));
 		if (!result.ok) return fail(result.status, { message: result.message });
@@ -115,8 +115,8 @@ export const actions: Actions = {
 		const formData = await event.request.formData();
 		const userIds = selected(formData);
 		const toClassId = required(formData, 'toClassId');
-		if (userIds.length === 0) return fail(400, { message: 'Nobody was selected.' });
-		if (!toClassId) return fail(400, { message: 'Pick a class to move them to.' });
+		if (userIds.length === 0) return fail(400, { message: 'Es wurde niemand ausgewählt.' });
+		if (!toClassId) return fail(400, { message: 'Wähle eine Klasse aus, in die sie verschoben werden.' });
 
 		const result = await run(() =>
 			moveMembers(actorOf(event), event.params.classId, toClassId, userIds)
@@ -128,7 +128,7 @@ export const actions: Actions = {
 	archiveStudents: async (event) => {
 		const formData = await event.request.formData();
 		const userIds = selected(formData);
-		if (userIds.length === 0) return fail(400, { message: 'Nobody was selected.' });
+		if (userIds.length === 0) return fail(400, { message: 'Es wurde niemand ausgewählt.' });
 
 		const result = await run(() => archiveUsers(actorOf(event), userIds));
 		if (!result.ok) return fail(result.status, { message: result.message });
@@ -139,7 +139,7 @@ export const actions: Actions = {
 		const formData = await event.request.formData();
 		const userIds = selected(formData);
 		const password = formData.get('password')?.toString() ?? '';
-		if (userIds.length === 0) return fail(400, { message: 'Nobody was selected.' });
+		if (userIds.length === 0) return fail(400, { message: 'Es wurde niemand ausgewählt.' });
 
 		const result = await run(() => setPassword(actorOf(event), userIds, password));
 		if (!result.ok) return fail(result.status, { message: result.message });

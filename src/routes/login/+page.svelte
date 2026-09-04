@@ -9,7 +9,7 @@
 </script>
 
 <svelte:head>
-	<title>Sign in · Dewy</title>
+	<title>Anmelden · Dewy</title>
 </svelte:head>
 
 <Topbar>
@@ -20,8 +20,11 @@
 
 <main class="page">
 	<Panel padding="lg">
-		<h1 class="title">Sign in</h1>
-		<p class="lede">Students use their username. Teachers use their email address.</p>
+		<h1 class="title">Anmelden</h1>
+		<p class="lede">
+			Schülerinnen und Schüler melden sich mit ihrem Benutzernamen an, Lehrpersonen mit ihrer
+			E-Mail-Adresse.
+		</p>
 
 		<form
 			method="POST"
@@ -37,7 +40,7 @@
 				<input type="hidden" name="redirectTo" value={data.redirectTo} />
 			{/if}
 
-			<label class="label" for="identifier">Username or email</label>
+			<label class="label" for="identifier">Benutzername oder E-Mail</label>
 			<input
 				class="field"
 				id="identifier"
@@ -50,7 +53,7 @@
 				required
 			/>
 
-			<label class="label" for="password">Password</label>
+			<label class="label" for="password">Passwort</label>
 			<input
 				class="field"
 				id="password"
@@ -65,12 +68,12 @@
 			{/if}
 
 			<Button type="submit" disabled={submitting}>
-				{submitting ? 'Signing in…' : 'Sign in'}
+				{submitting ? 'Wird angemeldet…' : 'Anmelden'}
 			</Button>
 		</form>
 
 		<p class="foot">
-			No account? Accounts are created by your teacher — ask them to set one up for you.
+			Kein Konto? Konten werden von der Lehrperson erstellt — frag sie, ob sie dir eines einrichtet.
 		</p>
 	</Panel>
 </main>

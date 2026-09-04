@@ -20,10 +20,10 @@ export const load: PageServerLoad = async (event) => {
 	const person = await findPerson(actor, event.params.userId).catch((cause) => {
 		// A teacher asking about somebody else's student is told the same thing
 		// as a teacher asking about nobody at all.
-		if (cause instanceof Forbidden) error(404, 'No such person.');
+		if (cause instanceof Forbidden) error(404, 'Diese Person gibt es nicht.');
 		throw cause;
 	});
-	if (!person) error(404, 'No such person.');
+	if (!person) error(404, 'Diese Person gibt es nicht.');
 
 	return {
 		person,
@@ -84,7 +84,7 @@ export const actions: Actions = {
 	setRole: async (event) => {
 		const formData = await event.request.formData();
 		const role = formData.get('role')?.toString();
-		if (!isRole(role)) return fail(400, { message: 'Pick a role.' });
+		if (!isRole(role)) return fail(400, { message: 'Wähle eine Rolle aus.' });
 
 		const result = await run(() => setRole(actorOf(event), event.params.userId, role));
 		if (!result.ok) return fail(result.status, { message: result.message });
@@ -94,7 +94,7 @@ export const actions: Actions = {
 	addToClass: async (event) => {
 		const formData = await event.request.formData();
 		const classId = formData.get('classId')?.toString();
-		if (!classId) return fail(400, { message: 'Pick a class.' });
+		if (!classId) return fail(400, { message: 'Wähle eine Klasse aus.' });
 
 		const result = await run(() => addMembers(actorOf(event), classId, [event.params.userId]));
 		if (!result.ok) return fail(result.status, { message: result.message });
@@ -104,7 +104,7 @@ export const actions: Actions = {
 	removeFromClass: async (event) => {
 		const formData = await event.request.formData();
 		const classId = formData.get('classId')?.toString();
-		if (!classId) return fail(400, { message: 'Pick a class.' });
+		if (!classId) return fail(400, { message: 'Wähle eine Klasse aus.' });
 
 		const result = await run(() => removeMembers(actorOf(event), classId, [event.params.userId]));
 		if (!result.ok) return fail(result.status, { message: result.message });

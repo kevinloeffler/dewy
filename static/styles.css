@@ -61,6 +61,10 @@
   --btn-ghost-bg:     #ffffff;
   --btn-ghost-text:   #2d3a2e;
   --btn-ghost-border: rgba(45, 58, 46, 0.12);
+  --btn-add-bg:       #746952;
+  --btn-add-text:     #ffffff;
+  --btn-danger-bg:    #d97757;
+  --btn-danger-text:  #ffffff;
 
   /* Typography */
   --font-ui:          "Nunito", "Inter", system-ui, sans-serif;
@@ -110,6 +114,10 @@
   --btn-ghost-bg:     #3d3360;
   --btn-ghost-text:   #f3eef7;
   --btn-ghost-border: rgba(255, 255, 255, 0.10);
+  --btn-add-bg:       #4b4270;
+  --btn-add-text:     #f3eef7;
+  --btn-danger-bg:    #ff5d73;
+  --btn-danger-text:  #1f1a2e;
 
   --font-ui:          "Space Grotesk", "Inter", system-ui, sans-serif;
   --font-display:     "VT323", "Space Grotesk", system-ui, sans-serif;
@@ -158,6 +166,10 @@
   --btn-ghost-bg:     #ffffff;
   --btn-ghost-text:   #0f0f0f;
   --btn-ghost-border: rgba(15, 15, 15, 0.12);
+  --btn-add-bg:       #3a3a36;
+  --btn-add-text:     #fafaf7;
+  --btn-danger-bg:    #d14343;
+  --btn-danger-text:  #ffffff;
 
   --font-ui:          "Inter", system-ui, sans-serif;
   --font-display:     "Inter", system-ui, sans-serif;
@@ -283,6 +295,20 @@ kbd {
   background: var(--btn-ghost-bg);
   color: var(--btn-ghost-text);
   border: 1px solid var(--btn-ghost-border);
+}
+
+/* The solid "add something" button — the one the course editor centres under
+   a stage and under the stage list. Its own colour rather than the accent, so
+   "add a level" never reads as the primary action of the page. */
+.btn-add {
+  background: var(--btn-add-bg);
+  color: var(--btn-add-text);
+  box-shadow: 0 1px 0 rgba(0,0,0,0.06), 0 6px 16px -10px rgba(0,0,0,0.5);
+}
+
+.btn-danger {
+  background: var(--btn-danger-bg);
+  color: var(--btn-danger-text);
 }
 
 /* ── Chips & badges ────────────────────────────────────────── */

@@ -12,14 +12,14 @@ import { actorOf, Forbidden } from '$lib/server/users';
 
 export const load: PageServerLoad = async (event) => {
 	if (!(await canViewCourse(actorOf(event), event.params.courseId))) {
-		error(404, 'No such theory block.');
+		error(404, 'Diesen Theorieblock gibt es nicht.');
 	}
 
 	const context = await findItem(event.params.courseId, event.params.itemId);
-	if (!context) error(404, 'No such theory block.');
+	if (!context) error(404, 'Diesen Theorieblock gibt es nicht.');
 	if (context.item.kind !== 'theory') {
 		// A level item is edited in the designer, not here.
-		error(400, 'That item is a level, not a theory block.');
+		error(400, 'Dieses Element ist ein Level, kein Theorieblock.');
 	}
 
 	return { context, item: context.item };

@@ -12,7 +12,7 @@ export const load: PageServerLoad = async (event) => {
 	if (!id) return { level: tutorial01 };
 
 	const level = await findLevel(id);
-	if (!level) error(404, 'No such level.');
+	if (!level) error(404, 'Dieses Level gibt es nicht.');
 
 	return { level };
 };

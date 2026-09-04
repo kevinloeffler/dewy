@@ -12,7 +12,7 @@ import { actorOf, Forbidden, listTeachers } from '$lib/server/users';
 
 export const load: PageServerLoad = async (event) => {
 	const level = await findLevel(event.params.id);
-	if (!level) error(404, 'No such level.');
+	if (!level) error(404, 'Dieses Level gibt es nicht.');
 
 	// `null` for a level that predates courses, or one left unassigned.
 	const owner = await findLevelOwner(event.params.id);
@@ -35,13 +35,13 @@ export const actions: Actions = {
 	save: async (event) => {
 		const formData = await event.request.formData();
 		const payload = formData.get('level')?.toString();
-		if (!payload) return fail(400, { message: 'Nothing to save.' });
+		if (!payload) return fail(400, { message: 'Nichts zum Speichern.' });
 
 		let value: unknown;
 		try {
 			value = JSON.parse(payload);
 		} catch {
-			return fail(400, { message: 'The level payload was not valid JSON.' });
+			return fail(400, { message: 'Die Leveldaten waren kein gültiges JSON.' });
 		}
 
 		try {
@@ -63,7 +63,7 @@ export const actions: Actions = {
 	share: async (event) => {
 		const formData = await event.request.formData();
 		const teacherId = formData.get('teacherId')?.toString();
-		if (!teacherId) return fail(400, { message: 'Pick a teacher.' });
+		if (!teacherId) return fail(400, { message: 'Wähle eine Lehrperson aus.' });
 
 		try {
 			await shareLevel(actorOf(event), event.params.id, teacherId);
@@ -78,7 +78,7 @@ export const actions: Actions = {
 	unshare: async (event) => {
 		const formData = await event.request.formData();
 		const teacherId = formData.get('teacherId')?.toString();
-		if (!teacherId) return fail(400, { message: 'Pick a teacher.' });
+		if (!teacherId) return fail(400, { message: 'Wähle eine Lehrperson aus.' });
 
 		try {
 			await unshareLevel(actorOf(event), event.params.id, teacherId);

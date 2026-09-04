@@ -1564,12 +1564,12 @@ describe('validateLevel', () => {
             items: [{ kind: 'crate_colour', id: 'c', color: 'red', position: { x: 2, y: 1 } }],
             goals: [{ kind: 'deliver_specific', color: 'red', dropOffPosition: { x: 3, y: 3 } }],
         }));
-        expect(problems.join(' ')).toContain('not a drop-off bay');
+        expect(problems.join(' ')).toContain('keine Abgabestelle');
     });
 
     it('flags reach_goal with no goal tile', () => {
         const problems = validateLevel(makeLevel({ goals: [{ kind: 'reach_goal' }] }));
-        expect(problems.join(' ')).toContain('no goal tile');
+        expect(problems.join(' ')).toContain('kein Zielfeld');
     });
 
     it('flags duplicate ids and stacked items', () => {
@@ -1579,22 +1579,22 @@ describe('validateLevel', () => {
                 { kind: 'crate_grey', id: 'c', position: { x: 2, y: 1 } },
             ],
         }));
-        expect(problems.join(' ')).toContain('duplicate item id');
-        expect(problems.join(' ')).toContain('two items share tile');
+        expect(problems.join(' ')).toContain('doppelte Objekt-ID');
+        expect(problems.join(' ')).toContain('zwei Objekte stehen auf Feld');
     });
 
     it('flags a keycard for a door that does not exist', () => {
         const problems = validateLevel(makeLevel({
             items: [{ kind: 'keycard', id: 'k', doorId: 'ghost', position: { x: 2, y: 1 } }],
         }));
-        expect(problems.join(' ')).toContain('has no door tile');
+        expect(problems.join(' ')).toContain('kein Türfeld');
     });
 
     it('flags a control linked to nothing', () => {
         const problems = validateLevel(makeLevel({
             tiles: { '2,2': { kind: 'switch', targetId: 'ghost', initiallyOn: false } },
         }));
-        expect(problems.join(' ')).toContain('no door, belt or motion sensor');
+        expect(problems.join(' ')).toContain('weder Tür noch Förderband noch Bewegungsmelder');
     });
 
     it('accepts a control linked to a door, a belt or a sensor', () => {

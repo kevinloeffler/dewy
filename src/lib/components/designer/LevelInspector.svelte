@@ -65,7 +65,7 @@
 	</label>
 
 	<label class="field">
-		Description
+		Beschreibung
 		<textarea
 			rows="2"
 			value={level.description ?? ''}
@@ -77,18 +77,20 @@
 	</label>
 
 	<div class="field">
-		Grid size
+		Rastergrösse
 		<div class="size">
-			<input type="number" min="1" max="40" bind:value={width} aria-label="Width" />
+			<input type="number" min="1" max="40" bind:value={width} aria-label="Breite" />
 			<span class="times">×</span>
-			<input type="number" min="1" max="40" bind:value={height} aria-label="Height" />
+			<input type="number" min="1" max="40" bind:value={height} aria-label="Höhe" />
 		</div>
 		{#if sizeChanged}
 			<button class="btn btn-ghost small" type="button" onclick={applySize}>
-				Resize to {width} × {height}
+				Auf {width} × {height} ändern
 			</button>
 			{#if wouldDrop > 0}
-				<p class="warn">Drops {wouldDrop} thing{wouldDrop === 1 ? '' : 's'} outside the new grid.</p>
+				<p class="warn">
+					Verwirft {wouldDrop} {wouldDrop === 1 ? 'Objekt' : 'Objekte'} ausserhalb des neuen Rasters.
+				</p>
 			{/if}
 		{/if}
 	</div>
@@ -104,12 +106,12 @@
 					setOptions(current, { energy: event.currentTarget.checked ? 15 : null })
 				)}
 		/>
-		Energy limit
+		Energielimit
 	</label>
 
 	{#if energyOn}
 		<label class="field indent">
-			Maximum commands
+			Maximale Anzahl Befehle
 			<input
 				type="number"
 				min="1"
@@ -131,12 +133,12 @@
 					setOptions(current, { memory: event.currentTarget.checked ? 12 : null })
 				)}
 		/>
-		Memory limit
+		Speicherlimit
 	</label>
 
 	{#if memoryOn}
 		<label class="field indent">
-			Maximum statements
+			Maximale Anzahl Anweisungen
 			<input
 				type="number"
 				min="1"
@@ -158,11 +160,11 @@
 					setOptions(current, { showInventory: event.currentTarget.checked })
 				)}
 		/>
-		Show inventory
+		Inventar anzeigen
 	</label>
 
 	<label class="field">
-		Language stage
+		Sprachstufe
 		<select
 			value={level.options.languageStage}
 			onchange={(event) =>
@@ -173,7 +175,7 @@
 				)}
 		>
 			{#each [1, 2, 3, 4, 5] as stage (stage)}
-				<option value={stage}>Stage {stage}</option>
+				<option value={stage}>Stufe {stage}</option>
 			{/each}
 		</select>
 	</label>

@@ -30,34 +30,35 @@
 </script>
 
 <svelte:head>
-	<title>{data.group.name} · Classes · Dewy</title>
+	<title>{data.group.name} · Klassen · Dewy</title>
 </svelte:head>
 
 <main class="page">
 	<Panel>
-		<h2 class="section-title">Class</h2>
+		<h2 class="section-title">Klasse</h2>
 		<form class="inline" method="POST" action="?/rename" use:enhance>
 			<input class="field" name="name" bind:value={name} autocomplete="off" />
-			<Button type="submit" variant="ghost">Rename</Button>
+			<Button type="submit" variant="ghost">Umbenennen</Button>
 		</form>
 		{#if data.group.archivedAt}
 			<p class="note">
-				Archived. Its students still have working accounts — the class is only out of the way.
+				Archiviert. Die Konten der Schüler/innen funktionieren weiterhin — nur die Klasse ist aus dem
+				Weg geräumt.
 			</p>
 		{/if}
 	</Panel>
 
 	<div class="head">
 		<h2 class="section-title">
-			Students
+			Schüler/innen
 			<span class="count">{data.group.students.length}</span>
 		</h2>
-		<a class="btn btn-primary" href="/admin/people/new?classId={data.group.id}">Add students</a>
+		<a class="btn btn-primary" href="/admin/people/new?classId={data.group.id}">Schüler/innen hinzufügen</a>
 	</div>
 
 	{#if data.group.students.length === 0}
 		<Panel>
-			<p class="empty">Nobody in this class yet.</p>
+			<p class="empty">Noch niemand in dieser Klasse.</p>
 		</Panel>
 	{:else}
 		<Panel padding="sm">
@@ -73,12 +74,12 @@
 									<Checkbox
 										checked={allPicked}
 										indeterminate={picked.size > 0 && !allPicked}
-										label="Select all"
+										label="Alle auswählen"
 										onchange={toggleAll}
 									/>
 								</th>
 								<th>Name</th>
-								<th>Username</th>
+								<th>Benutzername</th>
 								<th class="numeric">Status</th>
 							</tr>
 						</thead>
@@ -90,7 +91,7 @@
 											name="userId"
 											value={student.id}
 											checked={picked.has(student.id)}
-											label="Select {student.name}"
+											label="{student.name} auswählen"
 											onchange={() => toggle(student.id)}
 										/>
 									</td>
@@ -100,7 +101,7 @@
 									<td class="mono">{student.username ?? '—'}</td>
 									<td class="numeric">
 										{#if student.archivedAt}
-											<span class="chip">Archived</span>
+											<span class="chip">Archiviert</span>
 										{/if}
 									</td>
 								</tr>
@@ -111,34 +112,34 @@
 
 				{#if picked.size > 0}
 					<div class="bar">
-						<span class="bar-count">{picked.size} selected</span>
+						<span class="bar-count">{picked.size} ausgewählt</span>
 						<input
 							class="field move"
 							name="password"
 							type="text"
-							placeholder="New password"
+							placeholder="Neues Passwort"
 							minlength="8"
 							autocomplete="off"
-							title="Sets this one password on every selected student."
+							title="Setzt dieses eine Passwort für alle ausgewählten Schüler/innen."
 						/>
 						<button class="btn btn-ghost" type="submit" formaction="?/setPassword">
-							Set password
+							Passwort setzen
 						</button>
 						{#if picked.size > 1}
-							<span class="bar-note">— the same one for all picked.size</span>
+							<span class="bar-note">— für alle dasselbe</span>
 						{/if}
-						<select class="field move" name="toClassId" aria-label="Move to class">
-							<option value="">Move to…</option>
+						<select class="field move" name="toClassId" aria-label="In Klasse verschieben">
+							<option value="">Verschieben nach…</option>
 							{#each data.otherClasses as other (other.id)}
 								<option value={other.id}>{other.name}</option>
 							{/each}
 						</select>
-						<button class="btn btn-ghost" type="submit" formaction="?/moveStudents">Move</button>
+						<button class="btn btn-ghost" type="submit" formaction="?/moveStudents">Verschieben</button>
 						<button class="btn btn-ghost" type="submit" formaction="?/removeStudents">
-							Remove from class
+							Aus Klasse entfernen
 						</button>
 						<button class="btn btn-ghost danger" type="submit" formaction="?/archiveStudents">
-							Archive
+							Archivieren
 						</button>
 					</div>
 				{/if}
@@ -146,21 +147,21 @@
 		</Panel>
 	{/if}
 
-	<h2 class="section-title">Courses</h2>
+	<h2 class="section-title">Kurse</h2>
 	<Panel>
 		{#if data.group.courses.length === 0}
 			<p class="empty">
-				No courses assigned. Until one is, this class sees every published course.
+				Keine Kurse zugewiesen. Solange das so bleibt, sieht diese Klasse alle veröffentlichten Kurse.
 			</p>
 		{:else}
 			<ul class="assigned">
 				{#each data.group.courses as course (course.id)}
 					<li>
 						<a class="link" href="/admin/courses/{course.id}">{course.title}</a>
-						{#if !course.published}<span class="chip">Draft</span>{/if}
+						{#if !course.published}<span class="chip">Entwurf</span>{/if}
 						<form method="POST" action="?/unassignCourse" use:enhance>
 							<input type="hidden" name="courseId" value={course.id} />
-							<button class="btn btn-ghost" type="submit">Remove</button>
+							<button class="btn btn-ghost" type="submit">Entfernen</button>
 						</form>
 					</li>
 				{/each}
@@ -169,12 +170,12 @@
 
 		{#if assignable.length > 0}
 			<form class="inline assign" method="POST" action="?/assignCourse" use:enhance>
-				<select class="field" name="courseId" aria-label="Course to assign">
+				<select class="field" name="courseId" aria-label="Kurs zuweisen">
 					{#each assignable as course (course.id)}
-						<option value={course.id}>{course.title}{course.published ? '' : ' (draft)'}</option>
+						<option value={course.id}>{course.title}{course.published ? '' : ' (Entwurf)'}</option>
 					{/each}
 				</select>
-				<Button type="submit" variant="ghost">Assign</Button>
+				<Button type="submit" variant="ghost">Zuweisen</Button>
 			</form>
 		{/if}
 	</Panel>
@@ -183,30 +184,33 @@
 		<Callout variant="danger">{form.message}</Callout>
 	{/if}
 
-	<h2 class="section-title">Danger zone</h2>
+	<h2 class="section-title">Gefahrenzone</h2>
 	<Panel>
 		<div class="danger-row">
 			<div>
-				<p class="danger-title">{data.group.archivedAt ? 'Restore class' : 'Archive class'}</p>
+				<p class="danger-title">
+					{data.group.archivedAt ? 'Klasse wiederherstellen' : 'Klasse archivieren'}
+				</p>
 				<p class="danger-note">
-					Archiving puts the class away at the end of a year. Nobody loses an account or any work.
+					Archivieren räumt die Klasse am Ende des Schuljahrs weg. Niemand verliert ein Konto oder eine
+					Arbeit.
 				</p>
 			</div>
 			<form method="POST" action="?/archive" use:enhance>
 				<input type="hidden" name="archived" value={data.group.archivedAt ? 'false' : 'true'} />
 				<button class="btn btn-ghost" type="submit">
-					{data.group.archivedAt ? 'Restore' : 'Archive'}
+					{data.group.archivedAt ? 'Wiederherstellen' : 'Archivieren'}
 				</button>
 			</form>
 		</div>
 
 		<div class="danger-row">
 			<div>
-				<p class="danger-title">Delete class</p>
-				<p class="danger-note">Only possible once the class is empty.</p>
+				<p class="danger-title">Klasse löschen</p>
+				<p class="danger-note">Nur möglich, wenn die Klasse leer ist.</p>
 			</div>
 			<form method="POST" action="?/delete" use:enhance>
-				<button class="btn btn-ghost danger" type="submit">Delete</button>
+				<button class="btn btn-ghost danger" type="submit">Löschen</button>
 			</form>
 		</div>
 	</Panel>

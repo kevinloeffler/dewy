@@ -27,11 +27,11 @@ const FEATURE_STAGE = {
 } as const satisfies Record<string, LanguageStage>;
 
 const FEATURE_NAME: Record<keyof typeof FEATURE_STAGE, string> = {
-    repeat: '`repeat` loops',
+    repeat: '`repeat`-Schleifen',
     conditional: '`if` / `else`',
-    loop: '`while` loops',
-    variable: 'variables',
-    function: 'your own functions',
+    loop: '`while`-Schleifen',
+    variable: 'Variablen',
+    function: 'eigene Funktionen',
 };
 
 /**
@@ -95,7 +95,7 @@ class Parser {
                     return this.parseLet();
                 case 'else':
                     throw new ScriptError(
-                        'This `else` has no `if` in front of it.',
+                        'Zu diesem `else` fehlt ein `if` davor.',
                         token.line,
                         token.column,
                     );
@@ -106,7 +106,7 @@ class Parser {
         // reads much more like a missing `if` or `repeat` header.
         if (this.check('punct', '{')) {
             throw new ScriptError(
-                'A `{` needs something in front of it, like `repeat(3)` or `if (…)`.',
+                'Vor einem `{` muss etwas stehen, zum Beispiel `repeat(3)` oder `if (…)`.',
                 token.line,
                 token.column,
             );
@@ -128,7 +128,7 @@ class Parser {
         // `moveForward;` without parentheses is the classic first mistake.
         if (expression.kind === 'name') {
             throw new ScriptError(
-                `\`${expression.name}\` on its own does nothing — did you mean \`${expression.name}()\`?`,
+                `\`${expression.name}\` allein macht nichts — meintest du \`${expression.name}()\`?`,
                 expression.line,
             );
         }
@@ -178,14 +178,14 @@ class Parser {
         const token = this.next();
         this.require('function', token);
 
-        const name = this.expect('name', undefined, 'A function needs a name, like `function deliver() { … }`.');
-        this.expect('punct', '(', `\`function ${name.value}\` needs a \`(\` after its name.`);
+        const name = this.expect('name', undefined, 'Eine Funktion braucht einen Namen, zum Beispiel `function deliver() { … }`.');
+        this.expect('punct', '(', `Nach \`function ${name.value}\` fehlt ein \`(\`.`);
 
         const parameters: string[] = [];
         while (!this.check('punct', ')')) {
-            parameters.push(this.expect('name', undefined, 'Expected a parameter name here.').value);
+            parameters.push(this.expect('name', undefined, 'Hier wird ein Parametername erwartet.').value);
             if (!this.check('punct', ')')) {
-                this.expect('punct', ',', 'Separate parameters with a comma.');
+                this.expect('punct', ',', 'Trenne Parameter mit einem Komma.');
             }
         }
         this.next(); // ')'
@@ -212,21 +212,21 @@ class Parser {
         const token = this.next();
         this.require('variable', token);
 
-        const name = this.expect('name', undefined, '`let` needs a name, like `let count = 0;`.');
-        this.expect('punct', '=', `\`let ${name.value}\` needs a value, like \`let ${name.value} = 0;\`.`);
+        const name = this.expect('name', undefined, '`let` braucht einen Namen, zum Beispiel `let zaehler = 0;`.');
+        this.expect('punct', '=', `\`let ${name.value}\` braucht einen Wert, zum Beispiel \`let ${name.value} = 0;\`.`);
         const value = this.parseExpression();
         this.endStatement();
         return { kind: 'let', name: name.value, value, line: token.line };
     }
 
     private parseBlock(): Block {
-        const open = this.expect('punct', '{', 'Expected a `{` to open this block.');
+        const open = this.expect('punct', '{', 'Hier wird ein `{` erwartet, das den Block öffnet.');
         const statements: Stmt[] = [];
 
         while (!this.check('punct', '}')) {
             if (this.atEnd()) {
                 throw new ScriptError(
-                    'This block is never closed — add a `}`.',
+                    'Dieser Block wird nie geschlossen — setz ein `}`.',
                     open.line,
                     open.column,
                 );
@@ -239,9 +239,9 @@ class Parser {
     }
 
     private parseParenthesized(construct: string): Expr {
-        this.expect('punct', '(', `\`${construct}\` needs a \`(\` after it.`);
+        this.expect('punct', '(', `Nach \`${construct}\` fehlt ein \`(\`.`);
         const expression = this.parseExpression();
-        this.expect('punct', ')', `This \`${construct}\` is missing its closing \`)\`.`);
+        this.expect('punct', ')', `Diesem \`${construct}\` fehlt das schliessende \`)\`.`);
         return expression;
     }
 
@@ -284,7 +284,7 @@ class Parser {
             const token = this.next();
             if (token.value === '==' || token.value === '!=') {
                 throw new ScriptError(
-                    `Use \`${token.value}=\` instead of \`${token.value}\` to compare values.`,
+                    `Zum Vergleichen brauchst du \`${token.value}=\` statt \`${token.value}\`.`,
                     token.line,
                     token.column,
                 );
@@ -379,7 +379,7 @@ class Parser {
             if (token.value === 'false') return { kind: 'boolean', value: false, line: token.line };
             if (token.value === 'null') return { kind: 'null', line: token.line };
             throw new ScriptError(
-                `\`${token.value}\` cannot be used as a value here.`,
+                `\`${token.value}\` kann hier nicht als Wert stehen.`,
                 token.line,
                 token.column,
             );
@@ -387,7 +387,7 @@ class Parser {
 
         if (token.kind === 'punct' && token.value === '(') {
             const inner = this.parseExpression();
-            this.expect('punct', ')', 'This `(` is missing its closing `)`.');
+            this.expect('punct', ')', 'Diesem `(` fehlt das schliessende `)`.');
             return inner;
         }
 
@@ -396,7 +396,7 @@ class Parser {
             // writing `robot.moveForward()` — worth saying so outright.
             if (this.check('punct', '.')) {
                 throw new ScriptError(
-                    `Commands are used on their own — write \`moveForward()\`, not \`${token.value}.…\`.`,
+                    `Befehle stehen für sich — schreib \`moveForward()\`, nicht \`${token.value}.…\`.`,
                     token.line,
                     token.column,
                 );
@@ -408,21 +408,21 @@ class Parser {
                 while (!this.check('punct', ')')) {
                     if (this.atEnd()) {
                         throw new ScriptError(
-                            `\`${token.value}(\` is missing its closing \`)\`.`,
+                            `\`${token.value}(\` fehlt das schliessende \`)\`.`,
                             token.line,
                             token.column,
                         );
                     }
                     args.push(this.parseExpression());
                     if (!this.check('punct', ')')) {
-                        this.expect('punct', ',', 'Separate arguments with a comma.');
+                        this.expect('punct', ',', 'Trenne Argumente mit einem Komma.');
                     }
                 }
                 this.next(); // ')'
 
                 if (SENSING[token.value as keyof RobotSensors] && this.stage < FEATURE_STAGE.conditional) {
                     throw new ScriptError(
-                        `\`${token.value}()\` isn't unlocked in this level yet.`,
+                        `\`${token.value}()\` ist in diesem Level noch nicht freigeschaltet.`,
                         token.line,
                         token.column,
                     );
@@ -436,8 +436,8 @@ class Parser {
 
         throw new ScriptError(
             token.kind === 'eof'
-                ? 'The program ends in the middle of something.'
-                : `\`${token.value}\` doesn't belong here.`,
+                ? 'Das Programm hört mitten in etwas auf.'
+                : `\`${token.value}\` gehört hier nicht hin.`,
             token.line,
             token.column,
         );
@@ -450,7 +450,7 @@ class Parser {
     private require(feature: keyof typeof FEATURE_STAGE, token: Token): void {
         if (this.stage >= FEATURE_STAGE[feature]) return;
         throw new ScriptError(
-            `${FEATURE_NAME[feature]} aren't unlocked in this level yet.`,
+            `${FEATURE_NAME[feature]} sind in diesem Level noch nicht freigeschaltet.`,
             token.line,
             token.column,
         );

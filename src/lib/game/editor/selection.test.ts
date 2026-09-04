@@ -80,7 +80,7 @@ describe('selectAt', () => {
 
         expect(selectAt(level, { x: 2, y: 2 })).toMatchObject({
             kind: 'item',
-            label: 'Grey crate',
+            label: 'Graue Kiste',
             coords: [{ x: 2, y: 2 }],
         });
     });
@@ -92,7 +92,7 @@ describe('selectAt', () => {
 
     it('labels what it picked', () => {
         const level = paint(base(), { '1,1': { kind: 'drop_off', color: 'red' } });
-        expect(selectAt(level, { x: 1, y: 1 })?.label).toBe('Drop-off bay');
+        expect(selectAt(level, { x: 1, y: 1 })?.label).toBe('Abgabestelle');
     });
 });
 
@@ -183,8 +183,8 @@ describe('selecting a switch or a plate', () => {
             '0,2': { kind: 'switch', targetId: 'sensor-1', initiallyOn: false },
         });
 
-        expect(selectAt(level, { x: 4, y: 0 })?.label).toBe('Switch → belt-1');
-        expect(selectAt(level, { x: 0, y: 2 })?.label).toBe('Switch');
+        expect(selectAt(level, { x: 4, y: 0 })?.label).toBe('Schalter → belt-1');
+        expect(selectAt(level, { x: 0, y: 2 })?.label).toBe('Schalter');
         expect(linked(level, { x: 0, y: 2 })).toEqual([]);
     });
 

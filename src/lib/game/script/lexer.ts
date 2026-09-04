@@ -118,7 +118,7 @@ export function tokenize(source: string): Token[] {
                 advance();
             }
             if (index >= source.length) {
-                throw new ScriptError('This comment is never closed — add a */.', startLine, startColumn);
+                throw new ScriptError('Dieser Kommentar wird nie geschlossen — setz ein */.', startLine, startColumn);
             }
             advance(2);
             continue;
@@ -135,7 +135,7 @@ export function tokenize(source: string): Token[] {
                 advance();
             }
             if (!/^\d+(\.\d+)?$/.test(text)) {
-                throw new ScriptError(`"${text}" is not a number.`, startLine, startColumn);
+                throw new ScriptError(`„${text}“ ist keine Zahl.`, startLine, startColumn);
             }
             tokens.push({ kind: 'number', value: text, line: startLine, column: startColumn });
             continue;
@@ -159,7 +159,7 @@ export function tokenize(source: string): Token[] {
             }
             if (source[index] !== quote) {
                 throw new ScriptError(
-                    `This text is missing its closing ${quote}.`,
+                    `Diesem Text fehlt das schliessende ${quote}.`,
                     startLine,
                     startColumn,
                 );
@@ -193,7 +193,7 @@ export function tokenize(source: string): Token[] {
             continue;
         }
 
-        throw new ScriptError(`I don't understand "${char}" here.`, startLine, startColumn);
+        throw new ScriptError(`Mit „${char}“ kann ich hier nichts anfangen.`, startLine, startColumn);
     }
 
     tokens.push({ kind: 'eof', value: '', line, column: column() });

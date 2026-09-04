@@ -1,13 +1,16 @@
 <script lang="ts">
 	import { enhance } from '$app/forms';
-	import { Badge, Button, Callout, Modal, Panel, Topbar } from '$lib/components/index.js';
-	import { markdownExcerpt } from '$lib/markdown';
+	import ArrowDown from '@lucide/svelte/icons/arrow-down';
+	import ArrowUp from '@lucide/svelte/icons/arrow-up';
+	import BookOpen from '@lucide/svelte/icons/book-open';
+	import CirclePlay from '@lucide/svelte/icons/circle-play';
+	import { autosave, SaveTracker } from '$lib/autosave.svelte.js';
+	import { Button, Callout, Modal } from '$lib/components/index.js';
 	import type { ActionData, PageServerData } from './$types';
 
 	let { data, form }: { data: PageServerData; form: ActionData } = $props();
 
 	const course = $derived(data.course);
-	const itemCount = $derived(course.stages.reduce((total, s) => total + s.items.length, 0));
 
 	/**
 	 * False when this course reached us as a clone — a live read-only link to
@@ -16,14 +19,24 @@
 	 */
 	const canEdit = $derived(data.canEdit);
 
-	let newStage = $state('');
-	// Keyed by stage id, so each stage's two "add" fields keep their own text.
-	let newLevel = $state<Record<string, string>>({});
-	let newTheory = $state<Record<string, string>>({});
-	// Which shared level each stage's picker has selected.
-	let borrowed = $state<Record<string, string>>({});
+	/**
+	 * There is no save button any more, so the page has to say for itself when a
+	 * rename has landed. One tracker for the whole page: the indicator is a
+	 * single line in the corner, not a badge per field.
+	 */
+	const saves = new SaveTracker();
 
+	// Which dialog is open. `stageId` carries the stage the item is being added
+	// to, so the two item dialogs are one each rather than one per stage.
+	let addingStage = $state(false);
+	let addingLevel = $state<string | null>(null);
+	let addingTheory = $state<string | null>(null);
+	let deletingCourse = $state(false);
 	let sharing = $state(false);
+
+	// Which shared level the "new level" dialog has selected.
+	let borrowed = $state('');
+
 	const sharedWith = $derived(new Set(data.shares.map((row) => row.teacherId)));
 	const shareable = $derived(data.teachers.filter((row) => !sharedWith.has(row.id)));
 </script>
@@ -32,45 +45,12 @@
 	<title>{course.title} · Dewy</title>
 </svelte:head>
 
-<Topbar>
-	{#snippet left()}
-		<a class="crumb" href="/admin/courses">Courses</a>
-		<span class="crumb-sep">›</span>
-		<span class="mission">{course.title}</span>
-	{/snippet}
-	{#snippet right()}
-		{#if !canEdit}
-			<span class="chip">Read-only</span>
-		{:else if course.published}
-			<Badge variant="chapter">Published</Badge>
-		{:else}
-			<span class="chip">Draft</span>
-		{/if}
-
-		{#if canEdit}
-			<form method="POST" action="?/publish" use:enhance>
-				<input type="hidden" name="published" value={course.published ? 'false' : 'true'} />
-				<button class="btn btn-ghost" type="submit">
-					{course.published ? 'Unpublish' : 'Publish'}
-				</button>
-			</form>
-			<button class="btn btn-ghost" type="button" onclick={() => (sharing = true)}>Share</button>
-		{/if}
-
-		<form method="POST" action="?/duplicate" use:enhance>
-			<button class="btn btn-ghost" type="submit">Take a copy</button>
-		</form>
-
-		<a class="btn btn-ghost" href="/courses/{course.id}">Preview</a>
-	{/snippet}
-</Topbar>
-
 <main class="page">
 	{#if !canEdit}
 		<Callout>
-			<strong>This course belongs to another teacher.</strong> You are seeing a live link to it, so
-			their later edits show up here too. You can assign it to your classes and preview it; to change
-			anything, take a copy.
+			<strong>Dieser Kurs gehört einer anderen Lehrperson.</strong> Du siehst eine Live-Verknüpfung
+			darauf, spätere Änderungen erscheinen also auch hier. Du kannst den Kurs deinen Klassen
+			zuweisen und ihn ansehen; um etwas zu ändern, erstelle eine Kopie.
 		</Callout>
 	{/if}
 
@@ -78,211 +58,216 @@
 		<Callout variant="danger">{form.message}</Callout>
 	{/if}
 
-	<Panel>
-		<h2 class="section-title">Course details</h2>
-		<form class="details" method="POST" action="?/updateCourse" use:enhance>
+	<!-- ── The course itself ───────────────────────────────── -->
+
+	<section class="panel card">
+		<h2 class="card-title">Kurs</h2>
+
+		<form class="fields" method="POST" action="?/updateCourse" use:enhance={saves.enhance('course')}>
 			<input
 				class="field"
 				name="title"
 				value={course.title}
+				placeholder="Kursname"
+				aria-label="Kursname"
 				autocomplete="off"
 				disabled={!canEdit}
+				use:autosave
 			/>
 			<textarea
-				class="field"
+				class="field description"
 				name="description"
 				rows="2"
-				placeholder="What this course covers"
-				disabled={!canEdit}>{course.description ?? ''}</textarea
+				placeholder="Beschreibung…"
+				aria-label="Kursbeschreibung"
+				disabled={!canEdit}
+				use:autosave>{course.description ?? ''}</textarea
 			>
-			{#if canEdit}
-				<div class="details-actions">
-					<Button type="submit">Save</Button>
-				</div>
-			{/if}
 		</form>
-	</Panel>
 
-	<div class="heading-row">
-		<h2 class="section-title">
-			Stages
-			<span class="count">{course.stages.length} stages · {itemCount} items</span>
-		</h2>
-		{#if canEdit}
-			<form class="add-stage" method="POST" action="?/addStage" use:enhance>
-				<input
-					class="field"
-					name="title"
-					placeholder="New stage name"
-					bind:value={newStage}
-					autocomplete="off"
-				/>
-				<Button type="submit" variant="ghost">Add stage</Button>
+		<div class="card-actions">
+			{#if canEdit}
+				<form method="POST" action="?/publish" use:enhance>
+					<input type="hidden" name="published" value={course.published ? 'false' : 'true'} />
+					<button class="btn btn-ghost act" type="submit">
+						{course.published ? 'Archivieren' : 'Veröffentlichen'}
+					</button>
+				</form>
+				<button class="btn btn-ghost act" type="button" onclick={() => (sharing = true)}>
+					Teilen
+				</button>
+			{/if}
+
+			<a class="btn btn-ghost act" href="/courses/{course.id}">Vorschau</a>
+
+			<form method="POST" action="?/duplicate" use:enhance>
+				<button class="btn btn-ghost act" type="submit">Kopie erstellen</button>
 			</form>
-		{/if}
-	</div>
+
+			{#if canEdit}
+				<button
+					class="btn btn-danger act push-right"
+					type="button"
+					onclick={() => (deletingCourse = true)}
+				>
+					Löschen
+				</button>
+			{/if}
+		</div>
+	</section>
+
+	<!-- ── Its stages ──────────────────────────────────────── -->
 
 	{#if course.stages.length === 0}
-		<Panel>
+		<section class="panel card">
 			<p class="empty">
-				No stages yet. A stage is a chunk of the course — add one above, then fill it with levels
-				and theory blocks.
+				Noch keine Kapitel. Ein Kapitel ist ein Abschnitt des Kurses — leg eines an und füll es mit
+				Levels und Theorieblöcken.
 			</p>
-		</Panel>
+		</section>
 	{/if}
 
 	{#each course.stages as stage, stageIndex (stage.id)}
-		<Panel>
+		<section class="panel card">
 			<header class="stage-head">
-				<form class="stage-title" method="POST" action="?/updateStage" use:enhance>
+				<form
+					class="stage-title"
+					method="POST"
+					action="?/updateStage"
+					use:enhance={saves.enhance(stage.id)}
+				>
 					<input type="hidden" name="id" value={stage.id} />
-					<span class="stage-index">{stageIndex + 1}</span>
 					<input
-						class="field field-inline"
+						class="field field-strong"
 						name="title"
 						value={stage.title}
+						placeholder="Kapitelname"
+						aria-label="Kapitelname"
 						autocomplete="off"
 						disabled={!canEdit}
+						use:autosave
 					/>
-					{#if canEdit}
-						<button class="btn btn-ghost" type="submit">Rename</button>
-					{/if}
 				</form>
 
-				<div class="stage-actions" class:is-hidden={!canEdit}>
-					<form method="POST" action="?/moveStage" use:enhance>
-						<input type="hidden" name="id" value={stage.id} />
-						<input type="hidden" name="direction" value="up" />
-						<button class="btn btn-ghost" type="submit" disabled={stageIndex === 0} title="Move up"
-							>↑</button
-						>
-					</form>
+				<div class="controls" class:is-hidden={!canEdit}>
 					<form method="POST" action="?/moveStage" use:enhance>
 						<input type="hidden" name="id" value={stage.id} />
 						<input type="hidden" name="direction" value="down" />
 						<button
-							class="btn btn-ghost"
+							class="btn btn-ghost icon-btn"
 							type="submit"
 							disabled={stageIndex === course.stages.length - 1}
-							title="Move down">↓</button
+							aria-label="Kapitel nach unten"
 						>
+							<ArrowDown size={18} />
+						</button>
+					</form>
+					<form method="POST" action="?/moveStage" use:enhance>
+						<input type="hidden" name="id" value={stage.id} />
+						<input type="hidden" name="direction" value="up" />
+						<button
+							class="btn btn-ghost icon-btn"
+							type="submit"
+							disabled={stageIndex === 0}
+							aria-label="Kapitel nach oben"
+						>
+							<ArrowUp size={18} />
+						</button>
 					</form>
 					<form method="POST" action="?/deleteStage" use:enhance>
 						<input type="hidden" name="id" value={stage.id} />
-						<button class="btn btn-ghost danger" type="submit">Delete stage</button>
+						<button class="btn btn-danger act" type="submit">Löschen</button>
 					</form>
 				</div>
 			</header>
 
-			{@const previous = stageIndex === 0 ? null : course.stages[stageIndex - 1]}
-			{@const previousLevels = previous?.items.filter((i) => i.kind === 'level').length ?? 0}
 			<div class="rules">
-				<form class="rule" method="POST" action="?/gateStage" use:enhance>
+				<form method="POST" action="?/gateStage" use:enhance>
 					<input type="hidden" name="id" value={stage.id} />
 					<input type="hidden" name="gated" value={stage.gated ? 'false' : 'true'} />
-					<label class="rule-toggle">
+					<label class="rule">
 						<input
 							type="checkbox"
 							checked={stage.gated}
-							disabled={previous === null || !canEdit}
+							disabled={stageIndex === 0 || !canEdit}
 							onchange={(event) => event.currentTarget.form?.requestSubmit()}
 						/>
-						<span>Gate this stage</span>
+						<span>Blockiere dieses Kapitel bis das vorherige abgeschlossen ist</span>
 					</label>
-					<span class="rule-note">
-						{#if previous === null}
-							The first stage has nothing in front of it.
-						{:else if previousLevels === 0}
-							“{previous.title}” has no levels yet, so this gate would stay open.
-						{:else if stage.gated}
-							Shut until all {previousLevels}
-							{previousLevels === 1 ? 'level' : 'levels'} in “{previous.title}” are complete.
-						{:else}
-							Off — students reach this stage item by item, as usual.
-						{/if}
-					</span>
 				</form>
 
-				<form class="rule" method="POST" action="?/orderStage" use:enhance>
+				<form method="POST" action="?/orderStage" use:enhance>
 					<input type="hidden" name="id" value={stage.id} />
 					<input type="hidden" name="ordered" value={stage.ordered ? 'false' : 'true'} />
-					<label class="rule-toggle">
+					<label class="rule">
 						<input
 							type="checkbox"
 							checked={stage.ordered}
 							disabled={!canEdit}
 							onchange={(event) => event.currentTarget.form?.requestSubmit()}
 						/>
-						<span>Keep this stage in order</span>
+						<span>Reihenfolge der Levels einhalten</span>
 					</label>
-					<span class="rule-note">
-						{#if stage.ordered}
-							Items open one at a time, top to bottom.
-						{:else}
-							Off — the stage opens at once, and the next one waits for all of it.
-						{/if}
-					</span>
 				</form>
 			</div>
 
+			<hr class="rule-line" />
+
 			{#if stage.items.length === 0}
-				<p class="empty indent">Empty stage — add a level or a theory block below.</p>
+				<p class="empty">Noch nichts drin — füg ein Level oder einen Theorieblock hinzu.</p>
 			{:else}
 				<ol class="items">
 					{#each stage.items as item, itemIndex (item.id)}
+						{@const href =
+							item.kind === 'theory'
+								? `/admin/courses/${course.id}/theory/${item.id}`
+								: `/designer/${item.levelId}`}
 						<li class="item">
-							<span class="item-kind" class:is-theory={item.kind === 'theory'}>
-								{item.kind === 'theory' ? 'Text' : 'Level'}
-							</span>
-
-							<div class="item-text">
-								{#if item.kind === 'theory'}
-									<a class="item-name" href="/admin/courses/{course.id}/theory/{item.id}"
-										>{item.title}</a
-									>
-									<p class="item-meta">{markdownExcerpt(item.body, 90)}</p>
-								{:else}
-									<a class="item-name" href="/designer/{item.levelId}">{item.name}</a>
-									{#if item.linked}
-										<span class="chip">Shared</span>
+							<a class="item-link" {href}>
+								<span class="item-icon">
+									{#if item.kind === 'theory'}
+										<BookOpen size={20} />
+									{:else}
+										<CirclePlay size={20} />
 									{/if}
-									{#if item.description}
-										<p class="item-meta">{item.description}</p>
-									{/if}
-								{/if}
-							</div>
+								</span>
+								<span class="item-name">
+									{item.kind === 'theory' ? item.title : item.name}
+								</span>
+							</a>
 
-							<div class="item-actions" class:is-hidden={!canEdit}>
-								<form method="POST" action="?/moveItem" use:enhance>
-									<input type="hidden" name="id" value={item.id} />
-									<input type="hidden" name="direction" value="up" />
-									<button
-										class="btn btn-ghost"
-										type="submit"
-										disabled={itemIndex === 0}
-										title="Move up">↑</button
-									>
-								</form>
+							{#if item.kind === 'level' && item.linked}
+								<span class="chip">Geteilt</span>
+							{/if}
+
+							<div class="controls" class:is-hidden={!canEdit}>
 								<form method="POST" action="?/moveItem" use:enhance>
 									<input type="hidden" name="id" value={item.id} />
 									<input type="hidden" name="direction" value="down" />
 									<button
-										class="btn btn-ghost"
+										class="btn btn-ghost icon-btn"
 										type="submit"
 										disabled={itemIndex === stage.items.length - 1}
-										title="Move down">↓</button
+										aria-label="Nach unten"
 									>
+										<ArrowDown size={18} />
+									</button>
 								</form>
-								{#if item.kind === 'theory'}
-									<a class="btn btn-ghost" href="/admin/courses/{course.id}/theory/{item.id}">Edit</a>
-								{:else}
-									<a class="btn btn-ghost" href="/designer/{item.levelId}">
-										{item.linked ? 'View' : 'Edit'}
-									</a>
-								{/if}
+								<form method="POST" action="?/moveItem" use:enhance>
+									<input type="hidden" name="id" value={item.id} />
+									<input type="hidden" name="direction" value="up" />
+									<button
+										class="btn btn-ghost icon-btn"
+										type="submit"
+										disabled={itemIndex === 0}
+										aria-label="Nach oben"
+									>
+										<ArrowUp size={18} />
+									</button>
+								</form>
 								<form method="POST" action="?/deleteItem" use:enhance>
 									<input type="hidden" name="id" value={item.id} />
-									<button class="btn btn-ghost danger" type="submit">Remove</button>
+									<button class="btn btn-danger act" type="submit">Löschen</button>
 								</form>
 							</div>
 						</li>
@@ -292,86 +277,138 @@
 
 			{#if canEdit}
 				<footer class="stage-add">
-					<form method="POST" action="?/addLevel" use:enhance>
-						<input type="hidden" name="stageId" value={stage.id} />
-						<input
-							class="field"
-							name="name"
-							placeholder="New level name"
-							bind:value={newLevel[stage.id]}
-							autocomplete="off"
-						/>
-						<button class="btn btn-ghost" type="submit">+ Level</button>
-					</form>
-					<form method="POST" action="?/addTheory" use:enhance>
-						<input type="hidden" name="stageId" value={stage.id} />
-						<input
-							class="field"
-							name="title"
-							placeholder="New theory block title"
-							bind:value={newTheory[stage.id]}
-							autocomplete="off"
-						/>
-						<button class="btn btn-ghost" type="submit">+ Text</button>
-					</form>
-
-					{#if data.sharedLevels.length > 0}
-						<form class="borrow" method="POST" use:enhance>
-							<input type="hidden" name="stageId" value={stage.id} />
-							<select class="field" name="levelId" bind:value={borrowed[stage.id]}
-								aria-label="Shared level">
-								<option value="">A level someone shared…</option>
-								{#each data.sharedLevels as level (level.id)}
-									<option value={level.id}>
-										{level.name}{level.ownerName ? ` · ${level.ownerName}` : ''}
-									</option>
-								{/each}
-							</select>
-							<button
-								class="btn btn-ghost"
-								type="submit"
-								formaction="?/linkLevel"
-								disabled={!borrowed[stage.id]}
-								title="Adds a live link. Its author keeps editing it; you cannot."
-							>
-								Link
-							</button>
-							<button
-								class="btn btn-ghost"
-								type="submit"
-								formaction="?/copyLevel"
-								disabled={!borrowed[stage.id]}
-								title="Adds your own editable duplicate."
-							>
-								Copy
-							</button>
-						</form>
-					{/if}
+					<button
+						class="btn btn-add add"
+						type="button"
+						onclick={() => {
+							borrowed = '';
+							addingLevel = stage.id;
+						}}
+					>
+						+ Level
+					</button>
+					<button class="btn btn-add add" type="button" onclick={() => (addingTheory = stage.id)}>
+						+ Theorie
+					</button>
 				</footer>
 			{/if}
-		</Panel>
+		</section>
 	{/each}
 
 	{#if canEdit}
-		<Panel>
-			<h2 class="section-title">Danger zone</h2>
-			<div class="danger-zone">
-				<p class="empty">
-					Deleting this course also deletes every stage, theory block and level inside it.
-				</p>
-				<form method="POST" action="?/deleteCourse" use:enhance>
-					<button class="btn btn-ghost danger" type="submit">Delete course</button>
-				</form>
-			</div>
-		</Panel>
+		<div class="page-add">
+			<button class="btn btn-add add wide" type="button" onclick={() => (addingStage = true)}>
+				Neues Kapitel
+			</button>
+		</div>
 	{/if}
 </main>
 
-<Modal bind:open={sharing} title="Share “{course.title}”">
-	<p class="share-note">
-		A shared teacher sees this course as a <strong>live link</strong> — your later edits reach them
-		— and can assign it to their classes, but cannot change it. They can always take their own
-		editable copy.
+<!--
+	The save indicator. Autosave took the save button away, so this is the only
+	place the page admits a write happened — quiet, and out of the layout.
+-->
+{#if saves.busy || saves.settled}
+	<p class="save-state" aria-live="polite">{saves.busy ? 'Speichern…' : 'Gespeichert'}</p>
+{/if}
+
+<!-- ── Dialogs ─────────────────────────────────────────────── -->
+
+<Modal bind:open={addingStage} title="Neues Kapitel">
+	<form class="dialog-form" method="POST" action="?/addStage" use:enhance>
+		<label class="field-label" for="new-stage-title">Kapitelname</label>
+		<input
+			class="field"
+			id="new-stage-title"
+			name="title"
+			placeholder="z. B. Einführung"
+			autocomplete="off"
+		/>
+		<div class="dialog-actions">
+			<Button type="button" variant="ghost" onclick={() => (addingStage = false)}>Abbrechen</Button>
+			<Button type="submit">Kapitel erstellen</Button>
+		</div>
+	</form>
+</Modal>
+
+<Modal open={addingLevel !== null} title="Neues Level" onclose={() => (addingLevel = null)}>
+	<form class="dialog-form" method="POST" action="?/addLevel" use:enhance>
+		<input type="hidden" name="stageId" value={addingLevel} />
+		<label class="field-label" for="new-level-name">Levelname</label>
+		<input
+			class="field"
+			id="new-level-name"
+			name="name"
+			placeholder="z. B. Erste Schritte"
+			autocomplete="off"
+		/>
+		<p class="dialog-note">Das leere Level öffnet sich danach direkt im Designer.</p>
+		<div class="dialog-actions">
+			<Button type="button" variant="ghost" onclick={() => (addingLevel = null)}>Abbrechen</Button>
+			<Button type="submit">Level erstellen</Button>
+		</div>
+	</form>
+
+	{#if data.sharedLevels.length > 0}
+		<form class="dialog-form borrow" method="POST" use:enhance>
+			<input type="hidden" name="stageId" value={addingLevel} />
+			<label class="field-label" for="borrow-level">Oder ein geteiltes Level übernehmen</label>
+			<select class="field" id="borrow-level" name="levelId" bind:value={borrowed}>
+				<option value="">Geteiltes Level wählen…</option>
+				{#each data.sharedLevels as level (level.id)}
+					<option value={level.id}>
+						{level.name}{level.ownerName ? ` · ${level.ownerName}` : ''}
+					</option>
+				{/each}
+			</select>
+			<div class="dialog-actions">
+				<button
+					class="btn btn-ghost"
+					type="submit"
+					formaction="?/linkLevel"
+					disabled={!borrowed}
+					title="Fügt eine Live-Verknüpfung ein. Die Autorin oder der Autor bearbeitet das Level weiter, du nicht."
+				>
+					Verknüpfen
+				</button>
+				<button
+					class="btn btn-ghost"
+					type="submit"
+					formaction="?/copyLevel"
+					disabled={!borrowed}
+					title="Fügt eine eigene, bearbeitbare Kopie ein."
+				>
+					Kopieren
+				</button>
+			</div>
+		</form>
+	{/if}
+</Modal>
+
+<Modal open={addingTheory !== null} title="Neuer Theorieblock" onclose={() => (addingTheory = null)}>
+	<form class="dialog-form" method="POST" action="?/addTheory" use:enhance>
+		<input type="hidden" name="stageId" value={addingTheory} />
+		<label class="field-label" for="new-theory-title">Titel</label>
+		<input
+			class="field"
+			id="new-theory-title"
+			name="title"
+			placeholder="z. B. Was ist eine Schleife?"
+			autocomplete="off"
+		/>
+		<p class="dialog-note">Der Texteditor öffnet sich danach direkt.</p>
+		<div class="dialog-actions">
+			<Button type="button" variant="ghost" onclick={() => (addingTheory = null)}>Abbrechen</Button>
+			<Button type="submit">Theorieblock erstellen</Button>
+		</div>
+	</form>
+</Modal>
+
+<Modal bind:open={sharing} title="„{course.title}“ teilen">
+	<p class="dialog-note">
+		Eine Lehrperson, mit der du teilst, sieht diesen Kurs als <strong>Live-Verknüpfung</strong> —
+		deine späteren Änderungen erreichen sie — und kann ihn ihren Klassen zuweisen, aber nicht
+		ändern. Eine eigene, bearbeitbare Kopie kann sie sich jederzeit erstellen.
 	</p>
 
 	{#if data.shares.length > 0}
@@ -381,46 +418,198 @@
 					<span>{row.name}</span>
 					<form method="POST" action="?/unshare" use:enhance>
 						<input type="hidden" name="teacherId" value={row.teacherId} />
-						<button class="btn btn-ghost" type="submit">Revoke</button>
+						<button class="btn btn-ghost" type="submit">Entziehen</button>
 					</form>
 				</li>
 			{/each}
 		</ul>
 	{:else}
-		<p class="share-note">Not shared with anyone yet.</p>
+		<p class="dialog-note">Noch mit niemandem geteilt.</p>
 	{/if}
 
 	{#if shareable.length > 0}
 		<form class="share-add" method="POST" action="?/share" use:enhance>
-			<select class="field" name="teacherId" aria-label="Teacher to share with">
+			<select class="field" name="teacherId" aria-label="Lehrperson zum Teilen">
 				{#each shareable as teacher (teacher.id)}
 					<option value={teacher.id}>{teacher.name}</option>
 				{/each}
 			</select>
-			<Button type="submit" variant="ghost">Share</Button>
+			<Button type="submit" variant="ghost">Teilen</Button>
 		</form>
 	{/if}
 </Modal>
 
+<!--
+	Deleting the course takes every stage, theory block and level with it, and
+	the button for it now sits next to "Vorschau" rather than in a danger zone —
+	so it asks first.
+-->
+<Modal bind:open={deletingCourse} title="Kurs löschen?">
+	<p class="dialog-note">
+		„{course.title}“ und damit jedes Kapitel, jeden Theorieblock und jedes Level darin werden
+		gelöscht. Das lässt sich nicht rückgängig machen.
+	</p>
+	<form class="dialog-actions" method="POST" action="?/deleteCourse" use:enhance>
+		<Button type="button" variant="ghost" onclick={() => (deletingCourse = false)}>Abbrechen</Button
+		>
+		<button class="btn btn-danger" type="submit">Endgültig löschen</button>
+	</form>
+</Modal>
+
 <style>
-	.crumb {
-		font-size: 0.8125rem;
-		color: var(--text-muted);
-		text-decoration: none;
+	.page {
+		max-width: 929px; /* 865px of content plus the 32px gutters */
+		margin: 0 auto;
+		padding: 44px 32px 80px;
+		display: flex;
+		flex-direction: column;
+		gap: 16px;
 	}
 
-	.crumb:hover {
+	.card {
+		padding: 32px 32px 20px;
+	}
+
+	.card-title {
+		font-size: 1.25rem;
+		font-weight: 700;
+		margin-bottom: 16px;
+	}
+
+	/* ── The course card ─────────────────────────────────── */
+
+	.fields {
+		display: flex;
+		flex-direction: column;
+		gap: 8px;
+	}
+
+	.card-actions {
+		display: flex;
+		align-items: center;
+		gap: 10px;
+		flex-wrap: wrap;
+		margin-top: 8px;
+		padding-bottom: 12px;
+	}
+
+	.push-right {
+		margin-left: auto;
+	}
+
+	/* ── Stages ──────────────────────────────────────────── */
+
+	.stage-head {
+		display: flex;
+		align-items: center;
+		gap: 9px;
+	}
+
+	.stage-title {
+		flex: 1;
+		min-width: 180px;
+	}
+
+	.rules {
+		display: flex;
+		flex-direction: column;
+		margin-top: 9px;
+	}
+
+	.rule {
+		display: flex;
+		align-items: center;
+		gap: 10px;
+		font-size: 1.25rem;
+		line-height: 1.35;
+	}
+
+	.rule:has(input:disabled) {
+		color: var(--text-faint);
+	}
+
+	.rule input {
+		accent-color: var(--accent);
+	}
+
+	.rule-line {
+		border: 0;
+		border-top: 1px solid var(--panel-border);
+		margin: 10px 0 16px;
+	}
+
+	/* ── Items ───────────────────────────────────────────── */
+
+	.items {
+		list-style: none;
+		margin: 0;
+		padding: 0;
+		display: flex;
+		flex-direction: column;
+		gap: 9px;
+	}
+
+	.item {
+		display: flex;
+		align-items: center;
+		gap: 12px;
+		height: 59px;
+		padding: 8px 8px 8px 16px;
+		background: var(--bg);
+		border-radius: 8px;
+	}
+
+	.item-link {
+		flex: 1;
+		min-width: 0;
+		display: flex;
+		align-items: center;
+		gap: 16px;
+		text-decoration: none;
 		color: var(--text);
 	}
 
-	.crumb-sep {
-		color: var(--text-faint);
-		font-size: 0.8125rem;
+	.item-icon {
+		display: grid;
+		place-items: center;
+		flex-shrink: 0;
+		width: 36px;
+		height: 36px;
+		border-radius: 10px;
+		background: var(--accent-soft);
+		color: var(--accent);
 	}
 
-	.mission {
+	.item-name {
 		font-weight: 700;
-		font-size: 0.875rem;
+		font-size: 1rem;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+
+	.item-link:hover .item-name {
+		color: var(--accent);
+	}
+
+	.stage-add {
+		display: flex;
+		justify-content: center;
+		gap: 9px;
+		margin-top: 9px;
+	}
+
+	.page-add {
+		display: flex;
+		justify-content: center;
+	}
+
+	/* ── Controls ────────────────────────────────────────── */
+
+	.controls {
+		display: flex;
+		align-items: center;
+		gap: 9px;
 	}
 
 	/* Read-only keeps the layout — the controls go, the rows do not shift. */
@@ -428,15 +617,104 @@
 		visibility: hidden;
 	}
 
-	.borrow {
-		display: flex;
-		gap: 6px;
-		align-items: center;
-		flex: 1;
-		min-width: 260px;
+	.field {
+		height: 43px;
+		border-radius: 8px;
+		font-size: 1rem;
+		padding: 0 14px;
 	}
 
-	.share-note {
+	.field-strong {
+		font-weight: 700;
+		font-size: 1.0625rem;
+	}
+
+	/* `textarea.field` in the global sheet is monospace, for the theory editor's
+	   markdown body. A course description is prose, so it says otherwise. */
+	.description {
+		height: auto;
+		min-height: 89px;
+		padding: 12px 14px;
+		font-family: var(--font-ui);
+		font-size: 1rem;
+		line-height: 1.5;
+		resize: vertical;
+	}
+
+	/* The design sizes every button in the editor alike: 43px tall, and wide
+	   enough that "Teilen" and "Archivieren" line up as one row of tiles. */
+	.act {
+		justify-content: center;
+		min-width: 98px;
+		height: 43px;
+		padding: 0 12px;
+		border-radius: 8px;
+		font-size: 0.9375rem;
+		font-weight: 500;
+	}
+
+	.icon-btn {
+		justify-content: center;
+		width: 43px;
+		height: 43px;
+		min-width: 0;
+		padding: 0;
+		border-radius: 8px;
+	}
+
+	.add {
+		justify-content: center;
+		min-width: 80px;
+		height: 31px;
+		padding: 0 14px;
+		border-radius: 8px;
+		font-size: 0.8125rem;
+	}
+
+	.wide {
+		min-width: 168px;
+	}
+
+	/* ── Odds and ends ───────────────────────────────────── */
+
+	.empty {
+		margin: 0;
+		color: var(--text-muted);
+		font-size: 0.9375rem;
+	}
+
+	.save-state {
+		position: fixed;
+		right: 20px;
+		bottom: 20px;
+		padding: 7px 14px;
+		border-radius: 999px;
+		background: var(--panel);
+		border: 1px solid var(--panel-border);
+		box-shadow: var(--panel-shadow);
+		font-size: 0.8125rem;
+		color: var(--text-muted);
+	}
+
+	.dialog-form {
+		display: flex;
+		flex-direction: column;
+		gap: 6px;
+	}
+
+	.borrow {
+		border-top: 1px solid var(--panel-border);
+		padding-top: 14px;
+	}
+
+	.dialog-actions {
+		display: flex;
+		justify-content: flex-end;
+		gap: 8px;
+		margin-top: 8px;
+	}
+
+	.dialog-note {
 		margin: 0;
 		font-size: 0.8125rem;
 		color: var(--text-muted);
@@ -469,235 +747,5 @@
 		align-items: center;
 		border-top: 1px solid var(--panel-border);
 		padding-top: 12px;
-	}
-
-	.page {
-		max-width: 940px;
-		margin: 0 auto;
-		padding: 28px 24px 64px;
-		display: flex;
-		flex-direction: column;
-		gap: 16px;
-	}
-
-	.section-title {
-		font-family: var(--font-display);
-		font-weight: var(--font-display-wt);
-		font-size: 15px;
-		color: var(--text-muted);
-		margin: 0;
-	}
-
-	.count {
-		font-family: var(--font-ui);
-		font-weight: 400;
-		font-size: 13px;
-		color: var(--text-faint);
-		margin-left: 8px;
-	}
-
-	.heading-row {
-		display: flex;
-		align-items: center;
-		justify-content: space-between;
-		gap: 16px;
-		flex-wrap: wrap;
-		margin-top: 8px;
-	}
-
-	.details,
-	.add-stage,
-	.stage-add form {
-		display: flex;
-		gap: 10px;
-	}
-
-	.details {
-		flex-direction: column;
-		margin-top: 12px;
-	}
-
-	.details-actions {
-		display: flex;
-		justify-content: flex-end;
-	}
-
-	.field {
-		flex: 1;
-		font: inherit;
-		font-family: var(--font-ui);
-		color: var(--text);
-		background: var(--bg);
-		border: 1px solid var(--panel-border);
-		border-radius: calc(var(--radius) - 6px);
-		padding: 9px 12px;
-		resize: vertical;
-	}
-
-	.field:focus-visible {
-		outline: 2px solid var(--accent);
-		outline-offset: 1px;
-	}
-
-	.field-inline {
-		font-family: var(--font-display);
-		font-weight: var(--font-display-wt);
-		font-size: 16px;
-	}
-
-	.stage-head {
-		display: flex;
-		align-items: center;
-		justify-content: space-between;
-		gap: 16px;
-		flex-wrap: wrap;
-	}
-
-	.stage-title {
-		flex: 1;
-		align-items: center;
-		min-width: 260px;
-	}
-
-	.stage-index {
-		font-family: var(--font-display);
-		font-weight: var(--font-display-wt);
-		color: var(--text-faint);
-		min-width: 18px;
-	}
-
-	.stage-actions,
-	.item-actions {
-		display: flex;
-		align-items: center;
-		gap: 6px;
-	}
-
-	.rules {
-		display: flex;
-		flex-direction: column;
-		gap: 4px;
-		margin-top: 10px;
-	}
-
-	.rule {
-		display: flex;
-		align-items: center;
-		gap: 10px;
-		flex-wrap: wrap;
-	}
-
-	.rule-toggle {
-		display: flex;
-		align-items: center;
-		gap: 7px;
-		font-size: 13px;
-		font-weight: 600;
-		white-space: nowrap;
-		min-width: 210px;
-	}
-
-	.rule-toggle:has(input:disabled) {
-		opacity: 0.5;
-	}
-
-	.rule-note {
-		font-size: 13px;
-		color: var(--text-muted);
-	}
-
-	.items {
-		list-style: none;
-		margin: 14px 0 0;
-		padding: 0;
-		display: flex;
-		flex-direction: column;
-		gap: 8px;
-	}
-
-	.item {
-		display: flex;
-		align-items: center;
-		gap: 12px;
-		padding: 10px 12px;
-		background: var(--bg);
-		border: 1px solid var(--panel-border);
-		border-radius: calc(var(--radius) - 6px);
-		flex-wrap: wrap;
-	}
-
-	.item-kind {
-		font-family: var(--font-code);
-		font-size: 11px;
-		text-transform: uppercase;
-		letter-spacing: 0.06em;
-		color: var(--accent);
-		background: var(--accent-soft);
-		border-radius: 999px;
-		padding: 3px 9px;
-		white-space: nowrap;
-	}
-
-	.item-kind.is-theory {
-		color: var(--text-muted);
-		background: var(--chip-bg);
-	}
-
-	.item-text {
-		flex: 1;
-		min-width: 200px;
-	}
-
-	.item-name {
-		color: var(--text);
-		text-decoration: none;
-		font-weight: 600;
-	}
-
-	.item-name:hover {
-		color: var(--accent);
-	}
-
-	.item-meta {
-		margin: 3px 0 0;
-		font-size: 13px;
-		color: var(--text-muted);
-	}
-
-	.stage-add {
-		display: flex;
-		gap: 16px;
-		margin-top: 14px;
-		padding-top: 14px;
-		border-top: 1px solid var(--panel-border);
-		flex-wrap: wrap;
-	}
-
-	.stage-add form {
-		flex: 1;
-		min-width: 240px;
-	}
-
-	.danger-zone {
-		display: flex;
-		align-items: center;
-		justify-content: space-between;
-		gap: 16px;
-		margin-top: 12px;
-		flex-wrap: wrap;
-	}
-
-	.danger {
-		color: var(--danger);
-	}
-
-	.empty {
-		margin: 0;
-		color: var(--text-muted);
-		font-size: 14px;
-	}
-
-	.indent {
-		margin-top: 12px;
 	}
 </style>

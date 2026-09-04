@@ -2,6 +2,7 @@ import type { Coord, Direction, DropOffTile, Level } from './level';
 import type { CrateState, KeycardState, LevelState } from './level-state';
 import { coordKey, opposite, sameCoord, tileAt } from './grid';
 import { isCrate } from './level';
+import { CRATE_COLOR_NAMES } from './crate-color';
 
 /**
  * Pure predicates over `Level` + `LevelState`.
@@ -215,11 +216,11 @@ export function validateLevel(level: Level): string[] {
         if (tile?.kind !== 'switch' && tile?.kind !== 'pressure_plate') continue;
         if (targetIds.has(tile.targetId)) continue;
 
-        const what = tile.kind === 'switch' ? 'switch' : 'pressure plate';
+        const what = tile.kind === 'switch' ? 'Der Schalter' : 'Die Druckplatte';
         problems.push(
             tile.targetId === ''
-                ? `the ${what} at ${key} is not linked to anything`
-                : `the ${what} at ${key} is linked to "${tile.targetId}", which is no door, belt or motion sensor`,
+                ? `${what} bei ${key} ist mit nichts verknüpft`
+                : `${what} bei ${key} ist mit „${tile.targetId}“ verknüpft — das ist weder Tür noch Förderband noch Bewegungsmelder`,
         );
     }
 
@@ -227,38 +228,38 @@ export function validateLevel(level: Level): string[] {
     const seenCoords = new Set<string>();
 
     for (const item of level.items) {
-        if (seenIds.has(item.id)) problems.push(`duplicate item id "${item.id}"`);
+        if (seenIds.has(item.id)) problems.push(`doppelte Objekt-ID „${item.id}“`);
         seenIds.add(item.id);
 
         const key = coordKey(item.position);
-        if (seenCoords.has(key)) problems.push(`two items share tile ${key}`);
+        if (seenCoords.has(key)) problems.push(`zwei Objekte stehen auf Feld ${key}`);
         seenCoords.add(key);
 
         if (!tileAt(level, item.position)) {
-            problems.push(`item "${item.id}" is outside the grid at ${key}`);
+            problems.push(`Objekt „${item.id}“ liegt bei ${key} ausserhalb des Rasters`);
         }
         if (item.kind === 'keycard' && !doorIds.has(item.doorId)) {
-            problems.push(`keycard "${item.id}" opens door "${item.doorId}", which has no door tile`);
+            problems.push(`Keycard „${item.id}“ öffnet Tür „${item.doorId}“, zu der es kein Türfeld gibt`);
         }
     }
 
     if (!tileAt(level, level.robot.position)) {
-        problems.push('the robot starts outside the grid');
+        problems.push('Der Roboter startet ausserhalb des Rasters');
     }
 
     for (const goal of level.goals) {
         if (goal.kind === 'reach_goal' && !hasGoalTile) {
-            problems.push('goal "reach_goal" but the level has no goal tile');
+            problems.push('Ziel „reach_goal“, aber das Level hat kein Zielfeld');
         }
         if (goal.kind === 'deliver_specific') {
             const tile = tileAt(level, goal.dropOffPosition);
             if (tile?.kind !== 'drop_off') {
-                problems.push(`goal "deliver_specific" points at ${coordKey(goal.dropOffPosition)}, which is not a drop-off bay`);
+                problems.push(`Ziel „deliver_specific“ zeigt auf ${coordKey(goal.dropOffPosition)} — dort ist keine Abgabestelle`);
             } else if (tile.color !== null && tile.color !== goal.color) {
-                problems.push(`goal "deliver_specific" wants ${goal.color} but the bay at ${coordKey(goal.dropOffPosition)} is ${tile.color}`);
+                problems.push(`Ziel „deliver_specific“ will ${CRATE_COLOR_NAMES[goal.color]}, aber die Abgabestelle bei ${coordKey(goal.dropOffPosition)} ist ${CRATE_COLOR_NAMES[tile.color]}`);
             }
             if (!level.items.some((item) => isCrate(item) && item.kind === 'crate_colour' && item.color === goal.color)) {
-                problems.push(`goal "deliver_specific" wants a ${goal.color} crate, but the level has none`);
+                problems.push(`Ziel „deliver_specific“ will eine Kiste in ${CRATE_COLOR_NAMES[goal.color]}, aber im Level gibt es keine`);
             }
         }
     }

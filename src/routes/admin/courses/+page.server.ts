@@ -36,7 +36,7 @@ export const actions: Actions = {
 	publish: async (event) => {
 		const formData = await event.request.formData();
 		const id = formData.get('id')?.toString();
-		if (!id) return fail(400, { message: 'No course to publish.' });
+		if (!id) return fail(400, { message: 'Kein Kurs zum Veröffentlichen.' });
 
 		try {
 			await assertCanEditCourse(actorOf(event), id);
@@ -52,7 +52,7 @@ export const actions: Actions = {
 	delete: async (event) => {
 		const formData = await event.request.formData();
 		const id = formData.get('id')?.toString();
-		if (!id) return fail(400, { message: 'No course to delete.' });
+		if (!id) return fail(400, { message: 'Kein Kurs zum Löschen.' });
 
 		try {
 			await assertCanEditCourse(actorOf(event), id);
@@ -74,13 +74,13 @@ export const actions: Actions = {
 	deleteLevel: async (event) => {
 		const formData = await event.request.formData();
 		const id = formData.get('id')?.toString();
-		if (!id) return fail(400, { message: 'No level to delete.' });
+		if (!id) return fail(400, { message: 'Kein Level zum Löschen.' });
 
 		try {
 			await deleteLevel(id);
 		} catch (cause) {
 			return fail(400, {
-				message: cause instanceof Error ? cause.message : 'Could not delete that level.'
+				message: cause instanceof Error ? cause.message : 'Dieses Level konnte nicht gelöscht werden.'
 			});
 		}
 

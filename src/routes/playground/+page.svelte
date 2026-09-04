@@ -98,11 +98,11 @@
             await run()
         } catch (error) {
             if (error instanceof RobotCrash) log('err', error.message)
-            else if (error instanceof LevelComplete) log('ok', 'Level complete!')
+            else if (error instanceof LevelComplete) log('ok', 'Level geschafft!')
             else if (!(error instanceof RunCancelled)) throw error
         } finally {
             const deliveredAfter = engine.state.crates.filter((crate) => crate.delivered).length
-            if (deliveredAfter > deliveredBefore) log('ok', 'Crate delivered.')
+            if (deliveredAfter > deliveredBefore) log('ok', 'Kiste abgeliefert.')
             sync()
             busy = false
         }
@@ -138,9 +138,9 @@
         {#each actions as [name, run] (name)}
             <button onclick={() => act(name, run)} disabled={over}>{name}()</button>
         {/each}
-        <button onclick={reset}>Reset</button>
+        <button onclick={reset}>Zurücksetzen</button>
         <button onclick={() => (view.paused = !view.paused)}>
-            {view.paused ? 'Resume' : 'Pause'}
+            {view.paused ? 'Weiter' : 'Pause'}
         </button>
     </div>
 
@@ -150,7 +150,7 @@
             <input type="range" min="2" max="20" step="0.5" bind:value={view.zoom} />
         </label>
         <label>
-            Speed <output>{view.speed.toFixed(2)}×</output>
+            Tempo <output>{view.speed.toFixed(2)}×</output>
             <input type="range" min="0.25" max="4" step="0.25" bind:value={view.speed} />
         </label>
     </div>
@@ -161,19 +161,19 @@
         </div>
 
         <dl class="readout">
-            <dt>at</dt>
-            <dd>({view_.x}, {view_.y}) facing {view_.facing}</dd>
-            <dt>carrying</dt>
+            <dt>Position</dt>
+            <dd>({view_.x}, {view_.y}), Blick nach {view_.facing}</dd>
+            <dt>trägt</dt>
             <dd>{view_.carrying ?? '—'}</dd>
-            <dt>inventory</dt>
+            <dt>Inventar</dt>
             <dd>{view_.inventory.length ? view_.inventory.join(', ') : '—'}</dd>
-            <dt>goals</dt>
+            <dt>Ziele</dt>
             <dd>{view_.satisfied} / {view_.goals}</dd>
-            <dt>energy</dt>
+            <dt>Energie</dt>
             <dd>{view_.steps}{level.options.energy === null ? '' : ` / ${level.options.energy}`}</dd>
-            <dt>memory</dt>
-            <dd>{level.options.memory === null ? 'unlimited' : level.options.memory}</dd>
-            <dt>sensing</dt>
+            <dt>Speicher</dt>
+            <dd>{level.options.memory === null ? 'unbegrenzt' : level.options.memory}</dd>
+            <dt>Sensoren</dt>
             <dd class="sensing">
                 {#each Object.entries(sensors) as [name, value] (name)}
                     <span class:on={value === true}>{name}: {value === null ? 'null' : value}</span>

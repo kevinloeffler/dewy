@@ -15,7 +15,7 @@ export const load: LayoutServerLoad = (event) => {
 		return redirect(302, `/login?redirectTo=${redirectTo}`);
 	}
 
-	if (!isStaff(user)) error(403, 'This area is for teachers.');
+	if (!isStaff(user)) error(403, 'Dieser Bereich ist für Lehrpersonen.');
 
 	return { user };
 };

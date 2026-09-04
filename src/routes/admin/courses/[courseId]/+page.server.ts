@@ -33,12 +33,12 @@ export const load: PageServerLoad = async (event) => {
 	const actor = actorOf(event);
 
 	const course = await findCourse(event.params.courseId);
-	if (!course) error(404, 'No such course.');
+	if (!course) error(404, 'Diesen Kurs gibt es nicht.');
 
 	// A course shared as a clone is visible and unchangeable. Everything the page
 	// renders keys off `canEdit`, so read-only is one flag rather than a second
 	// template.
-	if (!(await canViewCourse(actor, course.id))) error(404, 'No such course.');
+	if (!(await canViewCourse(actor, course.id))) error(404, 'Diesen Kurs gibt es nicht.');
 	const canEdit = await canEditCourse(actor, course.id);
 
 	return {
@@ -145,7 +145,11 @@ export const actions: Actions = {
 	updateStage: async (event) => {
 		const formData = await event.request.formData();
 		const id = required(formData, 'id');
-		if (!id) return fail(400, { message: 'No stage to rename.' });
+		if (!id) return fail(400, { message: 'Kein Kapitel zum Umbenennen.' });
+
+		// Only the fields the form carried: the rename form has no description
+		// input, and a missing field means "unchanged", not "empty".
+		const description = formData.get('description');
 
 		const result = await guarded(
 			event,
@@ -153,7 +157,7 @@ export const actions: Actions = {
 			() =>
 				updateStage(id, {
 					title: formData.get('title')?.toString() ?? '',
-					description: formData.get('description')?.toString() ?? ''
+					...(description === null ? {} : { description: description.toString() })
 				})
 		);
 		if (!result.ok) return fail(result.status, { message: result.message });
@@ -170,7 +174,7 @@ export const actions: Actions = {
 	gateStage: async (event) => {
 		const formData = await event.request.formData();
 		const id = required(formData, 'id');
-		if (!id) return fail(400, { message: 'No stage to gate.' });
+		if (!id) return fail(400, { message: 'Kein Kapitel zum Blockieren.' });
 
 		const result = await guarded(
 			event,
@@ -185,7 +189,7 @@ export const actions: Actions = {
 	orderStage: async (event) => {
 		const formData = await event.request.formData();
 		const id = required(formData, 'id');
-		if (!id) return fail(400, { message: 'No stage to reorder.' });
+		if (!id) return fail(400, { message: 'Kein Kapitel zum Sortieren.' });
 
 		const result = await guarded(
 			event,
@@ -199,7 +203,7 @@ export const actions: Actions = {
 	deleteStage: async (event) => {
 		const formData = await event.request.formData();
 		const id = required(formData, 'id');
-		if (!id) return fail(400, { message: 'No stage to delete.' });
+		if (!id) return fail(400, { message: 'Kein Kapitel zum Löschen.' });
 
 		const result = await guarded(
 			event,
@@ -213,7 +217,7 @@ export const actions: Actions = {
 	moveStage: async (event) => {
 		const formData = await event.request.formData();
 		const id = required(formData, 'id');
-		if (!id) return fail(400, { message: 'No stage to move.' });
+		if (!id) return fail(400, { message: 'Kein Kapitel zum Verschieben.' });
 
 		const result = await guarded(
 			event,
@@ -227,7 +231,7 @@ export const actions: Actions = {
 	addLevel: async (event) => {
 		const formData = await event.request.formData();
 		const stageId = required(formData, 'stageId');
-		if (!stageId) return fail(400, { message: 'No stage to add to.' });
+		if (!stageId) return fail(400, { message: 'Kein Kapitel zum Hinzufügen.' });
 
 		const result = await guarded(
 			event,
@@ -245,7 +249,7 @@ export const actions: Actions = {
 		const formData = await event.request.formData();
 		const stageId = required(formData, 'stageId');
 		const levelId = required(formData, 'levelId');
-		if (!stageId || !levelId) return fail(400, { message: 'Pick a level to add.' });
+		if (!stageId || !levelId) return fail(400, { message: 'Wähle ein Level aus.' });
 
 		const result = await guarded(
 			event,
@@ -261,7 +265,7 @@ export const actions: Actions = {
 		const formData = await event.request.formData();
 		const stageId = required(formData, 'stageId');
 		const levelId = required(formData, 'levelId');
-		if (!stageId || !levelId) return fail(400, { message: 'Pick a level to add.' });
+		if (!stageId || !levelId) return fail(400, { message: 'Wähle ein Level aus.' });
 
 		const result = await guarded(
 			event,
@@ -275,7 +279,7 @@ export const actions: Actions = {
 	addTheory: async (event) => {
 		const formData = await event.request.formData();
 		const stageId = required(formData, 'stageId');
-		if (!stageId) return fail(400, { message: 'No stage to add to.' });
+		if (!stageId) return fail(400, { message: 'Kein Kapitel zum Hinzufügen.' });
 
 		const title = formData.get('title')?.toString() ?? '';
 		const result = await guarded(
@@ -285,7 +289,7 @@ export const actions: Actions = {
 				addTheoryItem(stageId, {
 					title,
 					// A placeholder body keeps the item valid; the editor is next anyway.
-					body: `Write the lesson for “${title.trim() || 'this block'}” here.`
+					body: `Schreib hier die Lektion für „${title.trim() || 'diesen Block'}“.`
 				})
 		);
 		if (!result.ok) return fail(result.status, { message: result.message });
@@ -295,7 +299,7 @@ export const actions: Actions = {
 	deleteItem: async (event) => {
 		const formData = await event.request.formData();
 		const id = required(formData, 'id');
-		if (!id) return fail(400, { message: 'No item to delete.' });
+		if (!id) return fail(400, { message: 'Kein Element zum Löschen.' });
 
 		const result = await guarded(
 			event,
@@ -309,7 +313,7 @@ export const actions: Actions = {
 	moveItem: async (event) => {
 		const formData = await event.request.formData();
 		const id = required(formData, 'id');
-		if (!id) return fail(400, { message: 'No item to move.' });
+		if (!id) return fail(400, { message: 'Kein Element zum Verschieben.' });
 
 		const result = await guarded(
 			event,
@@ -326,7 +330,7 @@ export const actions: Actions = {
 		const formData = await event.request.formData();
 		const teacherId = required(formData, 'teacherId');
 		const courseId = event.params.courseId;
-		if (!teacherId) return fail(400, { message: 'Pick a teacher.' });
+		if (!teacherId) return fail(400, { message: 'Wähle eine Lehrperson aus.' });
 
 		const result = await guarded(
 			event,
@@ -341,7 +345,7 @@ export const actions: Actions = {
 		const formData = await event.request.formData();
 		const teacherId = required(formData, 'teacherId');
 		const courseId = event.params.courseId;
-		if (!teacherId) return fail(400, { message: 'Pick a teacher.' });
+		if (!teacherId) return fail(400, { message: 'Wähle eine Lehrperson aus.' });
 
 		const result = await guarded(
 			event,

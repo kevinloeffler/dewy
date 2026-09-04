@@ -1,11 +1,20 @@
+import { redirect } from '@sveltejs/kit';
 import type { PageServerLoad } from './$types';
 import { isStaff } from '$lib/roles';
 
-/** The landing page shows a different door depending on who is already in. */
+/**
+ * The front door is the course list.
+ *
+ * Which one depends on who is asking: staff get the editor's list, everyone
+ * else — students, and visitors with no account — get the catalogue, which
+ * already knows how to show itself to a stranger. A redirect rather than a
+ * second copy of either page, so `/admin/courses` and `/courses` stay the one
+ * place each list is built, and the admin nav keeps highlighting the tab the
+ * reader is actually on.
+ *
+ * 302, not 301: the answer changes with the session, so it must never be
+ * remembered as permanent.
+ */
 export const load: PageServerLoad = (event) => {
-	return {
-		signedIn: Boolean(event.locals.user),
-		name: event.locals.user?.name ?? null,
-		isStaff: isStaff(event.locals.user)
-	};
+	redirect(302, isStaff(event.locals.user) ? '/admin/courses' : '/courses');
 };

@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { CRATE_COLORS, type CrateColor } from '$lib/game/crate-color';
+	import { CRATE_COLORS, CRATE_COLOR_NAMES, type CrateColor } from '$lib/game/crate-color';
 	import { addGoal, dropOffBays, removeGoal } from '$lib/game/editor/operations';
 	import type { LevelDraft } from '$lib/game/editor/draft.svelte';
 	import type { GoalCondition } from '$lib/game/level';
@@ -26,11 +26,11 @@
 	function describe(goal: GoalCondition): string {
 		switch (goal.kind) {
 			case 'reach_goal':
-				return 'Reach the goal tile';
+				return 'Erreiche das Zielfeld';
 			case 'deliver_all':
-				return 'Deliver every colour crate';
+				return 'Liefere jede farbige Kiste aus';
 			case 'deliver_specific':
-				return `Deliver a ${goal.color} crate to (${goal.dropOffPosition.x}, ${goal.dropOffPosition.y})`;
+				return `Liefere eine Kiste in ${CRATE_COLOR_NAMES[goal.color]} an (${goal.dropOffPosition.x}, ${goal.dropOffPosition.y})`;
 		}
 	}
 
@@ -47,7 +47,7 @@
 
 <div class="goals">
 	{#if level.goals.length === 0}
-		<p class="hint">No goals yet — the level cannot be completed.</p>
+		<p class="hint">Noch keine Ziele — das Level lässt sich nicht abschliessen.</p>
 	{:else}
 		<ul>
 			{#each level.goals as goal, index (index)}
@@ -56,7 +56,7 @@
 					<button
 						class="remove"
 						type="button"
-						aria-label="Remove goal"
+						aria-label="Ziel entfernen"
 						onclick={() => draft.edit((current) => removeGoal(current, index))}
 					>
 						×
@@ -68,23 +68,23 @@
 
 	<div class="add">
 		<button class="btn btn-ghost small" type="button" onclick={() => add({ kind: 'reach_goal' })}>
-			+ Reach goal
+			+ Ziel erreichen
 		</button>
 		<button class="btn btn-ghost small" type="button" onclick={() => add({ kind: 'deliver_all' })}>
-			+ Deliver all
+			+ Alle ausliefern
 		</button>
 	</div>
 
 	<div class="specific">
 		<select bind:value={color}>
 			{#each COLOR_NAMES as name (name)}
-				<option value={name}>{name}</option>
+				<option value={name}>{CRATE_COLOR_NAMES[name]}</option>
 			{/each}
 		</select>
 		<select bind:value={bayIndex} disabled={bays.length === 0}>
 			{#each bays as bay, index (index)}
 				<option value={index}>
-					bay ({bay.coord.x}, {bay.coord.y}){bay.color ? ` · ${bay.color}` : ''}
+					Abgabe ({bay.coord.x}, {bay.coord.y}){bay.color ? ` · ${CRATE_COLOR_NAMES[bay.color]}` : ''}
 				</option>
 			{/each}
 		</select>
@@ -94,12 +94,12 @@
 			disabled={bays.length === 0}
 			onclick={addSpecific}
 		>
-			+ Deliver
+			+ Ausliefern
 		</button>
 	</div>
 
 	{#if bays.length === 0}
-		<p class="hint">Paint a drop-off bay to add a delivery goal.</p>
+		<p class="hint">Mal eine Abgabestelle, um ein Lieferziel hinzuzufügen.</p>
 	{/if}
 </div>
 

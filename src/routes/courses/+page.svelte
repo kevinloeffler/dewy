@@ -6,7 +6,7 @@
 </script>
 
 <svelte:head>
-	<title>Courses · Dewy</title>
+	<title>Kurse · Dewy</title>
 </svelte:head>
 
 <Topbar>
@@ -14,21 +14,21 @@
 		<span class="topbar-logo">D</span>
 		<span class="topbar-wordmark">Dewy</span>
 		<span class="divider-v"></span>
-		<span class="chip">Courses</span>
+		<span class="chip">Kurse</span>
 	{/snippet}
 	{#snippet right()}
 		{#if !data.signedIn}
-			<a class="btn btn-ghost" href="/login">Sign in to save progress</a>
+			<a class="btn btn-ghost" href="/login">Anmelden, um den Fortschritt zu speichern</a>
 		{/if}
 	{/snippet}
 </Topbar>
 
 <main class="page">
-	<h1 class="title">Pick a course</h1>
+	<h1 class="title">Kurs auswählen</h1>
 
 	{#if data.courses.length === 0}
 		<Panel>
-			<p class="empty">No courses have been published yet.</p>
+			<p class="empty">Es wurden noch keine Kurse veröffentlicht.</p>
 		</Panel>
 	{:else}
 		<ul class="list">
@@ -44,10 +44,9 @@
 										<p class="card-desc">{course.description}</p>
 									{/if}
 									<p class="card-meta">
-										{course.stageCount}
-										{course.stageCount === 1 ? 'stage' : 'stages'}
+										{course.stageCount} Kapitel
 										· {course.itemCount}
-										{course.itemCount === 1 ? 'item' : 'items'}
+										{course.itemCount === 1 ? 'Element' : 'Elemente'}
 									</p>
 								</div>
 
@@ -55,7 +54,7 @@
 									<div class="card-progress">
 										<Progress
 											value={done / course.itemCount}
-											label="Progress"
+											label="Fortschritt"
 											sublabel="{done} / {course.itemCount}"
 										/>
 									</div>

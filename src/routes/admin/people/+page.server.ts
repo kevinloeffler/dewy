@@ -51,7 +51,7 @@ export const actions: Actions = {
 	archive: async (event) => {
 		const formData = await event.request.formData();
 		const userIds = selected(formData);
-		if (userIds.length === 0) return fail(400, { message: 'Nobody was selected.' });
+		if (userIds.length === 0) return fail(400, { message: 'Es wurde niemand ausgewählt.' });
 
 		const result = await run(() => archiveUsers(actorOf(event), userIds));
 		if (!result.ok) return fail(result.status, { message: result.message });
@@ -61,7 +61,7 @@ export const actions: Actions = {
 	restore: async (event) => {
 		const formData = await event.request.formData();
 		const userIds = selected(formData);
-		if (userIds.length === 0) return fail(400, { message: 'Nobody was selected.' });
+		if (userIds.length === 0) return fail(400, { message: 'Es wurde niemand ausgewählt.' });
 
 		const result = await run(() => restoreUsers(actorOf(event), userIds));
 		if (!result.ok) return fail(result.status, { message: result.message });
@@ -72,7 +72,7 @@ export const actions: Actions = {
 		const formData = await event.request.formData();
 		const userIds = selected(formData);
 		const password = formData.get('password')?.toString() ?? '';
-		if (userIds.length === 0) return fail(400, { message: 'Nobody was selected.' });
+		if (userIds.length === 0) return fail(400, { message: 'Es wurde niemand ausgewählt.' });
 
 		const result = await run(() => setPassword(actorOf(event), userIds, password));
 		if (!result.ok) return fail(result.status, { message: result.message });
@@ -83,8 +83,8 @@ export const actions: Actions = {
 		const formData = await event.request.formData();
 		const userIds = selected(formData);
 		const classId = formData.get('classId')?.toString();
-		if (userIds.length === 0) return fail(400, { message: 'Nobody was selected.' });
-		if (!classId) return fail(400, { message: 'Pick a class.' });
+		if (userIds.length === 0) return fail(400, { message: 'Es wurde niemand ausgewählt.' });
+		if (!classId) return fail(400, { message: 'Wähle eine Klasse aus.' });
 
 		const result = await run(() => addMembers(actorOf(event), classId, userIds));
 		if (!result.ok) return fail(result.status, { message: result.message });
@@ -96,11 +96,11 @@ export const actions: Actions = {
 		const userIds = selected(formData);
 		const fromClassId = formData.get('fromClassId')?.toString();
 		const classId = formData.get('classId')?.toString();
-		if (userIds.length === 0) return fail(400, { message: 'Nobody was selected.' });
-		if (!classId) return fail(400, { message: 'Pick a class.' });
+		if (userIds.length === 0) return fail(400, { message: 'Es wurde niemand ausgewählt.' });
+		if (!classId) return fail(400, { message: 'Wähle eine Klasse aus.' });
 		// Moving is only meaningful from a known class — the list is filtered by
 		// one, and without that filter "add to class" is the honest operation.
-		if (!fromClassId) return fail(400, { message: 'Filter by a class first to move students.' });
+		if (!fromClassId) return fail(400, { message: 'Filtere zuerst nach einer Klasse, um Schüler/innen zu verschieben.' });
 
 		const result = await run(() => moveMembers(actorOf(event), fromClassId, classId, userIds));
 		if (!result.ok) return fail(result.status, { message: result.message });
@@ -111,7 +111,7 @@ export const actions: Actions = {
 		const formData = await event.request.formData();
 		const userId = formData.get('userId')?.toString();
 		const role = formData.get('role')?.toString();
-		if (!userId || !isRole(role)) return fail(400, { message: 'Pick a role.' });
+		if (!userId || !isRole(role)) return fail(400, { message: 'Wähle eine Rolle aus.' });
 
 		const result = await run(() => setRole(actorOf(event), userId, role));
 		if (!result.ok) return fail(result.status, { message: result.message });

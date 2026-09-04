@@ -9,22 +9,22 @@
 </script>
 
 <svelte:head>
-	<title>First admin · Dewy</title>
+	<title>Erstes Admin-Konto · Dewy</title>
 </svelte:head>
 
 <Topbar>
 	{#snippet left()}
 		<span class="topbar-wordmark">Dewy</span>
-		<span class="chip">Setup</span>
+		<span class="chip">Einrichtung</span>
 	{/snippet}
 </Topbar>
 
 <main class="page">
 	<Panel padding="lg">
-		<h1 class="title">Create the first admin</h1>
+		<h1 class="title">Erstes Admin-Konto erstellen</h1>
 		<p class="lede">
-			This database has no accounts yet. Create the administrator here — after that this page
-			disappears, and every further account is created from inside the app.
+			In dieser Datenbank gibt es noch keine Konten. Lege hier das Administrationskonto an — danach
+			verschwindet diese Seite, und jedes weitere Konto wird in der App erstellt.
 		</p>
 
 		<form
@@ -40,7 +40,7 @@
 			<label class="label" for="name">Name</label>
 			<input class="field" id="name" name="name" value={form?.name ?? ''} required />
 
-			<label class="label" for="email">Email</label>
+			<label class="label" for="email">E-Mail</label>
 			<input
 				class="field"
 				id="email"
@@ -51,7 +51,7 @@
 				required
 			/>
 
-			<label class="label" for="password">Password</label>
+			<label class="label" for="password">Passwort</label>
 			<input
 				class="field"
 				id="password"
@@ -61,14 +61,14 @@
 				minlength="8"
 				required
 			/>
-			<p class="hint">At least 8 characters.</p>
+			<p class="hint">Mindestens 8 Zeichen.</p>
 
 			{#if form?.message}
 				<p class="error" role="alert">{form.message}</p>
 			{/if}
 
 			<Button type="submit" disabled={submitting}>
-				{submitting ? 'Creating…' : 'Create admin'}
+				{submitting ? 'Wird erstellt…' : 'Admin erstellen'}
 			</Button>
 		</form>
 	</Panel>

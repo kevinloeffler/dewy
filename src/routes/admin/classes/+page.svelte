@@ -9,26 +9,26 @@
 </script>
 
 <svelte:head>
-	<title>Classes · Dewy</title>
+	<title>Klassen · Dewy</title>
 </svelte:head>
 
 <main class="page">
 	<Panel>
-		<h2 class="section-title">New class</h2>
+		<h2 class="section-title">Neue Klasse</h2>
 		<form class="new-class" method="POST" action="?/create" use:enhance>
-			<input class="field" name="name" placeholder="Class name, e.g. 7b" bind:value={name} autocomplete="off" />
-			<Button type="submit">Create</Button>
+			<input class="field" name="name" placeholder="Klassenname, z. B. 7b" bind:value={name} autocomplete="off" />
+			<Button type="submit">Erstellen</Button>
 		</form>
 		{#if form?.message}
 			<p class="field-error">{form.message}</p>
 		{/if}
 	</Panel>
 
-	<h2 class="section-title">Classes</h2>
+	<h2 class="section-title">Klassen</h2>
 
 	{#if data.classes.length === 0}
 		<Panel>
-			<p class="empty">No classes yet. Create one above, then add students to it.</p>
+			<p class="empty">Noch keine Klassen. Leg oben eine an und füge ihr dann Schüler/innen hinzu.</p>
 		</Panel>
 	{:else}
 		<ul class="list">
@@ -40,13 +40,13 @@
 								<a class="row-name" href="/admin/classes/{row.id}">{row.name}</a>
 								<p class="row-meta">
 									{row.studentCount}
-									{row.studentCount === 1 ? 'student' : 'students'}
+									{row.studentCount === 1 ? 'Schüler/in' : 'Schüler/innen'}
 									· {row.courseCount}
-									{row.courseCount === 1 ? 'course' : 'courses'}
+									{row.courseCount === 1 ? 'Kurs' : 'Kurse'}
 									{#if row.ownerName}· {row.ownerName}{/if}
 								</p>
 							</div>
-							<a class="btn btn-ghost" href="/admin/people/new?classId={row.id}">Add students</a>
+							<a class="btn btn-ghost" href="/admin/people/new?classId={row.id}">Schüler/innen hinzufügen</a>
 						</div>
 					</Panel>
 				</li>
@@ -55,7 +55,7 @@
 	{/if}
 
 	{#if data.archived.length > 0}
-		<h2 class="section-title">Archived</h2>
+		<h2 class="section-title">Archiviert</h2>
 		<ul class="list">
 			{#each data.archived as row (row.id)}
 				<li>
@@ -63,7 +63,7 @@
 						<div class="row">
 							<div class="row-text">
 								<a class="row-name muted" href="/admin/classes/{row.id}">{row.name}</a>
-								<p class="row-meta">{row.studentCount} students · archived</p>
+								<p class="row-meta">{row.studentCount} Schüler/innen · archiviert</p>
 							</div>
 						</div>
 					</Panel>

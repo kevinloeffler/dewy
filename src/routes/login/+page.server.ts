@@ -36,7 +36,7 @@ export const actions: Actions = {
 		const redirectTo = safeRedirect(formData.get('redirectTo')?.toString() ?? null);
 
 		if (!identifier || !password) {
-			return fail(400, { identifier, message: 'Enter your username or email and your password.' });
+			return fail(400, { identifier, message: 'Gib deinen Benutzernamen oder deine E-Mail und dein Passwort ein.' });
 		}
 
 		let user: { role?: string | null };
@@ -47,7 +47,7 @@ export const actions: Actions = {
 
 			// `signInUsername` is typed as possibly returning null; in practice it
 			// throws instead. Guard so the redirect below has something to read.
-			if (!result?.user) return fail(400, { identifier, message: 'Sign in failed.' });
+			if (!result?.user) return fail(400, { identifier, message: 'Anmeldung fehlgeschlagen.' });
 
 			// The username plugin's return type does not carry the admin plugin's
 			// fields, but the value does — both endpoints answer with
@@ -56,9 +56,9 @@ export const actions: Actions = {
 			user = result.user as { role?: string | null };
 		} catch (error) {
 			if (error instanceof APIError) {
-				return fail(400, { identifier, message: error.message || 'Sign in failed.' });
+				return fail(400, { identifier, message: error.message || 'Anmeldung fehlgeschlagen.' });
 			}
-			return fail(500, { identifier, message: 'Unexpected error.' });
+			return fail(500, { identifier, message: 'Unerwarteter Fehler.' });
 		}
 
 		return redirect(303, redirectTo ?? homeFor(user));

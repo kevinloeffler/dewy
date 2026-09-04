@@ -32,7 +32,7 @@ export class RobotCrash extends Error {
 /** Thrown once every goal is satisfied, so a solved program stops there. */
 export class LevelComplete extends Error {
     constructor() {
-        super('Level complete');
+        super('Level geschafft');
         this.name = 'LevelComplete';
     }
 }

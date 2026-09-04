@@ -160,7 +160,7 @@ export async function canEditCourse(actor: Actor, courseId: string): Promise<boo
  */
 export async function assertCanEditCourse(actor: Actor, courseId: string): Promise<void> {
 	if (!(await canEditCourse(actor, courseId))) {
-		throw new Forbidden('That course belongs to another teacher.');
+		throw new Forbidden('Dieser Kurs gehört einer anderen Lehrperson.');
 	}
 }
 
@@ -186,13 +186,13 @@ async function courseOfItem(itemId: string): Promise<string | null> {
 
 export async function assertCanEditStage(actor: Actor, stageId: string): Promise<void> {
 	const courseId = await courseOfStage(stageId);
-	if (!courseId) throw new Forbidden('No such stage.');
+	if (!courseId) throw new Forbidden('Dieses Kapitel gibt es nicht.');
 	await assertCanEditCourse(actor, courseId);
 }
 
 export async function assertCanEditItem(actor: Actor, itemId: string): Promise<void> {
 	const courseId = await courseOfItem(itemId);
-	if (!courseId) throw new Forbidden('No such item.');
+	if (!courseId) throw new Forbidden('Dieses Element gibt es nicht.');
 	await assertCanEditCourse(actor, courseId);
 }
 
@@ -319,7 +319,7 @@ export async function findCourse(courseId: string): Promise<CourseOutline | null
 						id: item.id,
 						kind: 'theory',
 						position: item.position,
-						title: item.title ?? 'Untitled',
+						title: item.title ?? 'Ohne Titel',
 						body: item.body ?? ''
 					}
 				: {
@@ -330,7 +330,7 @@ export async function findCourse(courseId: string): Promise<CourseOutline | null
 						// write was interrupted; showing it as a placeholder beats
 						// dropping it silently out of the stage.
 						levelId: item.levelId ?? item.linkedId ?? '',
-						name: item.levelName ?? item.linkedName ?? 'Missing level',
+						name: item.levelName ?? item.linkedName ?? 'Fehlendes Level',
 						description: item.levelDescription ?? item.linkedDescription ?? null,
 						linked: item.levelId === null && item.linkedId !== null
 					};
@@ -361,7 +361,7 @@ export async function createCourse(title: string, ownerId?: string): Promise<str
 	const id = crypto.randomUUID();
 	await db.insert(course).values({
 		id,
-		title: title.trim() || 'Untitled course',
+		title: title.trim() || 'Kurs ohne Titel',
 		ownerId: ownerId ?? null
 	});
 	return id;
@@ -372,7 +372,7 @@ export async function updateCourse(
 	patch: { title?: string; description?: string | null; published?: boolean }
 ): Promise<void> {
 	const set: Record<string, unknown> = { updatedAt: new Date() };
-	if (patch.title !== undefined) set.title = patch.title.trim() || 'Untitled course';
+	if (patch.title !== undefined) set.title = patch.title.trim() || 'Kurs ohne Titel';
 	if (patch.description !== undefined) set.description = patch.description?.trim() || null;
 	if (patch.published !== undefined) set.published = patch.published;
 
@@ -402,7 +402,7 @@ async function assertNoBorrowedLevels(levelIds: string[]): Promise<void> {
 
 	if (borrowed.length > 0) {
 		throw new Forbidden(
-			`Another teacher's course is using “${borrowed[0].name}”. Unshare it before deleting.`
+			`Der Kurs einer anderen Lehrperson verwendet „${borrowed[0].name}“. Heb die Freigabe auf, bevor du löschst.`
 		);
 	}
 }
@@ -537,11 +537,11 @@ export async function unshareCourse(
  */
 export async function duplicateCourse(actor: Actor, courseId: string): Promise<string> {
 	if (!(await canViewCourse(actor, courseId))) {
-		throw new Forbidden('That course has not been shared with you.');
+		throw new Forbidden('Dieser Kurs wurde nicht mit dir geteilt.');
 	}
 
 	const source = await db.select().from(course).where(eq(course.id, courseId)).get();
-	if (!source) throw new Forbidden('No such course.');
+	if (!source) throw new Forbidden('Diesen Kurs gibt es nicht.');
 
 	const stages = await db
 		.select()
@@ -736,7 +736,7 @@ async function holdsLevelShare(actor: Actor, levelId: string): Promise<boolean> 
 export async function linkLevel(actor: Actor, stageId: string, levelId: string): Promise<string> {
 	await assertCanEditStage(actor, stageId);
 	if (!(await holdsLevelShare(actor, levelId))) {
-		throw new Forbidden('That level has not been shared with you.');
+		throw new Forbidden('Dieses Level wurde nicht mit dir geteilt.');
 	}
 
 	const itemId = crypto.randomUUID();
@@ -763,11 +763,11 @@ export async function copyLevel(
 ): Promise<{ itemId: string; levelId: string }> {
 	await assertCanEditStage(actor, stageId);
 	if (!(await holdsLevelShare(actor, levelId))) {
-		throw new Forbidden('That level has not been shared with you.');
+		throw new Forbidden('Dieses Level wurde nicht mit dir geteilt.');
 	}
 
 	const source = await db.select().from(levelTable).where(eq(levelTable.id, levelId)).get();
-	if (!source) throw new Forbidden('No such level.');
+	if (!source) throw new Forbidden('Dieses Level gibt es nicht.');
 
 	const itemId = crypto.randomUUID();
 	const newLevelId = crypto.randomUUID();
@@ -812,7 +812,7 @@ export async function createStage(courseId: string, title: string): Promise<stri
 			.values({
 				id,
 				courseId,
-				title: title.trim() || 'Untitled stage',
+				title: title.trim() || 'Kapitel ohne Titel',
 				position: (last?.position ?? -1) + 1
 			})
 			.run();
@@ -826,7 +826,7 @@ export async function updateStage(
 	patch: { title?: string; description?: string | null; gated?: boolean; ordered?: boolean }
 ): Promise<void> {
 	const set: Record<string, unknown> = { updatedAt: new Date() };
-	if (patch.title !== undefined) set.title = patch.title.trim() || 'Untitled stage';
+	if (patch.title !== undefined) set.title = patch.title.trim() || 'Kapitel ohne Titel';
 	if (patch.description !== undefined) set.description = patch.description?.trim() || null;
 	if (patch.gated !== undefined) set.gated = patch.gated;
 	if (patch.ordered !== undefined) set.ordered = patch.ordered;
@@ -879,10 +879,10 @@ export async function moveStage(stageId: string, direction: Direction): Promise<
 
 function validateTheory(input: { title: string; body: string }): string[] {
 	const errors: string[] = [];
-	if (input.title.trim().length === 0) errors.push('a theory block needs a title');
-	if (input.body.trim().length === 0) errors.push('a theory block needs some text');
+	if (input.title.trim().length === 0) errors.push('ein Theorieblock braucht einen Titel');
+	if (input.body.trim().length === 0) errors.push('ein Theorieblock braucht Text');
 	if (input.body.length > MAX_THEORY_BODY) {
-		errors.push(`the text is too long (max ${MAX_THEORY_BODY} characters)`);
+		errors.push(`der Text ist zu lang (höchstens ${MAX_THEORY_BODY} Zeichen)`);
 	}
 	return errors;
 }

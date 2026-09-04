@@ -9,3 +9,14 @@ export const CRATE_COLORS = {
 } as const;
 
 export type CrateColor = keyof typeof CRATE_COLORS;
+
+/** What each colour is called in the UI. The stored keys stay English. */
+export const CRATE_COLOR_NAMES: Record<CrateColor, string> = {
+	grey: 'Grau',
+	red: 'Rot',
+	green: 'Grün',
+	blue: 'Blau',
+	purple: 'Lila',
+	pink: 'Pink',
+	yellow: 'Gelb',
+};

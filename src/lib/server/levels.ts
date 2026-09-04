@@ -45,7 +45,7 @@ export class InvalidLevel extends Error {
  * in there can `await`.
  */
 export function buildEmptyLevel(id: string, name: string): Level {
-    return emptyLevel(id, name.trim() || 'Untitled level');
+    return emptyLevel(id, name.trim() || 'Level ohne Namen');
 }
 
 /** Levels belonging to no course. The rest are reached through their stage. */
@@ -135,7 +135,7 @@ export async function deleteLevel(id: string): Promise<void> {
 
     if (!row) return;
     if (row.itemId) {
-        throw new Error('That level belongs to a course — remove it from its stage instead.');
+        throw new Error('Dieses Level gehört zu einem Kurs — entferne es stattdessen aus seinem Kapitel.');
     }
 
     // A level another teacher's stage is showing live cannot be deleted out from
@@ -148,7 +148,7 @@ export async function deleteLevel(id: string): Promise<void> {
         .limit(1);
 
     if (borrowed) {
-        throw new Error('Another course is using this level — unshare it there first.');
+        throw new Error('Ein anderer Kurs verwendet dieses Level — heb dort zuerst die Freigabe auf.');
     }
 
     await db.delete(levelTable).where(eq(levelTable.id, id));

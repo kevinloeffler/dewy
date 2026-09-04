@@ -7,7 +7,7 @@ import { renderMarkdown } from '$lib/markdown';
 
 export const load: PageServerLoad = async (event) => {
 	const course = await findCourse(event.params.courseId);
-	if (!course || !course.published) error(404, 'No such course.');
+	if (!course || !course.published) error(404, 'Diesen Kurs gibt es nicht.');
 
 	const context = await findItem(event.params.courseId, event.params.itemId);
 	if (!context) error(404, 'No such item.');
@@ -24,7 +24,7 @@ export const load: PageServerLoad = async (event) => {
 	}
 
 	if (context.item.kind === 'level' && !context.level) {
-		error(500, 'That level is missing its data.');
+		error(500, 'Diesem Level fehlen seine Daten.');
 	}
 
 	return {
@@ -53,16 +53,16 @@ export const actions: Actions = {
 		const formData = await event.request.formData();
 
 		const course = await findCourse(event.params.courseId);
-		if (!course || !course.published) return fail(404, { message: 'No such course.' });
+		if (!course || !course.published) return fail(404, { message: 'Diesen Kurs gibt es nicht.' });
 
 		const context = await findItem(event.params.courseId, event.params.itemId);
-		if (!context) return fail(404, { message: 'No such item.' });
+		if (!context) return fail(404, { message: 'Dieses Element gibt es nicht.' });
 
 		const user = event.locals.user;
 		if (user) {
 			const progress = courseProgress(course, await loadCompleted(user.id, course.id));
 			if (progress.state[context.item.id] === 'locked') {
-				return fail(403, { message: 'That item is locked.' });
+				return fail(403, { message: 'Dieses Element ist gesperrt.' });
 			}
 
 			await markComplete(user.id, event.params.itemId, formData.get('code')?.toString());

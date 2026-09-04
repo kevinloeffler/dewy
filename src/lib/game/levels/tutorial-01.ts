@@ -38,8 +38,8 @@ tiles['4,4'] = { kind: 'drop_off', color: 'red' };
 
 export const tutorial01: Level = {
     id: 'tutorial-01',
-    name: 'First Delivery',
-    description: 'Fetch the red crate and drop it in the red bay. Mind the pits.',
+    name: 'Erste Lieferung',
+    description: 'Hol die rote Kiste und stell sie in die rote Abgabestelle. Pass auf die Löcher auf.',
     width: 6,
     height: 6,
     tiles,

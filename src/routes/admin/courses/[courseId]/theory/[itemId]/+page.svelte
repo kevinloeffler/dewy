@@ -46,13 +46,13 @@
 	{/snippet}
 	{#snippet right()}
 		{#if saving}
-			<span class="status">Saving…</span>
+			<span class="status">Speichern…</span>
 		{:else if dirty}
-			<span class="status">Unsaved changes</span>
+			<span class="status">Ungespeicherte Änderungen</span>
 		{:else if savedAt}
-			<span class="status">Saved</span>
+			<span class="status">Gespeichert</span>
 		{/if}
-		<a class="btn btn-ghost" href="/admin/courses/{data.context.course.id}">Back to course</a>
+		<a class="btn btn-ghost" href="/admin/courses/{data.context.course.id}">Zurück zum Kurs</a>
 	{/snippet}
 </Topbar>
 
@@ -75,8 +75,8 @@
 		<input type="hidden" name="body" value={body} />
 
 		<div class="title-row">
-			<input class="field field-title" bind:value={title} placeholder="Block title" autocomplete="off" />
-			<Button type="submit" disabled={saving}>Save</Button>
+			<input class="field field-title" bind:value={title} placeholder="Titel des Blocks" autocomplete="off" />
+			<Button type="submit" disabled={saving}>Speichern</Button>
 		</div>
 
 		{#if form?.message}
@@ -88,7 +88,7 @@
 				<header class="pane-head">
 					<span class="hud-label">Markdown</span>
 					<button class="btn btn-ghost" type="button" onclick={() => (showHelp = !showHelp)}>
-						{showHelp ? 'Hide' : 'Formatting'}
+						{showHelp ? 'Ausblenden' : 'Formatierung'}
 					</button>
 				</header>
 
@@ -104,13 +104,13 @@
 					class="field source"
 					bind:value={body}
 					spellcheck="true"
-					placeholder="Write the lesson here."
+					placeholder="Schreib die Lektion hier."
 				></textarea>
 			</section>
 
 			<section class="pane">
 				<header class="pane-head">
-					<span class="hud-label">Preview</span>
+					<span class="hud-label">Vorschau</span>
 				</header>
 				<Panel>
 					<article class="prose">
@@ -125,7 +125,7 @@
 	</form>
 
 	<form class="delete" method="POST" action="?/delete" use:enhance>
-		<button class="btn btn-ghost danger" type="submit">Delete this block</button>
+		<button class="btn btn-ghost danger" type="submit">Diesen Block löschen</button>
 	</form>
 </main>
 

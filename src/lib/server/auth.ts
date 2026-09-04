@@ -40,7 +40,8 @@ export const auth = betterAuth({
 			// them to "students in a class you own".
 			adminRoles: ['admin', 'teacher'],
 			defaultRole: 'student',
-			bannedUserMessage: 'This account has been archived. Ask your teacher to restore it.'
+			bannedUserMessage:
+				'Dieses Konto ist archiviert. Bitte deine Lehrperson, es wiederherzustellen.'
 		}),
 		username(),
 		sveltekitCookies(getRequestEvent) // make sure this is the last plugin in the array

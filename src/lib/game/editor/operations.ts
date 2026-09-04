@@ -9,6 +9,7 @@ import {
     type ItemTemplate,
 } from './brush';
 import type { Selection } from './selection';
+import type { CrateColor } from '$lib/game/crate-color';
 import { coordKey, inBounds, parseTileKey, sameCoord } from '$lib/game/grid';
 import type {
     BeltControl,
@@ -196,8 +197,8 @@ export function targetIds(level: Level): string[] {
 }
 
 /** Coordinates of every drop-off bay, for the `deliver_specific` bay picker. */
-export function dropOffBays(level: Level): { coord: Coord; color: string | null }[] {
-    const bays: { coord: Coord; color: string | null }[] = [];
+export function dropOffBays(level: Level): { coord: Coord; color: CrateColor | null }[] {
+    const bays: { coord: Coord; color: CrateColor | null }[] = [];
     for (const [key, tile] of Object.entries(level.tiles)) {
         if (tile?.kind === 'drop_off') {
             bays.push({ coord: parseTileKey(key as TileKey), color: tile.color });

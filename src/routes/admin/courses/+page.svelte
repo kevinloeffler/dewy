@@ -1,200 +1,219 @@
 <script lang="ts">
 	import { enhance } from '$app/forms';
-	import { Badge, Button, Panel, Topbar } from '$lib/components/index.js';
-	import type { PageServerData } from './$types';
+	import { Button, Callout, Modal } from '$lib/components/index.js';
+	import type { ActionData, PageServerData } from './$types';
 
-	let { data }: { data: PageServerData } = $props();
+	let { data, form }: { data: PageServerData; form: ActionData } = $props();
 
-	let title = $state('');
+	let creating = $state(false);
+	// The course the delete dialog is asking about — it names it in the warning,
+	// so it holds the row rather than just a flag.
+	let deleting = $state<{ id: string; title: string } | null>(null);
+
+	const date = new Intl.DateTimeFormat('de-CH', { dateStyle: 'medium' });
+
+	function plural(count: number, one: string, many: string) {
+		return `${count} ${count === 1 ? one : many}`;
+	}
 </script>
 
 <svelte:head>
-	<title>Courses · Dewy</title>
+	<title>Kurse · Dewy</title>
 </svelte:head>
 
-<Topbar>
-	{#snippet left()}
-		<span class="chip">Courses</span>
-	{/snippet}
-	{#snippet right()}
-		<a class="btn btn-ghost" href="/courses">Student view</a>
-	{/snippet}
-</Topbar>
-
 <main class="page">
-	<Panel>
-		<h2 class="section-title">New course</h2>
-		<form class="new-course" method="POST" action="?/create" use:enhance>
-			<input
-				class="field"
-				name="title"
-				placeholder="Course name"
-				bind:value={title}
-				autocomplete="off"
-			/>
-			<Button type="submit">Create</Button>
-		</form>
-	</Panel>
+	{#if form?.message}
+		<Callout variant="danger">{form.message}</Callout>
+	{/if}
 
-	<h2 class="section-title">Courses</h2>
+	<header class="head">
+		<h1 class="head-title">Kurse</h1>
+		<button class="btn btn-add add" type="button" onclick={() => (creating = true)}>
+			Neuer Kurs
+		</button>
+	</header>
 
 	{#if data.courses.length === 0}
-		<Panel>
-			<p class="empty">No courses yet. Create one above to start building a curriculum.</p>
-		</Panel>
+		<section class="panel card">
+			<p class="empty">
+				Noch keine Kurse. Leg einen an, um mit dem Aufbau eines Lehrplans zu beginnen.
+			</p>
+		</section>
 	{:else}
 		<ul class="list">
 			{#each data.courses as course (course.id)}
-				<li>
-					<Panel>
-						<div class="row">
-							<div class="row-text">
+				<li class="panel card">
+					<div class="row">
+						<div class="row-text">
+							<p class="row-head">
 								<a class="row-name" href="/admin/courses/{course.id}">{course.title}</a>
-								{#if course.published}
-									<Badge variant="chapter">Published</Badge>
-								{:else}
-									<span class="chip">Draft</span>
-								{/if}
-								<p class="row-meta">
-									{course.stageCount}
-									{course.stageCount === 1 ? 'stage' : 'stages'}
-									· {course.itemCount}
-									{course.itemCount === 1 ? 'item' : 'items'}
-									· edited {course.updatedAt.toLocaleDateString()}
-								</p>
-								{#if course.description}
-									<p class="row-desc">{course.description}</p>
-								{/if}
-							</div>
-
-							<div class="row-actions">
-								<form method="POST" action="?/publish" use:enhance>
-									<input type="hidden" name="id" value={course.id} />
-									<input type="hidden" name="published" value={course.published ? 'false' : 'true'} />
-									<button class="btn btn-ghost" type="submit">
-										{course.published ? 'Unpublish' : 'Publish'}
-									</button>
-								</form>
-								<a class="btn btn-primary" href="/admin/courses/{course.id}">Edit</a>
-								<form method="POST" action="?/delete" use:enhance>
-									<input type="hidden" name="id" value={course.id} />
-									<button class="btn btn-ghost danger" type="submit">Delete</button>
-								</form>
-							</div>
+								<span class="chip">{course.published ? 'Veröffentlicht' : 'Entwurf'}</span>
+							</p>
+							<p class="row-meta">
+								{plural(course.stageCount, 'Kapitel', 'Kapitel')}
+								· {plural(course.itemCount, 'Element', 'Elemente')}
+								· bearbeitet {date.format(course.updatedAt)}
+							</p>
+							{#if course.description}
+								<p class="row-desc">{course.description}</p>
+							{/if}
 						</div>
-					</Panel>
+
+						<div class="controls">
+							<form method="POST" action="?/publish" use:enhance>
+								<input type="hidden" name="id" value={course.id} />
+								<input type="hidden" name="published" value={course.published ? 'false' : 'true'} />
+								<button class="btn btn-ghost act" type="submit">
+									{course.published ? 'Archivieren' : 'Veröffentlichen'}
+								</button>
+							</form>
+							<a class="btn btn-ghost act" href="/admin/courses/{course.id}">Bearbeiten</a>
+							<button
+								class="btn btn-danger act"
+								type="button"
+								onclick={() => (deleting = { id: course.id, title: course.title })}
+							>
+								Löschen
+							</button>
+						</div>
+					</div>
 				</li>
 			{/each}
 		</ul>
 	{/if}
 
 	{#if data.shared.length > 0}
-		<h2 class="section-title">Shared with me</h2>
+		<h2 class="section-title">Mit mir geteilt</h2>
 		<p class="hint">
-			Live links to another teacher's courses. You can assign these to your classes and their
-			author's later edits reach you, but you cannot change them. Take a copy to make it yours.
+			Live-Verknüpfungen auf die Kurse anderer Lehrpersonen. Du kannst sie deinen Klassen zuweisen
+			und spätere Änderungen der Autorin oder des Autors erreichen dich, aber ändern kannst du sie
+			nicht. Erstelle eine Kopie, um sie zu deinen zu machen.
 		</p>
 		<ul class="list">
 			{#each data.shared as course (course.id)}
-				<li>
-					<Panel>
-						<div class="row">
-							<div class="row-text">
+				<li class="panel card">
+					<div class="row">
+						<div class="row-text">
+							<p class="row-head">
 								<a class="row-name" href="/admin/courses/{course.id}">{course.title}</a>
-								<span class="chip">Read-only{course.ownerName ? ` · ${course.ownerName}` : ''}</span>
-								<p class="row-meta">
-									{course.stageCount}
-									{course.stageCount === 1 ? 'stage' : 'stages'}
-									· {course.itemCount}
-									{course.itemCount === 1 ? 'item' : 'items'}
-								</p>
-								{#if course.description}
-									<p class="row-desc">{course.description}</p>
-								{/if}
-							</div>
-
-							<div class="row-actions">
-								<a class="btn btn-ghost" href="/admin/courses/{course.id}">View</a>
-							</div>
+								<span class="chip">
+									Nur lesen{course.ownerName ? ` · ${course.ownerName}` : ''}
+								</span>
+							</p>
+							<p class="row-meta">
+								{plural(course.stageCount, 'Kapitel', 'Kapitel')}
+								· {plural(course.itemCount, 'Element', 'Elemente')}
+							</p>
+							{#if course.description}
+								<p class="row-desc">{course.description}</p>
+							{/if}
 						</div>
-					</Panel>
+
+						<div class="controls">
+							<a class="btn btn-ghost act" href="/admin/courses/{course.id}">Ansehen</a>
+						</div>
+					</div>
 				</li>
 			{/each}
 		</ul>
 	{/if}
 
 	{#if data.unowned.length > 0}
-		<h2 class="section-title">Unassigned levels</h2>
-		<Panel>
+		<h2 class="section-title">Levels ohne Kurs</h2>
+		<section class="panel card">
 			<p class="hint">
-				Levels that belong to no course — authored before courses existed, or left over from a
-				deleted draft. They still open in the designer.
+				Levels, die zu keinem Kurs gehören — vor den Kursen angelegt oder aus einem gelöschten
+				Entwurf übrig geblieben. Im Designer lassen sie sich weiterhin öffnen.
 			</p>
 			<ul class="loose">
 				{#each data.unowned as level (level.id)}
 					<li>
-						<a href="/designer/{level.id}">{level.name}</a>
+						<a class="row-name" href="/designer/{level.id}">{level.name}</a>
 						<span class="row-meta">{level.width} × {level.height}</span>
-						<a class="btn btn-ghost" href="/level/{level.id}">Play</a>
+						<a class="btn btn-ghost act" href="/level/{level.id}">Spielen</a>
 						<form method="POST" action="?/deleteLevel" use:enhance>
 							<input type="hidden" name="id" value={level.id} />
-							<button class="btn btn-ghost danger" type="submit">Delete</button>
+							<button class="btn btn-danger act" type="submit">Löschen</button>
 						</form>
 					</li>
 				{/each}
 			</ul>
-		</Panel>
+		</section>
 	{/if}
 </main>
 
+<Modal bind:open={creating} title="Neuer Kurs">
+	<form class="dialog-form" method="POST" action="?/create" use:enhance>
+		<label class="field-label" for="new-course-title">Kursname</label>
+		<input
+			class="field"
+			id="new-course-title"
+			name="title"
+			placeholder="z. B. Einführung ins Programmieren"
+			autocomplete="off"
+		/>
+		<div class="dialog-actions">
+			<Button type="button" variant="ghost" onclick={() => (creating = false)}>Abbrechen</Button>
+			<Button type="submit">Kurs erstellen</Button>
+		</div>
+	</form>
+</Modal>
+
+<Modal
+	open={deleting !== null}
+	title="Kurs löschen?"
+	onclose={() => (deleting = null)}
+>
+	<p class="hint">
+		„{deleting?.title}“ und damit jedes Kapitel, jeden Theorieblock und jedes Level darin werden
+		gelöscht. Das lässt sich nicht rückgängig machen.
+	</p>
+	<form class="dialog-actions" method="POST" action="?/delete" use:enhance>
+		<input type="hidden" name="id" value={deleting?.id} />
+		<Button type="button" variant="ghost" onclick={() => (deleting = null)}>Abbrechen</Button>
+		<button class="btn btn-danger" type="submit">Endgültig löschen</button>
+	</form>
+</Modal>
+
 <style>
 	.page {
-		max-width: 880px;
+		max-width: 929px;
 		margin: 0 auto;
-		padding: 28px 24px 64px;
+		padding: 44px 32px 80px;
 		display: flex;
 		flex-direction: column;
 		gap: 16px;
 	}
 
-	.section-title {
-		font-family: var(--font-display);
-		font-weight: var(--font-display-wt);
-		font-size: 15px;
-		color: var(--text-muted);
-		margin: 8px 0 0;
+	.head {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 16px;
 	}
 
-	.new-course {
-		display: flex;
-		gap: 10px;
+	.head-title {
+		font-size: 1.375rem;
+		font-weight: 700;
+	}
+
+	.section-title {
+		font-size: 1.0625rem;
+		font-weight: 700;
 		margin-top: 12px;
 	}
 
-	.field {
-		flex: 1;
-		font: inherit;
-		font-family: var(--font-ui);
-		color: var(--text);
-		background: var(--bg);
-		border: 1px solid var(--panel-border);
-		border-radius: calc(var(--radius) - 6px);
-		padding: 9px 12px;
+	.card {
+		padding: 24px 32px;
 	}
 
-	.field:focus-visible {
-		outline: 2px solid var(--accent);
-		outline-offset: 1px;
-	}
-
-	.list,
-	.loose {
+	.list {
 		list-style: none;
 		margin: 0;
 		padding: 0;
 		display: flex;
 		flex-direction: column;
-		gap: 12px;
+		gap: 16px;
 	}
 
 	.row {
@@ -205,13 +224,25 @@
 		flex-wrap: wrap;
 	}
 
+	.row-text {
+		/* Without this the description's max-content width pushes the buttons
+		   onto their own line. */
+		flex: 1;
+		min-width: 220px;
+	}
+
+	.row-head {
+		display: flex;
+		align-items: center;
+		gap: 10px;
+		flex-wrap: wrap;
+	}
+
 	.row-name {
-		font-family: var(--font-display);
-		font-weight: var(--font-display-wt);
-		font-size: 17px;
+		font-weight: 700;
+		font-size: 1.125rem;
 		color: var(--text);
 		text-decoration: none;
-		margin-right: 8px;
 	}
 
 	.row-name:hover {
@@ -220,51 +251,86 @@
 
 	.row-meta,
 	.row-desc {
-		margin: 4px 0 0;
-		font-size: 13px;
+		margin-top: 4px;
+		font-size: 0.8125rem;
 		color: var(--text-muted);
 	}
 
-	.row-actions {
+	.controls {
 		display: flex;
 		align-items: center;
-		gap: 8px;
+		gap: 9px;
 	}
 
-	.danger {
-		color: var(--danger);
+	/* Same button metrics as the course editor, so the two pages read as one. */
+	.act {
+		justify-content: center;
+		min-width: 98px;
+		height: 43px;
+		padding: 0 12px;
+		border-radius: 8px;
+		font-size: 0.9375rem;
+		font-weight: 500;
+	}
+
+	.add {
+		justify-content: center;
+		min-width: 168px;
+		height: 31px;
+		padding: 0 14px;
+		border-radius: 8px;
+		font-size: 0.8125rem;
+	}
+
+	.loose {
+		list-style: none;
+		margin: 14px 0 0;
+		padding: 0;
+		display: flex;
+		flex-direction: column;
+		gap: 9px;
+	}
+
+	.loose li {
+		display: flex;
+		align-items: center;
+		gap: 12px;
+	}
+
+	.loose .row-meta {
+		flex: 1;
+		margin-top: 0;
 	}
 
 	.empty,
 	.hint {
 		margin: 0;
 		color: var(--text-muted);
+		font-size: 0.9375rem;
 	}
 
 	.hint {
-		font-size: 13px;
-		margin-bottom: 12px;
+		font-size: 0.8125rem;
+		line-height: 1.55;
 	}
 
-	.loose {
+	.field {
+		height: 43px;
+		border-radius: 8px;
+		font-size: 1rem;
+		padding: 0 14px;
+	}
+
+	.dialog-form {
+		display: flex;
+		flex-direction: column;
 		gap: 6px;
 	}
 
-	.loose li {
+	.dialog-actions {
 		display: flex;
-		align-items: center;
-		gap: 10px;
-	}
-
-	.loose .row-meta {
-		flex: 1;
-	}
-
-	.loose a {
-		color: var(--text);
-	}
-
-	.loose a:hover {
-		color: var(--accent);
+		justify-content: flex-end;
+		gap: 8px;
+		margin-top: 8px;
 	}
 </style>

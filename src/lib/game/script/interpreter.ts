@@ -204,7 +204,7 @@ class Interpreter {
                 const value = await this.evaluate(statement.value, scope);
                 if (!scope.assign(statement.name, value)) {
                     throw new ScriptError(
-                        `\`${statement.name}\` hasn't been created yet — try \`let ${statement.name} = …;\` first.`,
+                        `\`${statement.name}\` gibt es noch nicht — schreib zuerst \`let ${statement.name} = …;\`.`,
                         statement.line,
                     );
                 }
@@ -234,12 +234,12 @@ class Interpreter {
                 const count = await this.evaluate(statement.count, scope);
                 if (typeof count !== 'number' || !Number.isFinite(count)) {
                     throw new ScriptError(
-                        '`repeat` needs a number, like `repeat(3) { … }`.',
+                        '`repeat` braucht eine Zahl, zum Beispiel `repeat(3) { … }`.',
                         statement.line,
                     );
                 }
                 if (count < 0) {
-                    throw new ScriptError('`repeat` cannot count backwards.', statement.line);
+                    throw new ScriptError('`repeat` kann nicht rückwärts zählen.', statement.line);
                 }
 
                 const times = Math.floor(count);
@@ -279,7 +279,7 @@ class Interpreter {
             case 'name': {
                 if (!scope.has(expression.name)) {
                     throw new ScriptError(
-                        `I don't know what \`${expression.name}\` is.`,
+                        `Ich weiss nicht, was \`${expression.name}\` ist.`,
                         expression.line,
                     );
                 }
@@ -290,7 +290,7 @@ class Interpreter {
                 const operand = await this.evaluate(expression.operand, scope);
                 if (expression.operator === '!') return !truthy(operand);
                 if (typeof operand !== 'number') {
-                    throw new ScriptError('Only numbers can be negative.', expression.line);
+                    throw new ScriptError('Nur Zahlen können negativ sein.', expression.line);
                 }
                 return -operand;
             }
@@ -329,7 +329,7 @@ class Interpreter {
 
         if (typeof left !== 'number' || typeof right !== 'number') {
             throw new ScriptError(
-                `\`${operator}\` only works on numbers, and this is ${describe(
+                `\`${operator}\` funktioniert nur mit Zahlen, und das hier ist ${describe(
                     typeof left !== 'number' ? left : right,
                 )}.`,
                 line,
@@ -341,10 +341,10 @@ class Interpreter {
             case '-': return left - right;
             case '*': return left * right;
             case '/':
-                if (right === 0) throw new ScriptError('Dividing by zero is not allowed.', line);
+                if (right === 0) throw new ScriptError('Durch null teilen geht nicht.', line);
                 return left / right;
             case '%':
-                if (right === 0) throw new ScriptError('Dividing by zero is not allowed.', line);
+                if (right === 0) throw new ScriptError('Durch null teilen geht nicht.', line);
                 return left % right;
             case '<': return left < right;
             case '>': return left > right;
@@ -352,7 +352,7 @@ class Interpreter {
             case '>=': return left >= right;
         }
 
-        throw new ScriptError(`I don't know the \`${operator}\` operator.`, line);
+        throw new ScriptError(`Den Operator \`${operator}\` kenne ich nicht.`, line);
     }
 
     private async call(expression: Expr & { kind: 'call' }, scope: Scope): Promise<ScriptValue> {
@@ -369,7 +369,7 @@ class Interpreter {
         if (native) {
             if (args.length > 0) {
                 throw new ScriptError(
-                    `\`${expression.callee}()\` doesn't take anything between its brackets.`,
+                    `\`${expression.callee}()\` nimmt nichts zwischen den Klammern.`,
                     expression.line,
                 );
             }
@@ -384,15 +384,15 @@ class Interpreter {
         if (!target || typeof target !== 'object' || target.kind !== 'function') {
             throw new ScriptError(
                 scope.has(expression.callee)
-                    ? `\`${expression.callee}\` is not something you can call.`
-                    : `I don't know a command called \`${expression.callee}\`.`,
+                    ? `\`${expression.callee}\` lässt sich nicht aufrufen.`
+                    : `Einen Befehl namens \`${expression.callee}\` kenne ich nicht.`,
                 expression.line,
             );
         }
 
         if (target.parameters.length !== args.length) {
             throw new ScriptError(
-                `\`${target.name}\` expects ${count(target.parameters.length, 'value')}, but got ${args.length}.`,
+                `\`${target.name}\` erwartet ${count(target.parameters.length, 'Wert', 'Werte')}, bekommen hat es ${args.length}.`,
                 expression.line,
             );
         }
@@ -400,7 +400,7 @@ class Interpreter {
         if (++this.depth > this.maxCallDepth) {
             this.depth--;
             throw new ScriptError(
-                `\`${target.name}\` keeps calling itself and never stops.`,
+                `\`${target.name}\` ruft sich immer wieder selbst auf und hört nie auf.`,
                 expression.line,
             );
         }
@@ -449,7 +449,7 @@ class Interpreter {
     private countIteration(iterations: number, line: number, construct: string): void {
         if (iterations <= this.maxLoopIterations) return;
         throw new ScriptError(
-            `This \`${construct}\` loop has run ${this.maxLoopIterations} times — it looks like it never ends.`,
+            `Diese \`${construct}\`-Schleife ist schon ${this.maxLoopIterations} Mal gelaufen — sie hört wohl nie auf.`,
             line,
         );
     }
@@ -485,7 +485,7 @@ const NATIVES: Record<keyof RobotApi, (api: RobotApi) => unknown | Promise<unkno
  */
 function guardName(name: string, line: number): void {
     if (!(name in NATIVES)) return;
-    throw new ScriptError(`\`${name}\` is a robot command — pick a different name.`, line);
+    throw new ScriptError(`\`${name}\` ist ein Roboterbefehl — nimm einen anderen Namen.`, line);
 }
 
 function truthy(value: ScriptValue): boolean {
@@ -493,11 +493,11 @@ function truthy(value: ScriptValue): boolean {
 }
 
 function describe(value: ScriptValue): string {
-    if (value === null) return 'nothing';
-    if (typeof value === 'object') return 'a function';
+    if (value === null) return 'nichts';
+    if (typeof value === 'object') return 'eine Funktion';
     return String(value);
 }
 
-function count(amount: number, noun: string): string {
-    return `${amount} ${noun}${amount === 1 ? '' : 's'}`;
+function count(amount: number, one: string, many: string): string {
+    return `${amount} ${amount === 1 ? one : many}`;
 }

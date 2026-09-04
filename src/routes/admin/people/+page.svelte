@@ -2,7 +2,7 @@
 	import { SvelteSet } from 'svelte/reactivity';
 	import { enhance } from '$app/forms';
 	import { Callout, Checkbox, Panel } from '$lib/components/index.js';
-	import { ROLES } from '$lib/roles';
+	import { ROLES, ROLE_LABELS } from '$lib/roles';
 	import type { ActionData, PageServerData } from './$types';
 
 	let { data, form }: { data: PageServerData; form: ActionData } = $props();
@@ -29,13 +29,13 @@
 </script>
 
 <svelte:head>
-	<title>People · Dewy</title>
+	<title>Benutzer · Dewy</title>
 </svelte:head>
 
 <main class="page">
 	<div class="head">
-		<h1 class="title">People</h1>
-		<a class="btn btn-primary" href="/admin/people/new">Add people</a>
+		<h1 class="title">Benutzer</h1>
+		<a class="btn btn-primary" href="/admin/people/new">Benutzer hinzufügen</a>
 	</div>
 
 	<Panel padding="sm">
@@ -43,19 +43,19 @@
 			<input
 				class="field search"
 				name="q"
-				placeholder="Search name or username"
+				placeholder="Name oder Benutzername suchen"
 				value={data.filter.search ?? ''}
 			/>
 
-			<select class="field" name="role" aria-label="Role">
-				<option value="">All roles</option>
+			<select class="field" name="role" aria-label="Rolle">
+				<option value="">Alle Rollen</option>
 				{#each ROLES as role (role)}
-					<option value={role} selected={data.filter.role === role}>{role}</option>
+					<option value={role} selected={data.filter.role === role}>{ROLE_LABELS[role]}</option>
 				{/each}
 			</select>
 
-			<select class="field" name="classId" aria-label="Class">
-				<option value="">All classes</option>
+			<select class="field" name="classId" aria-label="Klasse">
+				<option value="">Alle Klassen</option>
 				{#each data.classes as row (row.id)}
 					<option value={row.id} selected={filteredByClass === row.id}>{row.name}</option>
 				{/each}
@@ -63,10 +63,10 @@
 
 			<label class="toggle">
 				<input type="checkbox" name="archived" value="1" checked={data.filter.archived} />
-				Archived
+				Archivierte
 			</label>
 
-			<button class="btn btn-ghost" type="submit">Apply</button>
+			<button class="btn btn-ghost" type="submit">Anwenden</button>
 		</form>
 	</Panel>
 
@@ -77,7 +77,7 @@
 	{#if data.people.length === 0}
 		<Panel>
 			<p class="empty">
-				{data.filter.archived ? 'Nobody is archived.' : 'Nobody here yet.'}
+				{data.filter.archived ? 'Niemand ist archiviert.' : 'Noch niemand hier.'}
 			</p>
 		</Panel>
 	{:else}
@@ -99,15 +99,15 @@
 									<Checkbox
 										checked={allPicked}
 										indeterminate={picked.size > 0 && !allPicked}
-										label="Select all"
+										label="Alle auswählen"
 										onchange={toggleAll}
 									/>
 								</th>
 								<th>Name</th>
-								<th>Signs in with</th>
-								<th>Role</th>
-								<th>Classes</th>
-								<th class="numeric">Done</th>
+								<th>Anmeldung mit</th>
+								<th>Rolle</th>
+								<th>Klassen</th>
+								<th class="numeric">Erledigt</th>
 							</tr>
 						</thead>
 						<tbody>
@@ -118,16 +118,16 @@
 											name="userId"
 											value={person.id}
 											checked={picked.has(person.id)}
-											label="Select {person.name}"
+											label="{person.name} auswählen"
 											onchange={() => toggle(person.id)}
 										/>
 									</td>
 									<td>
 										<a class="link" href="/admin/people/{person.id}">{person.name}</a>
-										{#if person.archivedAt}<span class="chip">Archived</span>{/if}
+										{#if person.archivedAt}<span class="chip">Archiviert</span>{/if}
 									</td>
 									<td class="mono">{person.username ?? person.email ?? '—'}</td>
-									<td><span class="chip">{person.role}</span></td>
+									<td><span class="chip">{ROLE_LABELS[person.role]}</span></td>
 									<td class="classes">
 										{#each person.classes as row (row.id)}
 											<a class="chip" href="/admin/people?classId={row.id}">{row.name}</a>
@@ -144,40 +144,40 @@
 
 				{#if picked.size > 0}
 					<div class="bar">
-						<span class="bar-count">{picked.size} selected</span>
+						<span class="bar-count">{picked.size} ausgewählt</span>
 
 						<input
 							class="field pick"
 							name="password"
 							type="text"
-							placeholder="New password"
+							placeholder="Neues Passwort"
 							minlength="8"
 							autocomplete="off"
-							title="Sets this one password on every selected account."
+							title="Setzt dieses eine Passwort für alle ausgewählten Konten."
 						/>
 						<button class="btn btn-ghost" type="submit" formaction="?/setPassword">
-							Set password
+							Passwort setzen
 						</button>
 						{#if picked.size > 1}
-							<span class="bar-note">— the same one for all picked.size</span>
+							<span class="bar-note">— für alle dasselbe</span>
 						{/if}
 
-						<select class="field pick" name="classId" aria-label="Class">
-							<option value="">Class…</option>
+						<select class="field pick" name="classId" aria-label="Klasse">
+							<option value="">Klasse…</option>
 							{#each data.classes as row (row.id)}
 								<option value={row.id}>{row.name}</option>
 							{/each}
 						</select>
-						<button class="btn btn-ghost" type="submit" formaction="?/addToClass">Add</button>
+						<button class="btn btn-ghost" type="submit" formaction="?/addToClass">Hinzufügen</button>
 						{#if filteredByClass}
-							<button class="btn btn-ghost" type="submit" formaction="?/moveToClass">Move</button>
+							<button class="btn btn-ghost" type="submit" formaction="?/moveToClass">Verschieben</button>
 						{/if}
 
 						{#if data.filter.archived}
-							<button class="btn btn-ghost" type="submit" formaction="?/restore">Restore</button>
+							<button class="btn btn-ghost" type="submit" formaction="?/restore">Wiederherstellen</button>
 						{:else}
 							<button class="btn btn-ghost danger" type="submit" formaction="?/archive">
-								Archive
+								Archivieren
 							</button>
 						{/if}
 					</div>

@@ -7,14 +7,14 @@
 </script>
 
 {#if problems.length === 0}
-	<p class="ok">No problems — this level is sound.</p>
+	<p class="ok">Keine Probleme — dieses Level ist in Ordnung.</p>
 {:else}
 	<ul>
 		{#each problems as problem (problem)}
 			<li>{problem}</li>
 		{/each}
 	</ul>
-	<p class="note">Problems do not block saving — a half-built level is still worth keeping.</p>
+	<p class="note">Probleme blockieren das Speichern nicht — ein halbfertiges Level lohnt sich trotzdem.</p>
 {/if}
 
 <style>

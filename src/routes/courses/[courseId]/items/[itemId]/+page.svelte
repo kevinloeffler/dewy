@@ -55,7 +55,7 @@
 		{#snippet right()}
 			<span class="chip">{context.index} / {context.total}</span>
 			{#if prevHref}
-				<a class="btn btn-ghost" href={prevHref}>Back</a>
+				<a class="btn btn-ghost" href={prevHref}>Zurück</a>
 			{/if}
 		{/snippet}
 	</Topbar>
@@ -82,10 +82,10 @@
 		>
 			<input type="hidden" name="advance" value="true" />
 			{#if isComplete}
-				<span class="done">✓ Completed</span>
+				<span class="done">✓ Erledigt</span>
 			{/if}
 			<Button type="submit">
-				{context.nextItemId ? 'Continue' : 'Finish course'}
+				{context.nextItemId ? 'Weiter' : 'Kurs abschliessen'}
 			</Button>
 		</form>
 	</main>
