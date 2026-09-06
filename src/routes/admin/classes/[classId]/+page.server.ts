@@ -1,10 +1,12 @@
 import { error, fail, redirect } from '@sveltejs/kit';
 import type { Actions, PageServerLoad } from './$types';
 import {
+	addMembers,
 	assignCourse,
 	deleteClass,
 	findClass,
 	InvalidClass,
+	listAssignableStudents,
 	listClasses,
 	moveMembers,
 	removeMembers,
@@ -13,7 +15,16 @@ import {
 	unassignCourse
 } from '$lib/server/classes';
 import { listCourses } from '$lib/server/courses';
-import { actorOf, archiveUsers, Forbidden, InvalidPerson, setPassword } from '$lib/server/users';
+import {
+	actorOf,
+	archiveUsers,
+	createStudents,
+	Forbidden,
+	InvalidPerson,
+	setPassword,
+	takenUsernames
+} from '$lib/server/users';
+import { parseRoster } from '$lib/roster';
 
 export const load: PageServerLoad = async (event) => {
 	const actor = actorOf(event);
@@ -28,7 +39,12 @@ export const load: PageServerLoad = async (event) => {
 		group,
 		// For the "move to" picker and the course assignment list.
 		otherClasses: (await listClasses(actor)).filter((row) => row.id !== group.id),
-		courses: await listCourses()
+		courses: await listCourses(),
+		// The two ways onto this roster: an account that already exists, or a new one.
+		assignableStudents: await listAssignableStudents(actor, group.id),
+		// A courtesy for the roster preview; the server resolves collisions again
+		// on submit, so this list is not a source of truth.
+		taken: await takenUsernames()
 	};
 };
 
@@ -57,6 +73,32 @@ async function run<T>(work: () => Promise<T>) {
 }
 
 export const actions: Actions = {
+	/** Option one: put accounts that already exist onto this roster. */
+	addStudents: async (event) => {
+		const formData = await event.request.formData();
+		const userIds = formData.getAll('addUserId').map((value) => value.toString());
+		if (userIds.length === 0) return fail(400, { message: 'Es wurde niemand ausgewählt.' });
+
+		const result = await run(() => addMembers(actorOf(event), event.params.classId, userIds));
+		if (!result.ok) return fail(result.status, { message: result.message });
+		return { savedAt: Date.now() };
+	},
+
+	/** Option two: mint the accounts, straight into this class. */
+	createStudents: async (event) => {
+		const formData = await event.request.formData();
+		const roster = formData.get('roster')?.toString() ?? '';
+
+		const drafts = parseRoster(roster);
+		if (drafts.length === 0) {
+			return fail(400, { message: 'Keine Namen gefunden. Eine Person pro Zeile.' });
+		}
+
+		const result = await run(() => createStudents(actorOf(event), event.params.classId, drafts));
+		if (!result.ok) return fail(result.status, { message: result.message });
+		return { ...result.value, savedAt: Date.now() };
+	},
+
 	rename: async (event) => {
 		const formData = await event.request.formData();
 		const name = formData.get('name')?.toString() ?? '';

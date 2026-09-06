@@ -28,7 +28,14 @@
 
 	{#if data.courses.length === 0}
 		<Panel>
-			<p class="empty">Es wurden noch keine Kurse veröffentlicht.</p>
+			{#if data.isStudent}
+				<p class="empty">
+					Dir wurden noch keine Kurse zugewiesen. Sobald deine Lehrperson das tut, erscheinen sie
+					hier.
+				</p>
+			{:else}
+				<p class="empty">Es wurden noch keine Kurse veröffentlicht.</p>
+			{/if}
 		</Panel>
 	{:else}
 		<ul class="list">

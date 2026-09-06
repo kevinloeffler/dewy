@@ -17,7 +17,7 @@ import { buildEmptyLevel, InvalidLevel } from '$lib/server/levels';
 import { parseLevel } from '$lib/game/editor/parse';
 import { shift, type Direction } from '$lib/ordering';
 import { Forbidden, type Actor } from '$lib/server/users';
-import { roleOf } from '$lib/roles';
+import { isStaff, roleOf } from '$lib/roles';
 import type { Level } from '$lib/game/level';
 
 /**
@@ -236,33 +236,41 @@ export async function listCourses(
 	}));
 }
 
+/** Just enough of a session user to answer "what may they see?". */
+export type Viewer = { id: string; role?: string | null } | null | undefined;
+
 /**
  * The catalogue for one student.
  *
- * A student who belongs to a class sees what that class has been assigned —
- * that is the point of classes. A student in no class, and anyone signed out,
- * sees every published course, which is exactly how `/courses` behaved before
- * classes existed: an empty roster should not read as an empty curriculum.
+ * A student sees the courses their classes were assigned, and nothing else. No
+ * assignment means an empty catalogue, not the whole shelf: what a class is
+ * given is the curriculum, and a student who has been given nothing yet is
+ * waiting for their teacher rather than free to roam.
+ *
+ * Staff and signed-out visitors still see every published course — the former
+ * because `/courses` is how they preview what they publish, the latter because
+ * the catalogue is the public front door.
  */
-export async function listCoursesFor(userId: string | undefined): Promise<CourseSummary[]> {
-	if (!userId) return listCourses({ publishedOnly: true });
+export async function listCoursesFor(user: Viewer): Promise<CourseSummary[]> {
+	if (!user || isStaff(user)) return listCourses({ publishedOnly: true });
 
 	const assigned = await db
 		.selectDistinct({ courseId: classCourse.courseId })
 		.from(classCourse)
 		.innerJoin(classMember, eq(classMember.classId, classCourse.classId))
 		.innerJoin(schoolClass, eq(schoolClass.id, classCourse.classId))
-		.where(and(eq(classMember.userId, userId), isNull(schoolClass.archivedAt)));
+		.where(and(eq(classMember.userId, user.id), isNull(schoolClass.archivedAt)));
 
-	if (assigned.length === 0) return listCourses({ publishedOnly: true });
+	// Nothing assigned, nothing to list — and no reason to read the shelf first.
+	if (assigned.length === 0) return [];
 
 	const ids = new Set(assigned.map((row) => row.courseId));
 	return (await listCourses({ publishedOnly: true })).filter((row) => ids.has(row.id));
 }
 
 /** Whether this course is reachable by this student, for the course page's 404. */
-export async function canSeeCourse(userId: string | undefined, courseId: string): Promise<boolean> {
-	return (await listCoursesFor(userId)).some((row) => row.id === courseId);
+export async function canSeeCourse(user: Viewer, courseId: string): Promise<boolean> {
+	return (await listCoursesFor(user)).some((row) => row.id === courseId);
 }
 
 /**

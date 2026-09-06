@@ -1,6 +1,8 @@
 import { and, eq, inArray, sql } from 'drizzle-orm';
 import { db } from '$lib/server/db';
 import { itemProgress, stage, stageItem } from '$lib/server/db/schema';
+import { findCourse, type CourseOutline } from '$lib/server/courses';
+import { courseProgress, flattenItems, type ItemState } from '$lib/progress';
 
 /**
  * Recording what a student has finished.
@@ -62,4 +64,118 @@ export async function completionCounts(
 	const counts: Record<string, number> = {};
 	for (const row of rows) counts[row.courseId] = Number(row.total);
 	return counts;
+}
+
+// ============================================================
+// The teacher's view: one class against one course
+// ============================================================
+
+/**
+ * What a class has done in a course, as the grid a teacher reads.
+ *
+ * Two things are worth saying about the shape. The **rule** is not restated
+ * here: `courseProgress` in `$lib/progress` decides what is locked, available or
+ * complete, and it is run once per student over the same outline — so the
+ * teacher's grid and the student's course page can never disagree about what a
+ * student may open. And the **completions** are fetched in one query for the
+ * whole class rather than per student, because a class of thirty against a
+ * course of forty items is one table read, not thirty.
+ *
+ * Note what the table cannot tell us. `item_progress` records completions only —
+ * a row appears when a student finishes an item. There is no row for "opened it,
+ * got stuck", so an available cell means "not finished", never "not started".
+ * `attempts` is the closest thing to a struggle signal we store.
+ *
+ * Whoever the caller passes is who the grid is about, and every count here is
+ * over exactly that list — so the caller decides whether archived students are
+ * part of the picture, and no number can be built from a different set than the
+ * rows beside it.
+ */
+
+export type ItemDone = { completedAt: Date; attempts: number };
+
+export type ClassProgressRow = {
+	id: string;
+	name: string;
+	username: string | null;
+	state: Record<string, ItemState>;
+	/** Only the finished items, for the cell tooltips. */
+	done: Record<string, ItemDone>;
+	completedCount: number;
+	/** The item this student is on — what "where are they?" means. */
+	nextItemId: string | null;
+};
+
+export type ClassProgress = {
+	outline: CourseOutline;
+	rows: ClassProgressRow[];
+	/** How many of the class have finished each item — the stall detector. */
+	doneByItem: Record<string, number>;
+	total: number;
+};
+
+export type ProgressStudent = {
+	id: string;
+	name: string;
+	username: string | null;
+};
+
+export async function classProgress(
+	students: ProgressStudent[],
+	courseId: string
+): Promise<ClassProgress | null> {
+	const outline = await findCourse(courseId);
+	if (!outline) return null;
+
+	const rows =
+		students.length === 0
+			? []
+			: await db
+					.select({
+						userId: itemProgress.userId,
+						itemId: itemProgress.itemId,
+						completedAt: itemProgress.completedAt,
+						attempts: itemProgress.attempts
+					})
+					.from(itemProgress)
+					.innerJoin(stageItem, eq(stageItem.id, itemProgress.itemId))
+					.innerJoin(stage, eq(stage.id, stageItem.stageId))
+					.where(
+						and(
+							eq(stage.courseId, courseId),
+							inArray(
+								itemProgress.userId,
+								students.map((student) => student.id)
+							)
+						)
+					);
+
+	const byStudent = new Map<string, Record<string, ItemDone>>();
+	for (const row of rows) {
+		const done = byStudent.get(row.userId) ?? {};
+		done[row.itemId] = { completedAt: row.completedAt, attempts: row.attempts };
+		byStudent.set(row.userId, done);
+	}
+
+	const doneByItem: Record<string, number> = {};
+	for (const item of flattenItems(outline)) doneByItem[item.id] = 0;
+	for (const row of rows) doneByItem[row.itemId] = (doneByItem[row.itemId] ?? 0) + 1;
+
+	return {
+		outline,
+		rows: students.map((student) => {
+			const done = byStudent.get(student.id) ?? {};
+			const progress = courseProgress(outline, new Set(Object.keys(done)));
+
+			return {
+				...student,
+				state: progress.state,
+				done,
+				completedCount: progress.completedCount,
+				nextItemId: progress.nextItemId
+			};
+		}),
+		doneByItem,
+		total: flattenItems(outline).length
+	};
 }

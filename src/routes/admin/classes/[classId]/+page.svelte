@@ -2,7 +2,16 @@
 	import { untrack } from 'svelte';
 	import { SvelteSet } from 'svelte/reactivity';
 	import { enhance } from '$app/forms';
-	import { Button, Callout, Checkbox, Panel } from '$lib/components/index.js';
+	import {
+		Button,
+		Callout,
+		Checkbox,
+		CredentialsSheet,
+		Panel,
+		Select,
+		StudentRoster
+	} from '$lib/components/index.js';
+	import type { SelectOption } from '$lib/components/index.js';
 	import type { ActionData, PageServerData } from './$types';
 
 	let { data, form }: { data: PageServerData; form: ActionData } = $props();
@@ -26,7 +35,46 @@
 	}
 
 	const assignedIds = $derived(new Set(data.group.courses.map((course) => course.id)));
-	const assignable = $derived(data.courses.filter((course) => !assignedIds.has(course.id)));
+	const assignableCourses = $derived(data.courses.filter((course) => !assignedIds.has(course.id)));
+
+	let courseId = $state('');
+
+	const courseOptions = $derived<SelectOption[]>(
+		assignableCourses.map((course) => ({
+			value: course.id,
+			label: course.title,
+			// The list above marks a draft with a chip; say the same thing here.
+			hint: course.published ? undefined : 'Entwurf'
+		}))
+	);
+
+	// ── Adding students ────────────────────────────────────────
+	// Two ways in, and they are genuinely different jobs: one moves an account
+	// that exists, the other mints accounts and hands out passwords. A class with
+	// nobody in it opens the panel already, because that is the only thing left
+	// to do on the page.
+	let showAdd = $state(untrack(() => data.group.students.length === 0));
+	// `new` first: this button used to lead straight to bulk creation, and that is
+	// still the common errand.
+	let mode = $state<'existing' | 'new'>('new');
+	let toAdd = $state<string[]>([]);
+	let roster = $state('');
+	let creating = $state(false);
+
+	const studentOptions = $derived<SelectOption[]>(
+		data.assignableStudents.map((student) => ({
+			value: student.id,
+			label: student.name,
+			// Where they come from is what tells two Marie Musters apart.
+			hint: [student.username, ...student.classes].filter(Boolean).join(' · ') || 'Ohne Klasse'
+		}))
+	);
+
+	// The create action answers with a batch result; every other action on this
+	// page answers with a message, so each field is read through a guard.
+	const credentials = $derived(form && 'created' in form ? (form.created ?? []) : []);
+	const failed = $derived(form && 'failed' in form ? (form.failed ?? []) : []);
+	const message = $derived(form && 'message' in form ? form.message : undefined);
 </script>
 
 <svelte:head>
@@ -48,13 +96,111 @@
 		{/if}
 	</Panel>
 
+	{#if credentials.length > 0}
+		<CredentialsSheet {credentials} heading="Neue Konten · {data.group.name}" />
+	{/if}
+
+	{#if failed.length > 0}
+		<Callout variant="danger">
+			<strong>{failed.length} konnten nicht erstellt werden.</strong>
+			<ul class="failed">
+				{#each failed as row (row.name + row.reason)}
+					<li>{row.name} — {row.reason}</li>
+				{/each}
+			</ul>
+		</Callout>
+	{/if}
+
 	<div class="head">
 		<h2 class="section-title">
 			Schüler/innen
 			<span class="count">{data.group.students.length}</span>
 		</h2>
-		<a class="btn btn-primary" href="/admin/people/new?classId={data.group.id}">Schüler/innen hinzufügen</a>
+		<a class="btn btn-ghost" href="/admin/classes/{data.group.id}/progress">Fortschritt</a>
+		<Button variant={showAdd ? 'ghost' : 'primary'} onclick={() => (showAdd = !showAdd)}>
+			{showAdd ? 'Schliessen' : 'Schüler/innen hinzufügen'}
+		</Button>
 	</div>
+
+	{#if showAdd}
+		<Panel>
+			<div class="modes">
+				<button
+					type="button"
+					class="mode"
+					class:is-on={mode === 'existing'}
+					aria-pressed={mode === 'existing'}
+					onclick={() => (mode = 'existing')}
+				>
+					Vorhandene zuweisen
+				</button>
+				<button
+					type="button"
+					class="mode"
+					class:is-on={mode === 'new'}
+					aria-pressed={mode === 'new'}
+					onclick={() => (mode = 'new')}
+				>
+					Neue Konten erstellen
+				</button>
+			</div>
+
+			{#if mode === 'existing'}
+				{#if data.assignableStudents.length === 0}
+					<p class="empty">
+						Es gibt keine weiteren Schüler/innen, die du zuweisen könntest — alle, die du verwaltest,
+						sind bereits in dieser Klasse. Erstell stattdessen neue Konten.
+					</p>
+				{:else}
+					<form
+						class="assign-existing"
+						method="POST"
+						action="?/addStudents"
+						use:enhance={() => async ({ update }) => {
+							toAdd = [];
+							await update({ reset: false });
+						}}
+					>
+						<Select
+							bind:value={toAdd}
+							name="addUserId"
+							multiple
+							clearable
+							options={studentOptions}
+							label="Schüler/innen"
+							placeholder="Schüler/innen auswählen …"
+							searchPlaceholder="Nach Name oder Benutzername suchen …"
+							emptyText="Niemand gefunden"
+							hint="Konten, die es schon gibt — sie behalten ihren Fortschritt und bleiben in ihren anderen Klassen."
+						/>
+						<Button type="submit" disabled={toAdd.length === 0}>
+							{toAdd.length || ''}
+							{toAdd.length === 1 ? 'Schüler/in' : 'Schüler/innen'} hinzufügen
+						</Button>
+					</form>
+				{/if}
+			{:else}
+				<form
+					method="POST"
+					action="?/createStudents"
+					use:enhance={() => {
+						creating = true;
+						return async ({ result, update }) => {
+							creating = false;
+							// Clear the box only when everything landed — a partial batch
+							// needs its failed lines still visible to be fixed.
+							if (result.type === 'success' && (result.data?.failed as unknown[])?.length === 0) {
+								roster = '';
+							}
+							await update({ reset: false });
+						};
+					}}
+				>
+					<StudentRoster bind:value={roster} taken={data.taken} submitting={creating} />
+				</form>
+			{/if}
+		</Panel>
+	{/if}
 
 	{#if data.group.students.length === 0}
 		<Panel>
@@ -168,20 +314,32 @@
 			</ul>
 		{/if}
 
-		{#if assignable.length > 0}
-			<form class="inline assign" method="POST" action="?/assignCourse" use:enhance>
-				<select class="field" name="courseId" aria-label="Kurs zuweisen">
-					{#each assignable as course (course.id)}
-						<option value={course.id}>{course.title}{course.published ? '' : ' (Entwurf)'}</option>
-					{/each}
-				</select>
-				<Button type="submit" variant="ghost">Zuweisen</Button>
+		{#if assignableCourses.length > 0}
+			<form
+				class="inline assign"
+				method="POST"
+				action="?/assignCourse"
+				use:enhance={() => async ({ update }) => {
+					courseId = '';
+					await update({ reset: false });
+				}}
+			>
+				<Select
+					bind:value={courseId}
+					name="courseId"
+					options={courseOptions}
+					label="Kurs zuweisen"
+					placeholder="Kurs auswählen …"
+					searchPlaceholder="Kurs suchen …"
+					emptyText="Kein Kurs gefunden"
+				/>
+				<Button type="submit" variant="ghost" disabled={courseId === ''}>Zuweisen</Button>
 			</form>
 		{/if}
 	</Panel>
 
-	{#if form && 'message' in form && form.message}
-		<Callout variant="danger">{form.message}</Callout>
+	{#if message}
+		<Callout variant="danger">{message}</Callout>
 	{/if}
 
 	<h2 class="section-title">Gefahrenzone</h2>
@@ -258,6 +416,11 @@
 
 	.assign {
 		margin-top: 12px;
+		align-items: flex-end;
+	}
+
+	.assign :global(.select) {
+		flex: 1;
 	}
 
 	.note {
@@ -337,6 +500,44 @@
 		margin: 0;
 		color: var(--text-muted);
 		font-size: 0.875rem;
+	}
+
+	.modes {
+		display: flex;
+		gap: 4px;
+		padding: 3px;
+		margin-bottom: 16px;
+		background: var(--chip-bg);
+		border-radius: calc(var(--radius) - 4px);
+	}
+
+	.mode {
+		flex: 1;
+		font: inherit;
+		font-family: var(--font-ui);
+		font-size: 0.8125rem;
+		font-weight: 600;
+		color: var(--text-muted);
+		background: none;
+		border: 0;
+		padding: 7px 10px;
+		border-radius: calc(var(--radius) - 7px);
+		cursor: pointer;
+	}
+
+	.mode.is-on {
+		color: var(--text);
+		background: var(--panel);
+		box-shadow: var(--panel-shadow);
+	}
+
+	.assign-existing :global(.btn) {
+		margin-top: 14px;
+	}
+
+	.failed {
+		margin: 6px 0 0;
+		padding-left: 18px;
 	}
 
 	.danger-row {

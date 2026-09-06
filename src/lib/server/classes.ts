@@ -1,7 +1,7 @@
 import { and, count, eq, inArray, sql } from 'drizzle-orm';
 import { db } from '$lib/server/db';
 import { classCourse, classMember, course, schoolClass, user } from '$lib/server/db/schema';
-import { assertOwnsClass, Forbidden, type Actor } from '$lib/server/users';
+import { assertCanManageAll, assertOwnsClass, Forbidden, listPeople, type Actor } from '$lib/server/users';
 import { roleOf } from '$lib/roles';
 
 /**
@@ -159,6 +159,48 @@ export async function classesOf(userId: string): Promise<string[]> {
 	return rows.map((row) => row.classId);
 }
 
+export type AssignableStudent = {
+	id: string;
+	name: string;
+	username: string | null;
+	/** The classes they are already on, so a picker can say where they come from. */
+	classes: string[];
+};
+
+/**
+ * The students this actor could put on `classId` — everyone they may manage who
+ * is not on the roster already.
+ *
+ * The scope is `listPeople`'s, deliberately: it is the same set the people list
+ * shows, which for a teacher is the students in the classes they run and for an
+ * admin is every student, including the ones no class has claimed yet. That
+ * matches what `addMembers` will actually accept, so the picker never offers a
+ * name the submit would refuse.
+ */
+export async function listAssignableStudents(
+	actor: Actor,
+	classId: string
+): Promise<AssignableStudent[]> {
+	await assertOwnsClass(actor, classId);
+
+	const members = await db
+		.select({ userId: classMember.userId })
+		.from(classMember)
+		.where(eq(classMember.classId, classId));
+	const already = new Set(members.map((row) => row.userId));
+
+	const students = await listPeople(actor, { role: 'student' });
+
+	return students
+		.filter((student) => !already.has(student.id))
+		.map((student) => ({
+			id: student.id,
+			name: student.name,
+			username: student.username,
+			classes: student.classes.map((row) => row.name)
+		}));
+}
+
 // ============================================================
 // Writes
 // ============================================================
@@ -212,6 +254,12 @@ export async function deleteClass(actor: Actor, classId: string): Promise<void> 
 export async function addMembers(actor: Actor, classId: string, userIds: string[]): Promise<void> {
 	await assertOwnsClass(actor, classId);
 	if (userIds.length === 0) return;
+
+	// Owning the class is not enough. A roster is what `users.ts` reads to decide
+	// who a teacher may touch, so adding somebody to your own class hands you
+	// authority over them — a teacher who could post any id would grant it to
+	// themselves. The same check that gates every other account write gates this.
+	await assertCanManageAll(actor, userIds);
 
 	// Only students go on a roster; a teacher added to their own class would
 	// widen their own reach in `users.ts` without anybody deciding to.

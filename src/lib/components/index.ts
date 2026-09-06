@@ -12,8 +12,11 @@ export { default as Kbd }         from './Kbd.svelte';
 export { default as Modal }       from './Modal.svelte';
 export { default as Panel }       from './Panel.svelte';
 export { default as Progress }    from './Progress.svelte';
+export { default as Select }      from './Select.svelte';
 export { default as StatusDot }   from './StatusDot.svelte';
+export { default as StudentRoster } from './StudentRoster.svelte';
 export { default as Topbar }      from './Topbar.svelte';
 
 export type { LogEntry, LogKind } from './Console.svelte';
 export type { Credential } from './CredentialsSheet.svelte';
+export type { SelectOption } from './Select.svelte';

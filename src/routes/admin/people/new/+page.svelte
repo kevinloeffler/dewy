@@ -1,8 +1,15 @@
 <script lang="ts">
 	import { untrack } from 'svelte';
 	import { enhance } from '$app/forms';
-	import { Button, Callout, CredentialsSheet, Panel } from '$lib/components/index.js';
-	import { assignUsernames, parseRoster } from '$lib/roster';
+	import {
+		Button,
+		Callout,
+		CredentialsSheet,
+		Panel,
+		Select,
+		StudentRoster
+	} from '$lib/components/index.js';
+	import type { SelectOption } from '$lib/components/index.js';
 	import type { ActionData, PageServerData } from './$types';
 
 	let { data, form }: { data: PageServerData; form: ActionData } = $props();
@@ -20,10 +27,13 @@
 	const message = $derived(form && 'message' in form ? form.message : undefined);
 	const createdIn = $derived(form && 'classId' in form ? form.classId : null);
 
-	// The same functions the server runs on submit, so the preview cannot promise
-	// a username that will not be minted. It resolves against the usernames
-	// already taken *and* against the rest of this paste.
-	const preview = $derived(assignUsernames(parseRoster(roster), data.taken));
+	const classOptions = $derived<SelectOption[]>(
+		data.classes.map((row) => ({
+			value: row.id,
+			label: row.name,
+			hint: `${row.studentCount} ${row.studentCount === 1 ? 'Schüler/in' : 'Schüler/innen'}`
+		}))
+	);
 
 	const className = $derived(data.classes.find((row) => row.id === classId)?.name ?? '');
 
@@ -78,64 +88,19 @@
 					und jeder Schüler kommt in eine Klasse, und darüber erhalten sie ihre Kurse.
 				</Callout>
 			{:else}
-				<label class="field-label" for="classId">Klasse</label>
-				<select class="field" id="classId" name="classId" bind:value={classId}>
-					{#each data.classes as row (row.id)}
-						<option value={row.id}>{row.name}</option>
-					{/each}
-				</select>
+				<Select
+					bind:value={classId}
+					name="classId"
+					options={classOptions}
+					label="Klasse"
+					placeholder="Klasse auswählen …"
+					searchPlaceholder="Klasse suchen …"
+					emptyText="Keine Klasse gefunden"
+				/>
 
-				<label class="field-label spaced" for="roster">Namen</label>
-				<textarea
-					class="field"
-					id="roster"
-					name="roster"
-					rows="10"
-					placeholder={'Marie Muster\nTom Meier\nAylin Yilmaz'}
-					bind:value={roster}
-				></textarea>
-				<p class="field-hint">
-					Eine Person pro Zeile. Benutzernamen und Passwörter werden automatisch erzeugt. Willst du
-					einen Benutzernamen selbst festlegen, schreib ihn nach einem Komma:
-					<code>Marie Muster, mmuster</code>
-				</p>
-
-				{#if preview.length > 0}
-					<div class="preview">
-						<h2 class="preview-title">
-							{preview.length}
-							{preview.length === 1 ? 'Schüler/in' : 'Schüler/innen'}
-						</h2>
-						<div class="table-wrap">
-							<table class="table">
-								<thead>
-									<tr>
-										<th>Name</th>
-										<th>Benutzername</th>
-									</tr>
-								</thead>
-								<tbody>
-									{#each preview as row, index (index)}
-										<tr>
-											<td>{row.name}</td>
-											<td class="mono">{row.username}</td>
-										</tr>
-									{/each}
-								</tbody>
-							</table>
-						</div>
-					</div>
-				{/if}
-
-				{#if message}
-					<p class="field-error">{message}</p>
-				{/if}
-
-				<Button type="submit" disabled={submitting || preview.length === 0}>
-					{submitting
-						? 'Wird erstellt…'
-						: `${preview.length || ''} ${preview.length === 1 ? 'Konto' : 'Konten'} erstellen`}
-				</Button>
+				<div class="spaced">
+					<StudentRoster bind:value={roster} taken={data.taken} {submitting} error={message} />
+				</div>
 			{/if}
 		</form>
 	</Panel>
@@ -151,7 +116,7 @@
 					<Button variant="ghost" onclick={() => (showTeacherForm = true)}>Lehrperson hinzufügen</Button>
 				</div>
 			{:else}
-				<form method="POST" action="?/teacher" use:enhance>
+				<form class="teacher-form" method="POST" action="?/teacher" use:enhance>
 					<label class="field-label" for="name">Name</label>
 					<input class="field" id="name" name="name" required />
 
@@ -194,38 +159,12 @@
 		margin-top: 14px;
 	}
 
-	.preview {
-		margin-top: 16px;
-		border-top: 1px solid var(--panel-border);
-		padding-top: 14px;
-	}
-
-	.preview-title {
-		margin: 0 0 8px;
-		font-size: 0.75rem;
-		font-weight: 700;
-		letter-spacing: 0.6px;
-		text-transform: uppercase;
-		color: var(--text-faint);
-	}
-
-	.table-wrap {
-		overflow-x: auto;
-		max-height: 320px;
-		overflow-y: auto;
-	}
-
-	.mono {
-		font-family: var(--font-code);
-		font-size: 0.8125rem;
-	}
-
 	.failed {
 		margin: 6px 0 0;
 		padding-left: 18px;
 	}
 
-	form :global(.btn) {
+	.teacher-form :global(.btn) {
 		margin-top: 18px;
 	}
 

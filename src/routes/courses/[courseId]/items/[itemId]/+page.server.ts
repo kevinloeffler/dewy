@@ -1,18 +1,23 @@
 import { error, fail, redirect } from '@sveltejs/kit';
 import type { Actions, PageServerLoad } from './$types';
-import { findCourse, findItem } from '$lib/server/courses';
+import { canSeeCourse, findCourse, findItem } from '$lib/server/courses';
 import { anonymousProgress, courseProgress } from '$lib/progress';
 import { loadCompleted, markComplete } from '$lib/server/progress';
 import { renderMarkdown } from '$lib/markdown';
 
 export const load: PageServerLoad = async (event) => {
+	const user = event.locals.user;
 	const course = await findCourse(event.params.courseId);
 	if (!course || !course.published) error(404, 'Diesen Kurs gibt es nicht.');
+
+	// The same check `/courses/[courseId]` makes, and it has to be made here too:
+	// the course page is not on the way to an item, so a typed URL would walk
+	// straight past it into a course this student's class was never given.
+	if (!(await canSeeCourse(user, course.id))) error(404, 'Diesen Kurs gibt es nicht.');
 
 	const context = await findItem(event.params.courseId, event.params.itemId);
 	if (!context) error(404, 'No such item.');
 
-	const user = event.locals.user;
 	const progress = user
 		? courseProgress(course, await loadCompleted(user.id, course.id))
 		: anonymousProgress(course);
@@ -44,21 +49,25 @@ export const actions: Actions = {
 	 * One code path signed in or out: an anonymous visitor still advances, they
 	 * just leave no trace. `markComplete` is idempotent, so re-solving is safe.
 	 *
-	 * The lock check is repeated here, and has to be. `load` only stops a locked
-	 * item being *opened* — a POST aimed straight at this action skips that
-	 * entirely, and recording a locked item as done would unlock everything
-	 * behind it, which is the one thing the stage rules exist to prevent.
+	 * The lock and visibility checks are repeated here, and have to be. `load`
+	 * only stops a locked or unassigned item being *opened* — a POST aimed
+	 * straight at this action skips that entirely, and recording a locked item as
+	 * done would unlock everything behind it, which is the one thing the stage
+	 * rules exist to prevent.
 	 */
 	complete: async (event) => {
 		const formData = await event.request.formData();
 
+		const user = event.locals.user;
 		const course = await findCourse(event.params.courseId);
 		if (!course || !course.published) return fail(404, { message: 'Diesen Kurs gibt es nicht.' });
+		if (!(await canSeeCourse(user, course.id))) {
+			return fail(404, { message: 'Diesen Kurs gibt es nicht.' });
+		}
 
 		const context = await findItem(event.params.courseId, event.params.itemId);
 		if (!context) return fail(404, { message: 'Dieses Element gibt es nicht.' });
 
-		const user = event.locals.user;
 		if (user) {
 			const progress = courseProgress(course, await loadCompleted(user.id, course.id));
 			if (progress.state[context.item.id] === 'locked') {
