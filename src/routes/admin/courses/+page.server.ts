@@ -8,7 +8,6 @@ import {
 	updateCourse
 } from '$lib/server/courses';
 import { actorOf, Forbidden } from '$lib/server/users';
-import { deleteLevel, listUnownedLevels } from '$lib/server/levels';
 
 /**
  * The course list.
@@ -21,7 +20,7 @@ export const load: PageServerLoad = async (event) => {
 	const actor = actorOf(event);
 	const { owned, shared } = await listCoursesForTeacher(actor);
 
-	return { courses: owned, shared, unowned: await listUnownedLevels() };
+	return { courses: owned, shared };
 };
 
 export const actions: Actions = {
@@ -60,28 +59,6 @@ export const actions: Actions = {
 		} catch (cause) {
 			if (cause instanceof Forbidden) return fail(403, { message: cause.message });
 			throw cause;
-		}
-
-		return { deleted: true };
-	},
-
-	/**
-	 * Only for levels belonging to no course — the rest go through their stage.
-	 *
-	 * `deleteLevel` refuses an owned level, and one another teacher's stage is
-	 * borrowing. Both come back as a sentence rather than a 500.
-	 */
-	deleteLevel: async (event) => {
-		const formData = await event.request.formData();
-		const id = formData.get('id')?.toString();
-		if (!id) return fail(400, { message: 'Kein Level zum Löschen.' });
-
-		try {
-			await deleteLevel(id);
-		} catch (cause) {
-			return fail(400, {
-				message: cause instanceof Error ? cause.message : 'Dieses Level konnte nicht gelöscht werden.'
-			});
 		}
 
 		return { deleted: true };

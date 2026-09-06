@@ -28,9 +28,7 @@
 
 	<header class="head">
 		<h1 class="head-title">Kurse</h1>
-		<button class="btn btn-add add" type="button" onclick={() => (creating = true)}>
-			Neuer Kurs
-		</button>
+		<Button onclick={() => (creating = true)}>Neuer Kurs</Button>
 	</header>
 
 	{#if data.courses.length === 0}
@@ -118,28 +116,6 @@
 		</ul>
 	{/if}
 
-	{#if data.unowned.length > 0}
-		<h2 class="section-title">Levels ohne Kurs</h2>
-		<section class="panel card">
-			<p class="hint">
-				Levels, die zu keinem Kurs gehören — vor den Kursen angelegt oder aus einem gelöschten
-				Entwurf übrig geblieben. Im Designer lassen sie sich weiterhin öffnen.
-			</p>
-			<ul class="loose">
-				{#each data.unowned as level (level.id)}
-					<li>
-						<a class="row-name" href="/designer/{level.id}">{level.name}</a>
-						<span class="row-meta">{level.width} × {level.height}</span>
-						<a class="btn btn-ghost act" href="/level/{level.id}">Spielen</a>
-						<form method="POST" action="?/deleteLevel" use:enhance>
-							<input type="hidden" name="id" value={level.id} />
-							<button class="btn btn-danger act" type="submit">Löschen</button>
-						</form>
-					</li>
-				{/each}
-			</ul>
-		</section>
-	{/if}
 </main>
 
 <Modal bind:open={creating} title="Neuer Kurs">
@@ -271,35 +247,6 @@
 		border-radius: 8px;
 		font-size: 0.9375rem;
 		font-weight: 500;
-	}
-
-	.add {
-		justify-content: center;
-		min-width: 168px;
-		height: 31px;
-		padding: 0 14px;
-		border-radius: 8px;
-		font-size: 0.8125rem;
-	}
-
-	.loose {
-		list-style: none;
-		margin: 14px 0 0;
-		padding: 0;
-		display: flex;
-		flex-direction: column;
-		gap: 9px;
-	}
-
-	.loose li {
-		display: flex;
-		align-items: center;
-		gap: 12px;
-	}
-
-	.loose .row-meta {
-		flex: 1;
-		margin-top: 0;
 	}
 
 	.empty,

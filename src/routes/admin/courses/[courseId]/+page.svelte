@@ -520,7 +520,7 @@
 		display: flex;
 		align-items: center;
 		gap: 10px;
-		font-size: 1.25rem;
+		font-size: 0.875rem;
 		line-height: 1.35;
 	}
 

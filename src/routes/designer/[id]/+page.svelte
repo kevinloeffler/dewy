@@ -144,7 +144,8 @@
 				<a class="back" href="/admin/courses/{data.owner.courseId}">‹ {data.owner.courseTitle}</a>
 				<span class="stage-crumb">{data.owner.stageTitle}</span>
 			{:else}
-				<a class="back" href="/admin/courses">‹ Kurse</a>
+				<!-- No course above it: this is a playground, so back goes to that list. -->
+				<a class="back" href="/admin/playgrounds">‹ Playgrounds</a>
 			{/if}
 			<span class="name">{draft.level.name}</span>
 			{#if !canEdit}

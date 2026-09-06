@@ -7,6 +7,7 @@
 
 	const tabs = [
 		{ href: '/admin/courses', label: 'Kurse' },
+		{ href: '/admin/playgrounds', label: 'Playgrounds' },
 		{ href: '/admin/classes', label: 'Klassen' },
 		{ href: '/admin/people', label: 'Benutzer' }
 	];

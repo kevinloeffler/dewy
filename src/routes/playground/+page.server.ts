@@ -1,18 +1,19 @@
-import { error } from '@sveltejs/kit';
+import { redirect } from '@sveltejs/kit';
 import type { PageServerLoad } from './$types';
-import { findLevel } from '$lib/server/levels';
-import { tutorial01 } from '$lib/game/levels';
 
 /**
- * `?level=<id>` plays a level authored in `/designer`; without it the
- * playground keeps loading the built-in tutorial, which needs no database.
+ * "Playground" now means a standalone level a teacher authored, listed in
+ * `/admin/playgrounds` — so this route can no longer be a player of its own.
+ *
+ * It was one: a hand-rolled canvas, console and run loop that predated
+ * `LevelPlayer`, reachable only by typing the URL. `/level/[id]` does all of it
+ * and is the page every other link already points at, so this redirects rather
+ * than keeping a second copy of the player alive under a name that now says
+ * something else. `?level=<id>` keeps working, aimed at the same level.
+ *
+ * 307 like `/designer`: the mapping is fixed, but nothing should cache it as
+ * permanent while the URL is still being retired.
  */
-export const load: PageServerLoad = async (event) => {
-	const id = event.url.searchParams.get('level');
-	if (!id) return { level: tutorial01 };
-
-	const level = await findLevel(id);
-	if (!level) error(404, 'Dieses Level gibt es nicht.');
-
-	return { level };
+export const load: PageServerLoad = ({ url }) => {
+	redirect(307, `/level/${url.searchParams.get('level') ?? 'tutorial-01'}`);
 };

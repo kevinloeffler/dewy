@@ -144,14 +144,17 @@ export const stageItem = sqliteTable(
  * level list does not have to parse every blob, and `saveLevel` keeps
  * `data.id` equal to `id` so the two can never disagree.
  *
+ * A row with no `item_id` is a **playground**: a standalone level that belongs
+ * to no course. Playgrounds are a thing teachers make on purpose (`/admin/playgrounds`),
+ * not the leftovers bucket they started as, which is why `owner_id` exists.
+ *
  * Built-in levels stay TypeScript modules in `src/lib/game/levels/` —
  * `tutorial01` is a fixture for the engine tests and must not need a database.
  */
 export const level = sqliteTable('level', {
 	id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
 	/**
-	 * The stage item that owns this level, or `null` for a level that belongs to
-	 * no course.
+	 * The stage item that owns this level, or `null` for a playground.
 	 *
 	 * The reference points *up* on purpose: deleting the item — or the stage or
 	 * course above it — takes the level with it, which is the direction the data
@@ -162,6 +165,17 @@ export const level = sqliteTable('level', {
 	itemId: text('item_id')
 		.unique()
 		.references(() => stageItem.id, { onDelete: 'cascade' }),
+	/**
+	 * Who may edit this level when no course answers that question — i.e. for a
+	 * playground. A level inside a course takes its permissions from the course
+	 * and this column is only provenance there.
+	 *
+	 * `null` means "written before playgrounds had owners"; `assertCanEditLevel`
+	 * lets any teacher adopt one, exactly as `canEditCourse` does for a course
+	 * with no owner. `set null` on user delete for the same reason as `course`:
+	 * losing the author must not take the level with it.
+	 */
+	ownerId: text('owner_id').references(() => user.id, { onDelete: 'set null' }),
 	name: text('name').notNull(),
 	description: text('description'),
 	data: text('data', { mode: 'json' }).$type<Level>().notNull(),

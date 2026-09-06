@@ -668,23 +668,34 @@ export async function listSharedLevels(actor: Actor): Promise<SharedLevel[]> {
 }
 
 /**
- * The level's own course decides who may edit or share it.
+ * Who may edit or share a level — asked of the course it sits in, or, for a
+ * playground, of the level itself.
  *
- * A level belonging to no course belongs to nobody in particular, so any teacher
- * may work on it — the same reasoning `canEditCourse` applies to a course
- * written before ownership was read.
+ * The two halves of the level table answer this differently. A level inside a
+ * course inherits the course's permissions, which is what makes a clone
+ * read-only all the way down. A playground has no course, so `level.owner_id`
+ * is the whole answer, read exactly as `canEditCourse` reads `course.owner_id`:
+ * a null owner is a row from before ownership existed and any teacher may adopt
+ * it, rather than one nobody can touch.
  */
 export async function assertCanEditLevel(actor: Actor, levelId: string): Promise<void> {
 	const row = await db
-		.select({ courseId: stage.courseId })
+		.select({ courseId: stage.courseId, ownerId: levelTable.ownerId })
 		.from(levelTable)
-		.innerJoin(stageItem, eq(stageItem.id, levelTable.itemId))
-		.innerJoin(stage, eq(stage.id, stageItem.stageId))
+		// Left, not inner: a playground has no item and no stage, and must still
+		// come back as a row so its owner can be read.
+		.leftJoin(stageItem, eq(stageItem.id, levelTable.itemId))
+		.leftJoin(stage, eq(stage.id, stageItem.stageId))
 		.where(eq(levelTable.id, levelId))
 		.get();
 
 	if (!row) return;
-	await assertCanEditCourse(actor, row.courseId);
+	if (row.courseId) return assertCanEditCourse(actor, row.courseId);
+
+	if (roleOf(actor.user) === 'admin') return;
+	if (row.ownerId === null || row.ownerId === actor.user.id) return;
+
+	throw new Forbidden('Dieses Playground gehört einer anderen Lehrperson.');
 }
 
 export async function shareLevel(actor: Actor, levelId: string, teacherId: string): Promise<void> {

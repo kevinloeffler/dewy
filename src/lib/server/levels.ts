@@ -1,8 +1,10 @@
-import { eq, isNull } from 'drizzle-orm';
+import { and, asc, eq, isNull, or } from 'drizzle-orm';
 import { db } from '$lib/server/db';
-import { course, level as levelTable, stage, stageItem } from '$lib/server/db/schema';
+import { course, level as levelTable, stage, stageItem, user } from '$lib/server/db/schema';
 import { emptyLevel } from '$lib/game/editor/operations';
 import { parseLevel } from '$lib/game/editor/parse';
+import { roleOf } from '$lib/roles';
+import type { Actor } from '$lib/server/users';
 import type { Level } from '$lib/game/level';
 
 /**
@@ -20,6 +22,18 @@ export type LevelSummary = {
     width: number;
     height: number;
     updatedAt: Date;
+};
+
+/**
+ * A playground in a list: a level plus who wrote it.
+ *
+ * `ownerName` is null both for a playground whose author has been deleted and
+ * for one written before playgrounds had owners. The list says "ohne Besitzer"
+ * either way, because either way any teacher may pick it up.
+ */
+export type PlaygroundSummary = LevelSummary & {
+    ownerId: string | null;
+    ownerName: string | null;
 };
 
 /** Where a level sits in the curriculum, for the designer's breadcrumb. */
@@ -48,22 +62,62 @@ export function buildEmptyLevel(id: string, name: string): Level {
     return emptyLevel(id, name.trim() || 'Level ohne Namen');
 }
 
-/** Levels belonging to no course. The rest are reached through their stage. */
-export async function listUnownedLevels(): Promise<LevelSummary[]> {
-    const rows = await db
-        .select()
-        .from(levelTable)
-        .where(isNull(levelTable.itemId))
-        .orderBy(levelTable.name);
+/**
+ * Playgrounds: the standalone levels, belonging to no course. Levels inside a
+ * course are reached through their stage instead.
+ *
+ * An admin sees every one. A teacher sees their own plus the ownerless ones —
+ * levels that predate `owner_id`, or whose author's account is gone — which
+ * `assertCanEditLevel` lets any teacher adopt, so hiding them would strand
+ * them. Levels a colleague *shared* are not here; those are listed where they
+ * are used, in the course builder.
+ */
+export async function listPlaygrounds(actor: Actor): Promise<PlaygroundSummary[]> {
+    const mine = roleOf(actor.user) === 'admin'
+        ? undefined
+        : or(isNull(levelTable.ownerId), eq(levelTable.ownerId, actor.user.id));
 
-    return rows.map((row) => ({
+    const rows = await db
+        .select({ level: levelTable, ownerName: user.name })
+        .from(levelTable)
+        .leftJoin(user, eq(user.id, levelTable.ownerId))
+        .where(mine ? and(isNull(levelTable.itemId), mine) : isNull(levelTable.itemId))
+        .orderBy(asc(levelTable.name));
+
+    return rows.map(({ level: row, ownerName }) => ({
         id: row.id,
         name: row.name,
         description: row.description,
         width: row.data.width,
         height: row.data.height,
         updatedAt: row.updatedAt,
+        ownerId: row.ownerId,
+        ownerName: row.ownerId ? ownerName : null,
     }));
+}
+
+/**
+ * Creates an empty playground owned by `actor`.
+ *
+ * The counterpart to `courses.addLevelItem`, minus the stage: no item row, so
+ * `item_id` stays null and the level is standalone by construction. Nothing to
+ * authorize beyond being staff — that is `/admin`'s layout guard — since a
+ * teacher making their own level takes nothing from anyone.
+ */
+export async function createPlayground(actor: Actor, name: string): Promise<string> {
+    const id = crypto.randomUUID();
+    const trimmed = name.trim() || 'Neues Playground-Level';
+    const data = buildEmptyLevel(id, trimmed);
+
+    await db.insert(levelTable).values({
+        id,
+        ownerId: actor.user.id,
+        name: data.name,
+        description: data.description,
+        data,
+    });
+
+    return id;
 }
 
 export async function findLevel(id: string): Promise<Level | null> {
@@ -119,14 +173,16 @@ export async function saveLevel(id: string, value: unknown): Promise<Level> {
 }
 
 /**
- * Deletes an unowned level — one belonging to no course.
+ * Deletes a playground — a level belonging to no course.
  *
- * A level that *is* owned must be deleted through its stage item instead
+ * A level that *is* in a course must be deleted through its stage item instead
  * (`courses.deleteItem`), so the cascade takes both and no empty
  * `kind: 'level'` item is left stranded in the middle of a stage. Deleting one
  * here is refused rather than silently doing half the job.
+ *
+ * Who may call this is `assertCanEditLevel`'s question, asked by the route.
  */
-export async function deleteLevel(id: string): Promise<void> {
+export async function deletePlayground(id: string): Promise<void> {
     const [row] = await db
         .select({ itemId: levelTable.itemId })
         .from(levelTable)
