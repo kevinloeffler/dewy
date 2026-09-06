@@ -15,7 +15,7 @@ import {
 } from '$lib/server/db/schema';
 import { buildEmptyLevel, InvalidLevel } from '$lib/server/levels';
 import { parseLevel } from '$lib/game/editor/parse';
-import { shift, type Direction } from '$lib/ordering';
+import { reindex, transfer } from '$lib/ordering';
 import { Forbidden, type Actor } from '$lib/server/users';
 import { isStaff, roleOf } from '$lib/roles';
 import type { Level } from '$lib/game/level';
@@ -870,7 +870,8 @@ export async function deleteStage(stageId: string): Promise<void> {
 	});
 }
 
-export async function moveStage(stageId: string, direction: Direction): Promise<void> {
+/** Moves a stage to `toIndex` within its course. */
+export async function reorderStage(stageId: string, toIndex: number): Promise<void> {
 	db.transaction((tx) => {
 		const [row] = tx
 			.select({ courseId: stage.courseId })
@@ -888,7 +889,7 @@ export async function moveStage(stageId: string, direction: Direction): Promise<
 			.all()
 			.map((s) => s.id);
 
-		writeStagePositions(tx, shift(ids, stageId, direction));
+		writeStagePositions(tx, reindex(ids, stageId, toIndex));
 	});
 }
 
@@ -995,7 +996,29 @@ export async function deleteItem(itemId: string): Promise<void> {
 	});
 }
 
-export async function moveItem(itemId: string, direction: Direction): Promise<void> {
+/**
+ * Moves an item to `toIndex` inside `toStageId`, which may be a different stage
+ * of the same course.
+ *
+ * Same course is the hard rule. The route guards answer "may this teacher edit
+ * this item, and that stage?", which a teacher who owns two courses passes for
+ * both — but an item that walks out of its course takes the level hanging off
+ * it along, leaving anybody's `level_share` pointing into an outline that no
+ * longer reaches it.
+ */
+export async function reorderItem(
+	itemId: string,
+	toStageId: string,
+	toIndex: number
+): Promise<void> {
+	const from = await courseOfItem(itemId);
+	const to = await courseOfStage(toStageId);
+	// A row that has since been deleted is a stale drop, not an error.
+	if (!from || !to) return;
+	if (from !== to) {
+		throw new Forbidden('Ein Element kann nur innerhalb seines Kurses verschoben werden.');
+	}
+
 	db.transaction((tx) => {
 		const [row] = tx
 			.select({ stageId: stageItem.stageId })
@@ -1005,15 +1028,26 @@ export async function moveItem(itemId: string, direction: Direction): Promise<vo
 			.all();
 		if (!row) return;
 
-		const ids = tx
-			.select({ id: stageItem.id })
-			.from(stageItem)
-			.where(eq(stageItem.stageId, row.stageId))
-			.orderBy(asc(stageItem.position))
-			.all()
-			.map((i) => i.id);
+		const runOf = (stageId: string) =>
+			tx
+				.select({ id: stageItem.id })
+				.from(stageItem)
+				.where(eq(stageItem.stageId, stageId))
+				.orderBy(asc(stageItem.position))
+				.all()
+				.map((i) => i.id);
 
-		writeItemPositions(tx, shift(ids, itemId, direction));
+		if (row.stageId === toStageId) {
+			writeItemPositions(tx, reindex(runOf(row.stageId), itemId, toIndex));
+			return;
+		}
+
+		// Both runs are read before the re-home, so each still lists the item
+		// under the stage it is leaving rather than the one it is joining.
+		const moved = transfer(runOf(row.stageId), runOf(toStageId), itemId, toIndex);
+		tx.update(stageItem).set({ stageId: toStageId }).where(eq(stageItem.id, itemId)).run();
+		writeItemPositions(tx, moved.source);
+		writeItemPositions(tx, moved.target);
 	});
 }
 

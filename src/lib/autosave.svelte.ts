@@ -99,13 +99,18 @@ export class SaveTracker {
 	 * the stored title back into the input, overwriting anything typed while the
 	 * request was in flight — and the field already shows what we just sent.
 	 * Only a failure applies the result, to surface the message.
+	 *
+	 * `onError` is for callers whose form changed something other than the field
+	 * it sits in — a reorder moves a row on its own authority, and a refusal has
+	 * to put the list back.
 	 */
-	enhance = (key: string): SubmitFunction => {
+	enhance = (key: string, onError?: () => void): SubmitFunction => {
 		return () => {
 			this.#set(key, 'saving');
 			return async ({ result }) => {
 				if (result.type === 'failure' || result.type === 'error') {
 					this.#set(key, 'error');
+					onError?.();
 					await applyAction(result);
 					return;
 				}

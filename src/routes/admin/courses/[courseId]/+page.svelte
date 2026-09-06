@@ -1,9 +1,11 @@
 <script lang="ts">
 	import { enhance } from '$app/forms';
-	import ArrowDown from '@lucide/svelte/icons/arrow-down';
-	import ArrowUp from '@lucide/svelte/icons/arrow-up';
+	import { invalidateAll } from '$app/navigation';
+	import { untrack } from 'svelte';
 	import BookOpen from '@lucide/svelte/icons/book-open';
 	import CirclePlay from '@lucide/svelte/icons/circle-play';
+	import GripVertical from '@lucide/svelte/icons/grip-vertical';
+	import { draggable, droppable, type DragDropState } from '@thisux/sveltednd';
 	import { autosave, SaveTracker } from '$lib/autosave.svelte.js';
 	import { Button, Callout, Modal } from '$lib/components/index.js';
 	import type { ActionData, PageServerData } from './$types';
@@ -39,6 +41,107 @@
 
 	const sharedWith = $derived(new Set(data.shares.map((row) => row.teacherId)));
 	const shareable = $derived(data.teachers.filter((row) => !sharedWith.has(row.id)));
+
+	// ── Dragging the outline around ────────────────────────
+
+	/**
+	 * The page's working copy of the outline.
+	 *
+	 * A drop rearranges this immediately and the write follows, so the row lands
+	 * under the cursor rather than a round trip later. Every action that *does*
+	 * call `update()` — add, delete, rename — hands `load` a freshly built array,
+	 * and that new identity is what tells a real reload apart from our own edit.
+	 * The reorder submit deliberately skips `update()`, so it never trips this.
+	 *
+	 * Seeded as a copy down to the item arrays, because a drop splices them and
+	 * `data` is not ours to rearrange.
+	 */
+	const copy = (source: PageServerData['course']['stages']) =>
+		source.map((s) => ({ ...s, items: [...s.items] }));
+
+	let stages = $state(untrack(() => copy(data.course.stages)));
+	let synced = untrack(() => data.course.stages);
+	$effect(() => {
+		if (data.course.stages === synced) return;
+		synced = data.course.stages;
+		stages = copy(data.course.stages);
+	});
+
+	type ItemRef = { id: string; stageId: string };
+
+	let stageForm: HTMLFormElement;
+	let itemForm: HTMLFormElement;
+	let move = $state({ id: '', stageId: '', index: 0 });
+
+	/**
+	 * A row drops onto a slot, not onto a list.
+	 *
+	 * Each item publishes `"<stageId>#<its index>"` and each chapter's list
+	 * publishes `"<stageId>#end"`, which is what makes an empty chapter — and the
+	 * gap under the last row — somewhere you can let go.
+	 */
+	function slot(container: string | null): { stageId: string; index: number | 'end' } | null {
+		const cut = container?.lastIndexOf('#') ?? -1;
+		if (cut === -1) return null;
+		const tail = container!.slice(cut + 1);
+		return {
+			stageId: container!.slice(0, cut),
+			index: tail === 'end' ? 'end' : Number(tail)
+		};
+	}
+
+	/**
+	 * Where the dragged row ends up, counted once it has left its old place.
+	 *
+	 * That is the index the server writes, so the arithmetic happens here rather
+	 * than being re-derived on the other side.
+	 */
+	function landing(at: number | 'end', after: boolean, length: number): number {
+		return at === 'end' ? length : at + (after ? 1 : 0);
+	}
+
+	function dropStage(state: DragDropState<string>) {
+		// Chapters are one flat list, so a chapter's slot is just its index.
+		const at = Number(state.targetContainer);
+		if (!Number.isInteger(at)) return;
+
+		const from = stages.findIndex((s) => s.id === state.draggedItem);
+		if (from === -1) return;
+
+		let to = landing(at, state.dropPosition === 'after', stages.length);
+		if (from < to) to--;
+		if (from === to) return;
+
+		const [moved] = stages.splice(from, 1);
+		stages.splice(to, 0, moved);
+
+		move = { id: moved.id, stageId: '', index: to };
+		stageForm.requestSubmit();
+	}
+
+	function dropItem(state: DragDropState<ItemRef>) {
+		const target = slot(state.targetContainer);
+		if (!target) return;
+
+		const source = stages.find((s) => s.id === state.draggedItem.stageId);
+		const into = stages.find((s) => s.id === target.stageId);
+		if (!source || !into) return;
+
+		const from = source.items.findIndex((i) => i.id === state.draggedItem.id);
+		if (from === -1) return;
+
+		let to = landing(target.index, state.dropPosition === 'after', into.items.length);
+		if (source === into) {
+			if (from < to) to--;
+			if (from === to) return;
+		}
+
+		const [moved] = source.items.splice(from, 1);
+		into.items.splice(to, 0, moved);
+
+		move = { id: moved.id, stageId: into.id, index: to };
+		itemForm.requestSubmit();
+	}
 </script>
 
 <svelte:head>
@@ -118,7 +221,7 @@
 
 	<!-- ── Its stages ──────────────────────────────────────── -->
 
-	{#if course.stages.length === 0}
+	{#if stages.length === 0}
 		<section class="panel card">
 			<p class="empty">
 				Noch keine Kapitel. Ein Kapitel ist ein Abschnitt des Kurses — leg eines an und füll es mit
@@ -127,9 +230,41 @@
 		</section>
 	{/if}
 
-	{#each course.stages as stage, stageIndex (stage.id)}
-		<section class="panel card">
-			<header class="stage-head">
+	{#each stages as stage, stageIndex (stage.id)}
+		<section
+			class="panel card"
+			use:droppable={{
+				container: String(stageIndex),
+				containerGroup: 'stage',
+				callbacks: { onDrop: dropStage }
+			}}
+		>
+			<!--
+				The grip sits on the header, not the card: `use:draggable` writes
+				`touch-action: none` and `user-select: none` inline on whatever node
+				it is given, and on the whole card that would cost a teacher on a
+				tablet the ability to scroll or select anywhere inside a chapter.
+			-->
+			<header
+				class="stage-head"
+				use:draggable={{
+					container: 'stages',
+					containerGroup: 'stage',
+					dragData: stage.id,
+					handle: '.grip',
+					keyboard: true,
+					disabled: !canEdit
+				}}
+			>
+				<button
+					class="grip"
+					class:is-hidden={!canEdit}
+					type="button"
+					aria-label="Kapitel verschieben"
+				>
+					<GripVertical size={18} />
+				</button>
+
 				<form
 					class="stage-title"
 					method="POST"
@@ -150,30 +285,6 @@
 				</form>
 
 				<div class="controls" class:is-hidden={!canEdit}>
-					<form method="POST" action="?/moveStage" use:enhance>
-						<input type="hidden" name="id" value={stage.id} />
-						<input type="hidden" name="direction" value="down" />
-						<button
-							class="btn btn-ghost icon-btn"
-							type="submit"
-							disabled={stageIndex === course.stages.length - 1}
-							aria-label="Kapitel nach unten"
-						>
-							<ArrowDown size={18} />
-						</button>
-					</form>
-					<form method="POST" action="?/moveStage" use:enhance>
-						<input type="hidden" name="id" value={stage.id} />
-						<input type="hidden" name="direction" value="up" />
-						<button
-							class="btn btn-ghost icon-btn"
-							type="submit"
-							disabled={stageIndex === 0}
-							aria-label="Kapitel nach oben"
-						>
-							<ArrowUp size={18} />
-						</button>
-					</form>
 					<form method="POST" action="?/deleteStage" use:enhance>
 						<input type="hidden" name="id" value={stage.id} />
 						<button class="btn btn-danger act" type="submit">Löschen</button>
@@ -213,67 +324,77 @@
 
 			<hr class="rule-line" />
 
-			{#if stage.items.length === 0}
-				<p class="empty">Noch nichts drin — füg ein Level oder einen Theorieblock hinzu.</p>
-			{:else}
-				<ol class="items">
-					{#each stage.items as item, itemIndex (item.id)}
-						{@const href =
-							item.kind === 'theory'
-								? `/admin/courses/${course.id}/theory/${item.id}`
-								: `/designer/${item.levelId}`}
-						<li class="item">
-							<a class="item-link" {href}>
-								<span class="item-icon">
-									{#if item.kind === 'theory'}
-										<BookOpen size={20} />
-									{:else}
-										<CirclePlay size={20} />
-									{/if}
-								</span>
-								<span class="item-name">
-									{item.kind === 'theory' ? item.title : item.name}
-								</span>
-							</a>
+			<!--
+				The list is always rendered, even empty: it is the drop zone that
+				makes an empty chapter — and the gap below the last row — somewhere
+				a level can be let go of.
+			-->
+			<ol
+				class="items"
+				use:droppable={{
+					container: `${stage.id}#end`,
+					containerGroup: 'item',
+					callbacks: { onDrop: dropItem }
+				}}
+			>
+				{#each stage.items as item, itemIndex (item.id)}
+					{@const href =
+						item.kind === 'theory'
+							? `/admin/courses/${course.id}/theory/${item.id}`
+							: `/designer/${item.levelId}`}
+					<li
+						class="item"
+						use:draggable={{
+							container: stage.id,
+							containerGroup: 'item',
+							dragData: { id: item.id, stageId: stage.id },
+							handle: '.grip',
+							keyboard: true,
+							disabled: !canEdit
+						}}
+						use:droppable={{
+							container: `${stage.id}#${itemIndex}`,
+							containerGroup: 'item',
+							callbacks: { onDrop: dropItem }
+						}}
+					>
+						<button
+							class="grip"
+							class:is-hidden={!canEdit}
+							type="button"
+							aria-label="{item.kind === 'theory' ? item.title : item.name} verschieben"
+						>
+							<GripVertical size={18} />
+						</button>
 
-							{#if item.kind === 'level' && item.linked}
-								<span class="chip">Geteilt</span>
-							{/if}
+						<a class="item-link" {href}>
+							<span class="item-icon">
+								{#if item.kind === 'theory'}
+									<BookOpen size={20} />
+								{:else}
+									<CirclePlay size={20} />
+								{/if}
+							</span>
+							<span class="item-name">
+								{item.kind === 'theory' ? item.title : item.name}
+							</span>
+						</a>
 
-							<div class="controls" class:is-hidden={!canEdit}>
-								<form method="POST" action="?/moveItem" use:enhance>
-									<input type="hidden" name="id" value={item.id} />
-									<input type="hidden" name="direction" value="down" />
-									<button
-										class="btn btn-ghost icon-btn"
-										type="submit"
-										disabled={itemIndex === stage.items.length - 1}
-										aria-label="Nach unten"
-									>
-										<ArrowDown size={18} />
-									</button>
-								</form>
-								<form method="POST" action="?/moveItem" use:enhance>
-									<input type="hidden" name="id" value={item.id} />
-									<input type="hidden" name="direction" value="up" />
-									<button
-										class="btn btn-ghost icon-btn"
-										type="submit"
-										disabled={itemIndex === 0}
-										aria-label="Nach oben"
-									>
-										<ArrowUp size={18} />
-									</button>
-								</form>
-								<form method="POST" action="?/deleteItem" use:enhance>
-									<input type="hidden" name="id" value={item.id} />
-									<button class="btn btn-danger act" type="submit">Löschen</button>
-								</form>
-							</div>
-						</li>
-					{/each}
-				</ol>
-			{/if}
+						{#if item.kind === 'level' && item.linked}
+							<span class="chip">Geteilt</span>
+						{/if}
+
+						<div class="controls" class:is-hidden={!canEdit}>
+							<form method="POST" action="?/deleteItem" use:enhance>
+								<input type="hidden" name="id" value={item.id} />
+								<button class="btn btn-danger act" type="submit">Löschen</button>
+							</form>
+						</div>
+					</li>
+				{:else}
+					<li class="empty-slot">Noch nichts drin — füg ein Level oder einen Theorieblock hinzu.</li>
+				{/each}
+			</ol>
 
 			{#if canEdit}
 				<footer class="stage-add">
@@ -311,6 +432,40 @@
 {#if saves.busy || saves.settled}
 	<p class="save-state" aria-live="polite">{saves.busy ? 'Speichern…' : 'Gespeichert'}</p>
 {/if}
+
+<!--
+	The two reorder writes. They carry no inputs: a drop is over before any bound
+	value would reach the DOM, so the pending move is written straight into the
+	FormData on the way out — the same trick the designer uses to post a level.
+
+	A refusal re-reads the outline rather than undoing the splice. A reorder is
+	only ever refused by something that happened behind the teacher's back, and
+	the server's answer is right no matter how many drops they queued.
+-->
+<form
+	bind:this={stageForm}
+	method="POST"
+	action="?/reorderStage"
+	hidden
+	use:enhance={(event) => {
+		event.formData.set('id', move.id);
+		event.formData.set('index', String(move.index));
+		return saves.enhance('reorder', invalidateAll)(event);
+	}}
+></form>
+
+<form
+	bind:this={itemForm}
+	method="POST"
+	action="?/reorderItem"
+	hidden
+	use:enhance={(event) => {
+		event.formData.set('id', move.id);
+		event.formData.set('stageId', move.stageId);
+		event.formData.set('index', String(move.index));
+		return saves.enhance('reorder', invalidateAll)(event);
+	}}
+></form>
 
 <!-- ── Dialogs ─────────────────────────────────────────────── -->
 
@@ -592,6 +747,74 @@
 		color: var(--accent);
 	}
 
+	/* A chapter with nothing in it still has to read as somewhere you can drop. */
+	.empty-slot {
+		display: grid;
+		place-items: center;
+		height: 59px;
+		border: 1px dashed var(--panel-border);
+		border-radius: 8px;
+		color: var(--text-muted);
+		font-size: 0.9375rem;
+	}
+
+	/* ── Dragging ────────────────────────────────────────── */
+
+	.grip {
+		display: grid;
+		place-items: center;
+		flex-shrink: 0;
+		padding: 4px;
+		border: 0;
+		background: none;
+		color: var(--text-faint);
+		cursor: grab;
+	}
+
+	.grip:hover {
+		color: var(--text-muted);
+	}
+
+	.grip:active {
+		cursor: grabbing;
+	}
+
+	/*
+		`use:draggable` writes `touch-action: none` inline on the row, which takes
+		the page's touch scrolling with it. Only `!important` outranks an inline
+		style, so the row hands scrolling back and the grip keeps it.
+	*/
+	.item {
+		touch-action: pan-y !important;
+	}
+
+	.grip {
+		touch-action: none;
+	}
+
+	/* Same story for `user-select: none` — the chapter title stays selectable. */
+	.stage-head .field {
+		user-select: text !important;
+	}
+
+	/*
+		sveltednd's own stylesheet dresses `.svelte-dnd-*` classes that 0.8.0 never
+		applies; what it really puts on the DOM is `dragging`, `drag-over` and the
+		`drop-before` / `drop-after` indicator pair. Those come from the library, so
+		they have to be reached through `:global`.
+	*/
+	:global(.item.dragging),
+	:global(.stage-head.dragging) {
+		opacity: 0.45;
+	}
+
+	:global(.drop-before)::before,
+	:global(.drop-after)::after {
+		background: var(--accent);
+		height: 3px;
+		border-radius: 2px;
+	}
+
 	.stage-add {
 		display: flex;
 		justify-content: center;
@@ -651,15 +874,6 @@
 		border-radius: 8px;
 		font-size: 0.9375rem;
 		font-weight: 500;
-	}
-
-	.icon-btn {
-		justify-content: center;
-		width: 43px;
-		height: 43px;
-		min-width: 0;
-		padding: 0;
-		border-radius: 8px;
 	}
 
 	.add {

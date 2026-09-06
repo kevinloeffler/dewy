@@ -39,6 +39,7 @@
 	"dependencies": {
 		"@codemirror/lang-javascript": "^6.2.5",
 		"@lucide/svelte": "^1.34.0",
+		"@thisux/sveltednd": "^0.8.0",
 		"better-sqlite3": "^12.8.0",
 		"codemirror": "^6.0.2",
 		"three": "^0.184.0"

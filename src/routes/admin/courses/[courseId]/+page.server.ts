@@ -19,15 +19,14 @@ import {
 	linkLevel,
 	listCourseShares,
 	listSharedLevels,
-	moveItem,
-	moveStage,
+	reorderItem,
+	reorderStage,
 	shareCourse,
 	unshareCourse,
 	updateCourse,
 	updateStage
 } from '$lib/server/courses';
 import { actorOf, Forbidden, listTeachers } from '$lib/server/users';
-import type { Direction } from '$lib/ordering';
 
 export const load: PageServerLoad = async (event) => {
 	const actor = actorOf(event);
@@ -56,8 +55,19 @@ function required(formData: FormData, name: string): string | null {
 	return value && value.length > 0 ? value : null;
 }
 
-function direction(formData: FormData): Direction {
-	return formData.get('direction') === 'up' ? 'up' : 'down';
+/**
+ * The row's destination index, as the drag left it.
+ *
+ * No range check: `reindex` and `transfer` clamp, which is exactly why they do.
+ * Only a missing or non-integer value is a bad request.
+ */
+function index(formData: FormData): number | null {
+	const raw = formData.get('index');
+	// `Number(null)` is 0, so a missing field has to be caught before the parse
+	// or it would read as a perfectly good "put it at the top".
+	if (raw === null) return null;
+	const value = Number(raw);
+	return Number.isInteger(value) ? value : null;
 }
 
 /**
@@ -214,15 +224,16 @@ export const actions: Actions = {
 		return { savedAt: Date.now() };
 	},
 
-	moveStage: async (event) => {
+	reorderStage: async (event) => {
 		const formData = await event.request.formData();
 		const id = required(formData, 'id');
-		if (!id) return fail(400, { message: 'Kein Kapitel zum Verschieben.' });
+		const toIndex = index(formData);
+		if (!id || toIndex === null) return fail(400, { message: 'Kein Kapitel zum Verschieben.' });
 
 		const result = await guarded(
 			event,
 			(actor) => assertCanEditStage(actor, id),
-			() => moveStage(id, direction(formData))
+			() => reorderStage(id, toIndex)
 		);
 		if (!result.ok) return fail(result.status, { message: result.message });
 		return { savedAt: Date.now() };
@@ -310,15 +321,24 @@ export const actions: Actions = {
 		return { savedAt: Date.now() };
 	},
 
-	moveItem: async (event) => {
+	reorderItem: async (event) => {
 		const formData = await event.request.formData();
 		const id = required(formData, 'id');
-		if (!id) return fail(400, { message: 'Kein Element zum Verschieben.' });
+		const stageId = required(formData, 'stageId');
+		const toIndex = index(formData);
+		if (!id || !stageId || toIndex === null) {
+			return fail(400, { message: 'Kein Element zum Verschieben.' });
+		}
 
+		// Both ends are gated: the item being moved, and the chapter it lands in.
+		// `reorderItem` then refuses a pair that belongs to two different courses.
 		const result = await guarded(
 			event,
-			(actor) => assertCanEditItem(actor, id),
-			() => moveItem(id, direction(formData))
+			async (actor) => {
+				await assertCanEditItem(actor, id);
+				await assertCanEditStage(actor, stageId);
+			},
+			() => reorderItem(id, stageId, toIndex)
 		);
 		if (!result.ok) return fail(result.status, { message: result.message });
 		return { savedAt: Date.now() };
