@@ -1,9 +1,10 @@
 import * as THREE from 'three'
 import { type WorldState } from './worldState.svelte'
-import type { Coord, Level, TileKey } from './level'
+import type { Coord, Decoration, Level, TileKey } from './level'
 import type { LevelState } from './level-state'
 import type { EventPlayer, WorldEvent, WorldEventKind } from './events'
 import { coordKey, DIRECTION_YAW, tileAt } from './grid'
+import { footprintOf, railConnections } from './decorations'
 import {
     AnimationQueue,
     easeInOutCubic,
@@ -15,10 +16,13 @@ import {
 } from './animation'
 import { aimIsometricCamera, clearGroup, createIsometricCamera, disposeObject } from './three-utils'
 import { pickTileFrom } from './editor/picking'
+import type { Brush } from './editor/brush'
+import { decorationPlacement } from './editor/operations'
 import { createRoboter, type Roboter } from '$lib/game/models/roboter'
 import { createCrate } from '$lib/game/models/crate'
 import { createKeycard } from '$lib/game/models/keycard'
 import { COLORS, TileFactory } from '$lib/game/models/tiles'
+import { createDecoration } from '$lib/game/models/warehouse'
 
 
 /**
@@ -65,6 +69,14 @@ const BELT_SCROLL = 0.45
 const SELECTION_COLOR = 0xffa53c
 const LINKED_COLOR = 0x7fb2ff
 
+/**
+ * How solid the designer's ghost preview is.
+ *
+ * Low enough to read as a promise rather than a placement, high enough that a
+ * pallet's slats are still countable.
+ */
+const GHOST_OPACITY = 0.55
+
 /** What a stopped belt's chevrons fade into: the slab they sit on. */
 const BELT_DARK = new THREE.Color(COLORS.conveyor)
 
@@ -108,6 +120,80 @@ type BeltVisual = {
 }
 
 
+/** What a ghost is cached against: rebuild it only when this changes. */
+function ghostKey(brush: Brush): string {
+    switch (brush.kind) {
+        case 'tile': return `tile:${JSON.stringify(brush.tile)}`
+        case 'item': return `item:${JSON.stringify(brush.item)}`
+        // Not the facing: the robot's ghost is turned by its yaw, not rebuilt.
+        case 'robot': return 'robot'
+        default: return brush.kind
+    }
+}
+
+/**
+ * Make a freshly built model read as a preview.
+ *
+ * Every material is *cloned* before it is made translucent: a tile ghost holds
+ * the same memoised material as every floor slab in the level, and dimming it
+ * in place would fade the level along with it. One clone per distinct material,
+ * so a shelf's twenty meshes still share four.
+ *
+ * `depthTest` goes off on purpose. A preview has to be visible wherever it is
+ * about to land — under a wall, down a pit — and the mild see-through look that
+ * buys is what tells a teacher this is not placed yet.
+ */
+function ghostify(root: THREE.Object3D) {
+    const clones = new Map<THREE.Material, THREE.Material>()
+
+    root.traverse((object) => {
+        const mesh = object as Partial<THREE.Mesh>
+        if (!mesh.material || Array.isArray(mesh.material)) return
+
+        let ghost = clones.get(mesh.material)
+        if (!ghost) {
+            ghost = mesh.material.clone()
+            ghost.transparent = true
+            ghost.opacity = GHOST_OPACITY
+            ghost.depthWrite = false
+            ghost.depthTest = false
+            clones.set(mesh.material, ghost)
+        }
+        mesh.material = ghost
+        object.renderOrder = 998
+    })
+}
+
+/**
+ * The model for one piece of furniture, turned but not yet placed.
+ *
+ * A guard rail is the exception that keeps this honest: its shape already says
+ * which way it runs — `railConnections` answers in absolute directions — so
+ * turning it would turn it twice.
+ */
+function decorationModel(level: Level, decoration: Decoration): THREE.Object3D {
+    const rail = decoration.kind === 'guard_rail'
+    const object = createDecoration(decoration.kind, {
+        connections: rail ? railConnections(level, decoration) : undefined,
+    })
+    if (!rail) object.rotation.y = DIRECTION_YAW[decoration.facing]
+    return object
+}
+
+/**
+ * Centre a piece on the rectangle it covers — which for an even footprint is
+ * a tile edge rather than a tile centre.
+ */
+function placeDecorationObject(object: THREE.Object3D, decoration: Decoration) {
+    const { width, depth } = footprintOf(decoration.kind, decoration.facing)
+    object.position.set(
+        decoration.position.x + (width - 1) / 2,
+        0,
+        decoration.position.y + (depth - 1) / 2,
+    )
+}
+
+
 /**
  * Renders a `Level` and animates it from engine events.
  *
@@ -138,6 +224,9 @@ export class World implements EventPlayer {
     /** Editor overlays. Outlives a level, so `disposeLevel` leaves it alone. */
     private editorRoot = new THREE.Group()
     private highlight: THREE.LineSegments | null = null
+    /** The brush preview under the pointer, and what it was built from. */
+    private ghost: THREE.Object3D | null = null
+    private ghostKey = ''
     /** One outline per selected tile, pooled — see `setSelection`. */
     private selectionOutlines: THREE.LineSegments[] = []
     private linkedOutlines: THREE.LineSegments[] = []
@@ -208,6 +297,7 @@ export class World implements EventPlayer {
 
         this.buildTiles(level)
         this.buildWalls(level)
+        this.buildDecorations(level)
         this.buildItems(level)
         this.buildSensors(level)
 
@@ -443,6 +533,24 @@ export class World implements EventPlayer {
         this.tileRoot.add(back)
     }
 
+    /**
+     * The furniture in `level.decorations`.
+     *
+     * Built into `tileRoot` rather than `itemRoot`, and stamped with the
+     * coord of its north-west tile, so the designer's raycast finds it: a
+     * shelf stands 1.5 units tall, and anything the ray does not hit reads
+     * back as whatever tile lies a diagonal behind it. Stamping the corner
+     * means a click anywhere on a shelf acts on the shelf.
+     */
+    private buildDecorations(level: Level) {
+        for (const decoration of level.decorations) {
+            const object = decorationModel(level, decoration)
+            placeDecorationObject(object, decoration)
+            object.userData.coord = { ...decoration.position }
+            this.tileRoot.add(object)
+        }
+    }
+
     private buildItems(level: Level) {
         for (const item of level.items) {
             if (item.kind === 'keycard') {
@@ -502,6 +610,9 @@ export class World implements EventPlayer {
         this.sensorZones.clear()
         this.belts = []
         this.level = null
+        // Measured against the level that is going away — a rail ghost knows
+        // which of its neighbours it joined. The canvas puts it back.
+        this.clearGhost()
     }
 
 
@@ -538,6 +649,105 @@ export class World implements EventPlayer {
         const outline = this.highlight ??= this.createHighlight()
         outline.visible = coord !== null
         if (coord) outline.position.set(coord.x, 0, coord.y)
+    }
+
+    /**
+     * Show a translucent preview of what `brush` would put on `coord`.
+     *
+     * Built from the very same model factories the level is built from, so the
+     * preview is the thing itself rather than a stand-in: a pallet's ghost is
+     * three tiles wide because the pallet is, and a conveyor's chevrons point
+     * where the belt would run. `null` for either argument clears it, as do the
+     * two tools that paint nothing.
+     *
+     * The model is cached against what it was built from and only rebuilt when
+     * that changes, so dragging across a level moves one object rather than
+     * rebuilding a shelf per tile.
+     */
+    setGhost(brush: Brush | null, coord: Coord | null) {
+        const level = this.level
+        if (!level || !brush || !coord || brush.kind === 'select' || brush.kind === 'erase') {
+            this.clearGhost()
+            return
+        }
+
+        if (brush.kind === 'decoration') {
+            // Asked of the same function the click will use, so the ghost can
+            // never show a placement the click then refuses — including the
+            // slide back onto the grid near an edge.
+            const placement = decorationPlacement(level, coord, brush.decoration, brush.facing)
+            if (!placement) {
+                this.clearGhost()
+                return
+            }
+            // A rail's shape depends on the rails beside it, so its preview is
+            // keyed by where it would stand as well as by what it is.
+            const site = brush.decoration === 'guard_rail' ? coordKey(placement.position) : ''
+            const ghost = this.ensureGhost(
+                `deco:${brush.decoration}:${brush.facing}:${site}`,
+                () => decorationModel(level, placement),
+            )
+            if (ghost) placeDecorationObject(ghost, placement)
+            return
+        }
+
+        const ghost = this.ensureGhost(ghostKey(brush), () => this.ghostModel(brush))
+        if (!ghost) return
+        ghost.position.set(coord.x, 0, coord.y)
+        // The robot model is the one thing built facing a fixed way; the rest
+        // carry their direction in the object the factory handed back.
+        if (brush.kind === 'robot') ghost.rotation.y = DIRECTION_YAW[brush.facing]
+    }
+
+    /** The scene object a non-decoration brush would add, unpositioned. */
+    private ghostModel(brush: Brush): THREE.Object3D | null {
+        switch (brush.kind) {
+            case 'tile':
+                // Coord only decides the checkerboard shade of a floor slab,
+                // which a translucent preview has no use for.
+                return this.tiles.create(brush.tile, { x: 0, y: 0 })
+            case 'item':
+                return brush.item.kind === 'keycard'
+                    ? createKeycard()
+                    : createCrate({
+                          color: brush.item.kind === 'crate_colour' ? brush.item.color : undefined,
+                      })
+            case 'robot':
+                return createRoboter({ scale: ROBOT_SCALE, accentColor: 0xff9600 }).group
+            default:
+                return null
+        }
+    }
+
+    /**
+     * The cached ghost for `key`, building it on the first ask.
+     *
+     * `build` may answer `null` — a pit's floorless tile has no model — in
+     * which case there is simply nothing to show.
+     */
+    private ensureGhost(key: string, build: () => THREE.Object3D | null): THREE.Object3D | null {
+        if (this.ghost && this.ghostKey === key) return this.ghost
+
+        this.clearGhost()
+        const object = build()
+        if (!object) return null
+
+        ghostify(object)
+        this.editorRoot.add(object)
+        this.ghost = object
+        this.ghostKey = key
+        return object
+    }
+
+    private clearGhost() {
+        if (!this.ghost) return
+        this.editorRoot.remove(this.ghost)
+        // The tile factory's memoised resources are shared with the level and
+        // must survive the preview that borrowed them. `ghostify` cloned every
+        // material it touched, so the clones are not on that list and go.
+        disposeObject(this.ghost, this.tiles.shared())
+        this.ghost = null
+        this.ghostKey = ''
     }
 
     /**

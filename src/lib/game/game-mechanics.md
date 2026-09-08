@@ -87,6 +87,31 @@ the next tile would have been claimed.
 
 ---
 
+## Decorations
+
+Warehouse furniture. It is authored once and never moves, animates or reacts —
+its only rule is that it is **solid**: impassable for the robot and for crates,
+exactly like a wall. Unlike a wall it is not a tile, so a single piece can be
+several tiles wide.
+
+| Element | Footprint | Description |
+|---------|-----------|-------------|
+| Pallet | 3 × 2 | Low wooden deck |
+| Shelf | 2 × 1 | Pallet racking, taller than the robot |
+| Pillar | 1 × 1 | Structural column |
+| Guard rail | 1 × 1 | Safety barrier — joins up with the rails beside it into runs, corners and T-junctions |
+| Barrel | 1 × 1 | Ribbed drum |
+| Cone | 1 × 1 | Traffic cone |
+| Tool cart | 1 × 1 | Three-tier trolley |
+
+- A piece is stored as its north-west tile plus a facing; a quarter turn swaps
+  the two axes of the footprint, so an east-facing pallet is 2 × 3
+- Only the pallet, shelf, guard rail and tool cart look different when turned
+- The teacher's brush centres the footprint on the click and slides it back
+  onto the grid; it refuses to overlap furniture that is already there
+
+---
+
 ## Crates
 
 - **Grey crate** — pushable and pickable, no delivery goal, used to activate pressure plates and block paths. A grey crate is never "delivered", not even on a plain bay — it stays reusable
@@ -134,9 +159,10 @@ A keycard is different — `open()` unlocks a door permanently, whatever its con
 ## Crash Conditions
 
 - Walking into a wall, world edge, or impassable door
+- Walking into a decoration — the crash names the piece ("Da steht ein Regal im Weg")
 - Walking into a switch tile, or onto a cargo belt
 - Stepping into a pit
-- Pushing a crate into a wall, pit, or another crate
+- Pushing a crate into a wall, pit, decoration, or another crate
 - Entering a motion sensor's forbidden zone
 - Calling `open()` without the required keycard
 - Calling `pick()` on an empty tile

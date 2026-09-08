@@ -1,12 +1,14 @@
 <script lang="ts">
 	import { CRATE_COLORS, type CrateColor } from '$lib/game/crate-color';
 	import { COLORS } from '$lib/game/models/tiles';
+	import { DECORATION_SWATCHES } from '$lib/game/models/warehouse';
 	import OptionFields from './OptionFields.svelte';
 	import { armIds, nextBeltId } from '$lib/game/editor/operations';
 	import {
 		BRUSH_GROUPS,
 		BRUSH_LABELS,
 		brushOptionKeys,
+		decorationOptions,
 		defaultBrushOptions,
 		itemOptions,
 		tileOptions,
@@ -55,6 +57,13 @@
 		crate_grey: hex(CRATE_COLORS.grey),
 		crate_colour: hex(CRATE_COLORS.red),
 		keycard: '#f0c419',
+		pallet: hex(DECORATION_SWATCHES.pallet),
+		shelf: hex(DECORATION_SWATCHES.shelf),
+		pillar: hex(DECORATION_SWATCHES.pillar),
+		guard_rail: hex(DECORATION_SWATCHES.guard_rail),
+		barrel: hex(DECORATION_SWATCHES.barrel),
+		cone: hex(DECORATION_SWATCHES.cone),
+		tool_cart: hex(DECORATION_SWATCHES.tool_cart),
 		robot: '#ff9600',
 		select: 'transparent',
 		erase: 'transparent'
@@ -110,6 +119,11 @@
 			}
 			case 'item':
 				return { id: selection.item.kind, options: itemOptions(selection.item) };
+			case 'decoration':
+				return {
+					id: selection.decoration.kind,
+					options: decorationOptions(selection.decoration, options)
+				};
 			case 'robot':
 				return { id: 'robot' as const, options: { ...options, facing: selection.facing } };
 		}
@@ -183,7 +197,9 @@
 		</div>
 	{/if}
 
-	<p class="hint footnote">Ziehen zum Malen · Rechtsklick zum Radieren</p>
+	<p class="hint footnote">
+		Ziehen zum Malen · Rechtsklick zum Radieren · <kbd>R</kbd> oder mittlere Maustaste zum Drehen
+	</p>
 </div>
 
 <style>
@@ -285,6 +301,15 @@
 		margin: 0;
 		font-size: 12px;
 		color: var(--text-faint);
+	}
+
+	kbd {
+		padding: 1px 4px;
+		border: 1px solid var(--panel-border);
+		border-radius: 4px;
+		background: var(--bg);
+		font-family: var(--font-ui);
+		font-size: 11px;
 	}
 
 	.footnote {

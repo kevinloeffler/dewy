@@ -10,11 +10,16 @@ import {
     emptyLevel,
     nextBeltId,
     nextDoorId,
+    nextDecorationId,
     nextItemId,
+    placeDecoration,
     placeItem,
+    removeDecorationAt,
     removeGoal,
     removeItemAt,
     resize,
+    rotateSelection,
+    turnDecoration,
     setMeta,
     setOptions,
     setRobot,
@@ -22,6 +27,8 @@ import {
     targetIds,
 } from './operations';
 import { buildBrush, defaultBrushOptions, type BrushOptions } from './brush';
+import { decorationAt } from '../decorations';
+import { selectAt } from './selection';
 import { tileAt } from '../grid';
 import type { Level } from '../level';
 
@@ -238,6 +245,26 @@ describe('applyBrush', () => {
 
         expect(applyBrush(level, { kind: 'robot', facing: 'east' }, { x: 2, y: 2 })
             .robot).toEqual({ position: { x: 2, y: 2 }, facing: 'east' });
+
+        expect(applyBrush(
+            level,
+            { kind: 'decoration', decoration: 'shelf', facing: 'south' },
+            { x: 1, y: 1 },
+        ).decorations).toHaveLength(1);
+    });
+
+    it('erases furniture on its own, leaving the tile under it alone', () => {
+        let level = setTile(base(), { x: 3, y: 3 }, { kind: 'goal' });
+        level = applyBrush(
+            level,
+            { kind: 'decoration', decoration: 'pallet', facing: 'south' },
+            { x: 3, y: 3 },
+        );
+
+        const erased = applyBrush(level, { kind: 'erase' }, { x: 4, y: 4 });
+
+        expect(erased.decorations).toEqual([]);
+        expect(erased.tiles['3,3']).toEqual({ kind: 'goal' });
     });
 
     it('erases the tile and whatever stood on it in one stroke', () => {
@@ -257,6 +284,116 @@ describe('applyBrush', () => {
     });
 });
 
+describe('placeDecoration', () => {
+    it('centres the footprint on the click', () => {
+        const level = placeDecoration(base(), { x: 3, y: 3 }, 'pallet', 'south');
+
+        expect(level.decorations).toHaveLength(1);
+        expect(level.decorations[0].position).toEqual({ x: 2, y: 3 });
+        expect(decorationAt(level, { x: 3, y: 3 })).not.toBeNull();
+    });
+
+    it('slides a piece dropped near the edge back onto the grid', () => {
+        const level = placeDecoration(base(), { x: 7, y: 7 }, 'shelf', 'south');
+        expect(level.decorations[0].position).toEqual({ x: 6, y: 7 });
+    });
+
+    it('refuses an overlap rather than shoving what is there', () => {
+        const one = placeDecoration(base(), { x: 3, y: 3 }, 'pallet', 'south');
+        expect(placeDecoration(one, { x: 3, y: 3 }, 'barrel', 'south')).toBe(one);
+
+        // Clear of the pallet, so the second piece lands.
+        expect(placeDecoration(one, { x: 6, y: 6 }, 'barrel', 'south').decorations).toHaveLength(2);
+    });
+
+    it('mints a fresh id for each piece', () => {
+        let level = placeDecoration(base(), { x: 1, y: 1 }, 'barrel', 'south');
+        level = placeDecoration(level, { x: 3, y: 1 }, 'cone', 'south');
+
+        expect(level.decorations.map((piece) => piece.id)).toEqual(['deko-1', 'deko-2']);
+        expect(nextDecorationId(level)).toBe('deko-3');
+    });
+
+    it('clears items off the tiles it covers, since nothing can reach them', () => {
+        let level = placeItem(base(), { x: 3, y: 3 }, { kind: 'crate_grey' });
+        level = placeItem(level, { x: 7, y: 7 }, { kind: 'crate_grey' });
+        level = placeDecoration(level, { x: 3, y: 3 }, 'pallet', 'south');
+
+        expect(level.items.map((item) => item.position)).toEqual([{ x: 7, y: 7 }]);
+    });
+
+    it('refuses to paint outside the grid', () => {
+        const level = base();
+        expect(placeDecoration(level, { x: -1, y: 0 }, 'cone', 'south')).toBe(level);
+    });
+});
+
+describe('removeDecorationAt and turnDecoration', () => {
+    it('removes a piece from any tile it covers', () => {
+        const level = placeDecoration(base(), { x: 3, y: 3 }, 'pallet', 'south');
+
+        expect(removeDecorationAt(level, { x: 4, y: 4 }).decorations).toEqual([]);
+        expect(removeDecorationAt(level, { x: 0, y: 0 })).toBe(level);
+    });
+
+    it('turns a piece where it stands, and reports a no-op by reference', () => {
+        const level = placeDecoration(base(), { x: 3, y: 3 }, 'shelf', 'south');
+        const id = level.decorations[0].id;
+
+        const turned = turnDecoration(level, id, 'east');
+        expect(turned.decorations[0].facing).toBe('east');
+        expect(decorationAt(turned, { x: 3, y: 4 })).not.toBeNull();
+
+        expect(turnDecoration(turned, id, 'east')).toBe(turned);
+        expect(turnDecoration(turned, 'nobody', 'west')).toBe(turned);
+    });
+
+    it('refuses a turn that would run into another piece', () => {
+        let level = placeDecoration(base(), { x: 1, y: 1 }, 'shelf', 'south');
+        level = placeDecoration(level, { x: 1, y: 2 }, 'barrel', 'south');
+
+        expect(turnDecoration(level, level.decorations[0].id, 'east')).toBe(level);
+    });
+});
+
+describe('rotateSelection', () => {
+    /** Selections are re-read from the level, exactly as the designer does. */
+    const pick = (level: Level, x: number, y: number) => selectAt(level, { x, y })!;
+
+    it('turns a belt run tile by tile, so a corner stays a corner', () => {
+        // An east run that turns south at 2,1 — one belt, two directions.
+        let level = setTile(base(), { x: 1, y: 1 }, { kind: 'conveyor', direction: 'east', control: null });
+        level = setTile(level, { x: 2, y: 1 }, { kind: 'conveyor', direction: 'south', control: null });
+
+        const turned = rotateSelection(level, pick(level, 1, 1));
+
+        expect(turned.tiles['1,1']).toMatchObject({ direction: 'south' });
+        expect(turned.tiles['2,1']).toMatchObject({ direction: 'west' });
+    });
+
+    it('turns the robot and a piece of furniture', () => {
+        const withRobot = setRobot(base(), { x: 2, y: 2 }, 'north');
+        expect(rotateSelection(withRobot, pick(withRobot, 2, 2)).robot.facing).toBe('east');
+
+        const withShelf = placeDecoration(base(), { x: 4, y: 4 }, 'shelf', 'south');
+        const turned = rotateSelection(withShelf, pick(withShelf, 4, 4));
+        expect(turned.decorations[0].facing).toBe('west');
+    });
+
+    it('leaves alone what has no turn to make', () => {
+        const withCrate = placeItem(base(), { x: 2, y: 2 }, { kind: 'crate_grey' });
+        expect(rotateSelection(withCrate, pick(withCrate, 2, 2))).toBe(withCrate);
+
+        // A barrel is a cylinder: turning it would change stored data and
+        // nothing anybody can see.
+        const withBarrel = placeDecoration(base(), { x: 2, y: 2 }, 'barrel', 'south');
+        expect(rotateSelection(withBarrel, pick(withBarrel, 2, 2))).toBe(withBarrel);
+
+        const withWall = setTile(base(), { x: 2, y: 2 }, { kind: 'wall' });
+        expect(rotateSelection(withWall, pick(withWall, 2, 2))).toBe(withWall);
+    });
+});
+
 describe('setRobot', () => {
     it('moves the single robot and reports a no-op by reference', () => {
         const level = setRobot(base(), { x: 3, y: 4 }, 'west');
@@ -273,6 +410,9 @@ describe('resize', () => {
         level = placeItem(level, { x: 5, y: 0 }, { kind: 'crate_grey' });
         level = placeItem(level, { x: 0, y: 1 }, { kind: 'crate_grey' });
         level = setRobot(level, { x: 7, y: 7 }, 'north');
+        level = placeDecoration(level, { x: 1, y: 1 }, 'cone', 'south');
+        // Straddles the new edge, so it goes with the tiles it stood on.
+        level = placeDecoration(level, { x: 4, y: 1 }, 'shelf', 'south');
         level = addGoal(level, {
             kind: 'deliver_specific', color: 'red', dropOffPosition: { x: 6, y: 6 },
         });
@@ -283,6 +423,7 @@ describe('resize', () => {
         expect(Object.keys(small.tiles)).toEqual(['1,1']);
         expect(small.items.map((item) => item.position)).toEqual([{ x: 0, y: 1 }]);
         expect(small.robot.position).toEqual({ x: 3, y: 3 });
+        expect(small.decorations.map((piece) => piece.kind)).toEqual(['cone']);
         expect(small.goals).toEqual([]);
     });
 

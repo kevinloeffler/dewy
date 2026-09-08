@@ -1,7 +1,13 @@
-import type { Coord, Direction, DropOffTile, Level } from './level';
+import type { Coord, DecorationKind, Direction, DropOffTile, Level } from './level';
 import type { CrateState, KeycardState, LevelState } from './level-state';
 import { coordKey, opposite, sameCoord, tileAt } from './grid';
 import { isCrate } from './level';
+import {
+    DECORATION_NAMES,
+    decorationAt,
+    decorationTiles,
+    footprintOf,
+} from './decorations';
 import { CRATE_COLOR_NAMES } from './crate-color';
 
 /**
@@ -53,6 +59,7 @@ export type Blocker =
     | { kind: 'cargo_belt' }
     | { kind: 'gap' }
     | { kind: 'switch' }
+    | { kind: 'obstacle'; decoration: DecorationKind }
     | { kind: 'crate'; crateId: string };
 
 /**
@@ -65,6 +72,12 @@ export type Blocker =
 export function tileBlocksRobot(level: Level, state: LevelState, coord: Coord): Blocker | null {
     const tile = tileAt(level, coord);
     if (!tile) return { kind: 'edge' };
+
+    // Furniture is solid whatever it stands on, and asked about before the
+    // tile: a pallet laid over open floor has to stop the robot the way the
+    // wall next to it does.
+    const decoration = decorationAt(level, coord);
+    if (decoration) return { kind: 'obstacle', decoration: decoration.kind };
 
     switch (tile.kind) {
         case 'wall':           return { kind: 'wall' };
@@ -81,6 +94,9 @@ export function tileBlocksRobot(level: Level, state: LevelState, coord: Coord): 
 export function tileBlocksCrate(level: Level, state: LevelState, coord: Coord): Blocker | null {
     const tile = tileAt(level, coord);
     if (!tile) return { kind: 'edge' };
+
+    const decoration = decorationAt(level, coord);
+    if (decoration) return { kind: 'obstacle', decoration: decoration.kind };
 
     switch (tile.kind) {
         case 'wall':      return { kind: 'wall' };
@@ -224,6 +240,45 @@ export function validateLevel(level: Level): string[] {
         );
     }
 
+    // Furniture is checked before the items, so the set of occupied tiles is
+    // already built when an item turns out to be standing inside a shelf.
+    const covered = new Map<string, string>();
+    const decorationIds = new Set<string>();
+
+    for (const decoration of level.decorations) {
+        const name = DECORATION_NAMES[decoration.kind];
+
+        if (decorationIds.has(decoration.id)) {
+            problems.push(`doppelte Deko-ID „${decoration.id}“`);
+        }
+        decorationIds.add(decoration.id);
+
+        const { width, depth } = footprintOf(decoration.kind, decoration.facing);
+        const corner = coordKey(decoration.position);
+        if (
+            decoration.position.x < 0
+            || decoration.position.y < 0
+            || decoration.position.x + width > level.width
+            || decoration.position.y + depth > level.height
+        ) {
+            problems.push(`Bei ${corner} steht ${name} teilweise ausserhalb des Rasters`);
+        }
+
+        for (const coord of decorationTiles(decoration)) {
+            const key = coordKey(coord);
+            const other = covered.get(key);
+            if (other !== undefined) {
+                problems.push(`Auf Feld ${key} stehen zwei Deko-Objekte übereinander (${other})`);
+            } else {
+                covered.set(key, decoration.id);
+            }
+        }
+    }
+
+    if (covered.has(coordKey(level.robot.position))) {
+        problems.push('Der Roboter startet in einem Deko-Objekt');
+    }
+
     const seenIds = new Set<string>();
     const seenCoords = new Set<string>();
 
@@ -237,6 +292,9 @@ export function validateLevel(level: Level): string[] {
 
         if (!tileAt(level, item.position)) {
             problems.push(`Objekt „${item.id}“ liegt bei ${key} ausserhalb des Rasters`);
+        }
+        if (covered.has(key)) {
+            problems.push(`Objekt „${item.id}“ steht bei ${key} in einem Deko-Objekt`);
         }
         if (item.kind === 'keycard' && !doorIds.has(item.doorId)) {
             problems.push(`Keycard „${item.id}“ öffnet Tür „${item.doorId}“, zu der es kein Türfeld gibt`);

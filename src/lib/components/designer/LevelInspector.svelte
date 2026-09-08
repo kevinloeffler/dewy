@@ -3,6 +3,7 @@
 	import { resize, setMeta, setOptions } from '$lib/game/editor/operations';
 	import type { LevelDraft } from '$lib/game/editor/draft.svelte';
 	import type { LanguageStage } from '$lib/game/level';
+	import { decorationTiles } from '$lib/game/decorations';
 	import { inBounds } from '$lib/game/grid';
 
 	interface Props {
@@ -43,7 +44,11 @@
 			return !inBounds(bounds, { x, y });
 		}).length;
 		const items = level.items.filter((item) => !inBounds(bounds, item.position)).length;
-		return tiles + items;
+		// A piece goes whole: half a shelf hanging off the grid is not a level.
+		const decorations = level.decorations.filter(
+			(decoration) => !decorationTiles(decoration).every((coord) => inBounds(bounds, coord))
+		).length;
+		return tiles + items + decorations;
 	});
 
 	let energyOn = $derived(level.options.energy !== null);

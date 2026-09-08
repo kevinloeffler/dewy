@@ -1,5 +1,14 @@
 import type { CrateColor } from '$lib/game/crate-color';
-import type { BeltControl, Direction, Item, Tile } from '$lib/game/level';
+import { canTurn } from '$lib/game/decorations';
+import { turn } from '$lib/game/grid';
+import type {
+    BeltControl,
+    Decoration,
+    DecorationKind,
+    Direction,
+    Item,
+    Tile,
+} from '$lib/game/level';
 
 /**
  * What the palette hands the canvas.
@@ -17,6 +26,12 @@ export type ItemTemplate =
 export type Brush =
     | { kind: 'tile'; tile: Tile }
     | { kind: 'item'; item: ItemTemplate }
+    /**
+     * Furniture. Like an item this is a template: `placeDecoration` mints the
+     * id and works out where the piece's corner has to go for the click to
+     * land inside it.
+     */
+    | { kind: 'decoration'; decoration: DecorationKind; facing: Direction }
     | { kind: 'robot'; facing: Direction }
     /** Back to plain floor, and remove whatever item was standing on it. */
     | { kind: 'erase' }
@@ -43,7 +58,19 @@ export type BrushId =
     | 'floor' | 'wall' | 'pit' | 'robot_gap' | 'goal'
     | 'conveyor' | 'cargo_conveyor' | 'door' | 'pressure_plate' | 'switch' | 'drop_off'
     | 'crate_grey' | 'crate_colour' | 'keycard'
+    | DecorationKind
     | 'robot' | 'select' | 'erase';
+
+const DECORATION_IDS: DecorationKind[] = [
+    'pallet', 'shelf', 'pillar', 'guard_rail', 'barrel', 'cone', 'tool_cart',
+];
+
+const DECORATIONS: ReadonlySet<string> = new Set<string>(DECORATION_IDS);
+
+/** Narrows a brush id to the decoration it paints, if it paints one. */
+export function isDecorationId(id: BrushId): id is DecorationKind {
+    return DECORATIONS.has(id);
+}
 
 export type BrushOptions = {
     direction: Direction;
@@ -70,6 +97,11 @@ export type BrushOptions = {
     beltId: string;
     /** Belts get their own starting value: `initiallyOn` is the switch's. */
     beltInitiallyOn: boolean;
+    /**
+     * Which way a piece of furniture is turned. Kept apart from `facing`,
+     * which is the robot's: turning a shelf must not spin the robot brush.
+     */
+    decorationFacing: Direction;
 };
 
 export function defaultBrushOptions(): BrushOptions {
@@ -85,6 +117,7 @@ export function defaultBrushOptions(): BrushOptions {
         beltEffect: 'none',
         beltId: 'belt-1',
         beltInitiallyOn: true,
+        decorationFacing: 'south',
     };
 }
 
@@ -100,6 +133,10 @@ export const BRUSH_GROUPS: { title: string; ids: BrushId[] }[] = [
     {
         title: 'Inhalt',
         ids: ['crate_grey', 'crate_colour', 'keycard', 'robot'],
+    },
+    {
+        title: 'Deko',
+        ids: [...DECORATION_IDS],
     },
     {
         title: 'Werkzeuge',
@@ -122,6 +159,13 @@ export const BRUSH_LABELS: Record<BrushId, string> = {
     crate_grey: 'Graue Kiste',
     crate_colour: 'Farbige Kiste',
     keycard: 'Keycard',
+    pallet: 'Palette (3×2)',
+    shelf: 'Regal (2×1)',
+    pillar: 'Säule',
+    guard_rail: 'Geländer',
+    barrel: 'Fass',
+    cone: 'Pylon',
+    tool_cart: 'Werkzeugwagen',
     robot: 'Roboter-Start',
     select: 'Auswählen',
     erase: 'Radieren',
@@ -155,7 +199,8 @@ export function brushOptionKeys(id: BrushId, options: BrushOptions): (keyof Brus
         case 'robot':
             return ['facing'];
         default:
-            return [];
+            // A square, symmetrical piece has no visible facing to offer.
+            return isDecorationId(id) && canTurn(id) ? ['decorationFacing'] : [];
     }
 }
 
@@ -178,6 +223,35 @@ export function mintedIdKey(id: BrushId, options: BrushOptions): 'doorId' | 'bel
         default:
             return null;
     }
+}
+
+/**
+ * Which of the three facing fields a quarter turn moves, if any.
+ *
+ * Three brushes point somewhere and they keep the fields apart on purpose — a
+ * belt's `direction` is the way it travels, the robot's `facing` is where it
+ * looks, and a shelf's is how it stands — so "rotate" has to be told which one
+ * it is turning. A wall or a crate points nowhere and is left alone.
+ */
+export function rotatableKey(
+    id: BrushId,
+): 'direction' | 'facing' | 'decorationFacing' | null {
+    switch (id) {
+        case 'conveyor':
+        case 'cargo_conveyor':
+            return 'direction';
+        case 'robot':
+            return 'facing';
+        default:
+            return isDecorationId(id) && canTurn(id) ? 'decorationFacing' : null;
+    }
+}
+
+/** A quarter turn clockwise, or the very same options for a brush that has none. */
+export function rotateBrush(id: BrushId, options: BrushOptions): BrushOptions {
+    const key = rotatableKey(id);
+    if (key === null) return options;
+    return { ...options, [key]: turn(options[key], 'right') };
 }
 
 /**
@@ -224,7 +298,19 @@ export function itemOptions(item: Item, base: BrushOptions = defaultBrushOptions
     }
 }
 
+/** `buildBrush` read backwards, for the select tool — see `tileOptions`. */
+export function decorationOptions(
+    decoration: Decoration,
+    base: BrushOptions = defaultBrushOptions(),
+): BrushOptions {
+    return { ...base, decorationFacing: decoration.facing };
+}
+
 export function buildBrush(id: BrushId, options: BrushOptions): Brush {
+    if (isDecorationId(id)) {
+        return { kind: 'decoration', decoration: id, facing: options.decorationFacing };
+    }
+
     switch (id) {
         case 'floor':
         case 'wall':

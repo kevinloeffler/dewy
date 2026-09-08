@@ -6,7 +6,8 @@ import type {
 import type { WorldEvent } from './events';
 import { createLevelState } from './level-state';
 import { ahead, coordKey, sameCoord, tileAt, turn } from './grid';
-import { crash, type CrashReason } from './crash-reasons';
+import { crash, obstacleCrash, type CrashReason } from './crash-reasons';
+import { DECORATION_NAMES } from './decorations';
 import {
     bayAccepts,
     beltDirection,
@@ -839,6 +840,7 @@ function reasonFor(blocker: Blocker): CrashReason {
         case 'cargo_belt': return crash('cargo_belt');
         case 'gap':        return crash('robot_gap');
         case 'switch':     return crash('switch_blocked');
+        case 'obstacle':   return obstacleCrash(DECORATION_NAMES[blocker.decoration]);
         case 'crate':      return crash('crate_blocked');
     }
 }

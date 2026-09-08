@@ -89,6 +89,37 @@ describe('parseLevel', () => {
         expect(parseLevel(level).ok).toBe(false);
     });
 
+    it('accepts every decoration kind', () => {
+        const kinds = ['pallet', 'shelf', 'pillar', 'guard_rail', 'barrel', 'cone', 'tool_cart'];
+        const level = {
+            ...roundTrip(emptyLevel('deko', 'Deko')),
+            decorations: kinds.map((kind, i) => ({
+                kind, id: `deko-${i}`, position: { x: i, y: 0 }, facing: 'south',
+            })),
+        };
+
+        const result = parseLevel(level);
+        expect(result.ok).toBe(true);
+        if (result.ok) expect(result.level.decorations).toHaveLength(kinds.length);
+    });
+
+    it('reads a level stored before the warehouse kit as undecorated', () => {
+        const { decorations, ...level } = roundTrip(emptyLevel('old', 'Old'));
+
+        const result = parseLevel(level);
+        expect(result.ok).toBe(true);
+        if (result.ok) expect(result.level.decorations).toEqual([]);
+    });
+
+    it('rejects a decoration of an unknown kind, or one missing its facing', () => {
+        const base = roundTrip(emptyLevel('x', 'X'));
+        const good = { kind: 'cone', id: 'd1', position: { x: 0, y: 0 }, facing: 'south' };
+
+        expect(parseLevel({ ...base, decorations: [{ ...good, kind: 'forklift' }] }).ok).toBe(false);
+        expect(parseLevel({ ...base, decorations: [{ ...good, facing: undefined }] }).ok).toBe(false);
+        expect(parseLevel({ ...base, decorations: [good] }).ok).toBe(true);
+    });
+
     it('drops a stored floor tile, keeping `tiles` sparse', () => {
         const level = { ...roundTrip(emptyLevel('x', 'X')), tiles: { '1,1': { kind: 'floor' } } };
         const result = parseLevel(level);

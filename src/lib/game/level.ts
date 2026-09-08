@@ -137,6 +137,48 @@ export function isKeycard(item: Item): item is Keycard {
 
 
 // ============================================================
+// Decorations
+//
+// Warehouse dressing: a pallet, a shelf, a stack of barrels. They are not
+// tiles — a pallet is three tiles wide and two deep, and no per-tile record
+// can say that — and they are not items, because nothing ever picks one up.
+// They are furniture: authored once, never animated, and solid, so the level
+// around them has to be read rather than walked straight through.
+// ============================================================
+
+export type DecorationKind =
+    | 'pallet'
+    | 'shelf'
+    | 'pillar'
+    | 'guard_rail'
+    | 'barrel'
+    | 'cone'
+    | 'tool_cart';
+
+/**
+ * One piece of furniture standing on the grid.
+ *
+ * `position` is the piece's north-west tile — the corner with the smallest
+ * `x` and `y` of the rectangle it covers, *after* `facing` has been applied.
+ * The rest of the rectangle follows from the kind's footprint, so a rotated
+ * shelf needs no second coordinate: see `footprintOf` in `./decorations`.
+ *
+ * `id` is stable for the same reason an item's is — the renderer keys its
+ * Three.js objects by it — so author it, never generate it at render time.
+ */
+export type Decoration = {
+    kind: DecorationKind;
+    id: string;
+    position: Coord;
+    /**
+     * Which way the piece's front points. A square, symmetrical piece looks
+     * the same whatever this says; a shelf or a pallet does not.
+     */
+    facing: Direction;
+};
+
+
+// ============================================================
 // Motion sensors
 // ============================================================
 
@@ -230,6 +272,8 @@ export type Level = {
      */
     tiles: Partial<Record<TileKey, Tile>>;
     items: Item[];
+    /** Solid furniture. Covers whole rectangles of tiles — see `./decorations`. */
+    decorations: Decoration[];
     motionSensors: MotionSensor[];
     robot: RobotConfig;
     options: LevelOptions;

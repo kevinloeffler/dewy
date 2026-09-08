@@ -17,6 +17,7 @@ export type CrashCode =
     | 'robot_gap'
     | 'crate_blocked'
     | 'crate_delivered'
+    | 'obstacle'
     // carrying
     | 'nothing_to_pick'
     | 'already_carrying'
@@ -46,6 +47,7 @@ const MESSAGES: Record<CrashCode, string> = {
     robot_gap:       'Durch diese Lücke passt nur Dewy allein.',
     crate_blocked:   'Die Kiste kann nirgendwohin.',
     crate_delivered: 'Diese Kiste ist schon abgeliefert.',
+    obstacle:        'Da steht etwas im Weg.',
 
     nothing_to_pick:  'Hier gibt es nichts zum Aufheben.',
     already_carrying: 'Dewy trägt schon eine Kiste.',
@@ -62,4 +64,15 @@ const MESSAGES: Record<CrashCode, string> = {
 };
 export function crash(code: CrashCode): CrashReason {
     return { code, message: MESSAGES[code] };
+}
+
+/**
+ * `obstacle`, naming the piece of furniture in the way.
+ *
+ * The generic message above is the fallback nothing should reach: an empty
+ * stretch of floor with a pallet on it reads as a bug unless the crash says
+ * what the pallet was. `name` comes from `DECORATION_NAMES`, article included.
+ */
+export function obstacleCrash(name: string): CrashReason {
+    return { code: 'obstacle', message: `Da steht ${name} im Weg.` };
 }

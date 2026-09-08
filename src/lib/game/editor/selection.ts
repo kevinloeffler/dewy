@@ -1,9 +1,11 @@
 import { BRUSH_LABELS } from './brush';
+import { decorationAt, decorationTiles } from '$lib/game/decorations';
 import { ahead, coordKey, inBounds, parseTileKey, sameCoord, tileAt } from '$lib/game/grid';
 import type {
     CargoConveyorTile,
     ConveyorTile,
     Coord,
+    Decoration,
     Direction,
     Item,
     Level,
@@ -41,6 +43,14 @@ export type Selection =
     | { kind: 'tiles'; label: string; coords: Coord[]; linked: Coord[]; tile: Tile }
     /** A single crate or keycard. Items are never grouped — each is its own. */
     | { kind: 'item'; label: string; coords: Coord[]; linked: Coord[]; item: Item }
+    /** One piece of furniture, with every tile it covers. */
+    | {
+          kind: 'decoration';
+          label: string;
+          coords: Coord[];
+          linked: Coord[];
+          decoration: Decoration;
+      }
     /** The robot's start. Selectable so it can be found, but never deletable. */
     | { kind: 'robot'; label: string; coords: Coord[]; linked: Coord[]; facing: Direction };
 
@@ -76,6 +86,20 @@ export function selectAt(level: Level, coord: Coord): Selection | null {
             coords: [{ x: item.position.x, y: item.position.y }],
             linked: [],
             item,
+        };
+    }
+
+    // Before the robot: furniture is solid, so anything sharing a tile with a
+    // shelf is a mistake the designer is being shown rather than a stack the
+    // click has to choose between.
+    const decoration = decorationAt(level, coord);
+    if (decoration) {
+        return {
+            kind: 'decoration',
+            label: BRUSH_LABELS[decoration.kind],
+            coords: decorationTiles(decoration),
+            linked: [],
+            decoration,
         };
     }
 

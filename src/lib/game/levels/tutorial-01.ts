@@ -47,6 +47,7 @@ export const tutorial01: Level = {
         { kind: 'crate_colour', id: 'crate-red', color: 'red', position: { x: 3, y: 1 } },
         { kind: 'crate_grey', id: 'crate-grey', position: { x: 3, y: 3 } },
     ],
+    decorations: [],
     motionSensors: [],
     robot: { position: { x: 1, y: 4 }, facing: 'north' },
     options: { energy: 15, memory: null, showInventory: false, languageStage: 1 },

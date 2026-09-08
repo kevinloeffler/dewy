@@ -5,8 +5,8 @@ import { nullPlayer, RunCancelled, type EventPlayer } from './events';
 import { validateLevel } from './rules';
 import { tutorial01 } from './levels/tutorial-01';
 import type {
-    BeltControl, Coord, Direction, GoalCondition, Item, Level, MotionSensor, RobotConfig,
-    Tile, TileKey,
+    BeltControl, Coord, Decoration, Direction, GoalCondition, Item, Level, MotionSensor,
+    RobotConfig, Tile, TileKey,
 } from './level';
 
 
@@ -20,6 +20,7 @@ function makeLevel(opts: {
     height?: number;
     tiles?: Partial<Record<TileKey, Tile>>;
     items?: Item[];
+    decorations?: Decoration[];
     motionSensors?: MotionSensor[];
     robot?: RobotConfig;
     goals?: GoalCondition[];
@@ -35,6 +36,7 @@ function makeLevel(opts: {
         height,
         tiles: opts.tiles ?? {},
         items: opts.items ?? [],
+        decorations: opts.decorations ?? [],
         motionSensors: opts.motionSensors ?? [],
         robot: opts.robot ?? { position: { x: 1, y: 1 }, facing: 'east' },
         options: { energy: null, memory: null, showInventory: false, languageStage: 5 },
@@ -110,6 +112,33 @@ describe('moveForward', () => {
             expect(engine.state.failReason).toBe(outcome.reason?.message);
         });
     }
+
+    it('crashes on furniture, naming what is in the way', () => {
+        const engine = new GameEngine(makeLevel({
+            decorations: [
+                { kind: 'shelf', id: 'd1', facing: 'south', position: { x: 2, y: 1 } },
+            ],
+        }));
+        const outcome = engine.moveForward();
+
+        expect(outcome.status).toBe('crash');
+        expect(outcome.reason?.code).toBe('obstacle');
+        expect(outcome.reason?.message).toContain('Regal');
+        expect(shape(outcome)).toEqual([['bump'], ['crash']]);
+        expect(at(engine)).toEqual({ x: 1, y: 1 });
+    });
+
+    it('is stopped by any tile a multi-tile piece covers, not just its corner', () => {
+        // The pallet is anchored at 2,0 and reaches down to 2,1 — the tile the
+        // robot is actually walking into.
+        const engine = new GameEngine(makeLevel({
+            decorations: [
+                { kind: 'pallet', id: 'd1', facing: 'south', position: { x: 2, y: 0 } },
+            ],
+        }));
+
+        expect(engine.moveForward().reason?.code).toBe('obstacle');
+    });
 
     it('crashes at the world edge in every direction', () => {
         for (const facing of ['north', 'east', 'south', 'west'] as const) {
@@ -193,6 +222,23 @@ describe('pushing', () => {
             { kind: 'crate_grey', id: 'c2', position: { x: 4, y: 1 } },
         ]);
         expect(engine.moveForward().reason?.code).toBe('crate_blocked');
+    });
+
+    it('crashes pushing a crate into furniture', () => {
+        // Reported as `crate_blocked` like every other push into something
+        // solid: what the student needs to hear is that the crate has nowhere
+        // to go, not what the crate is up against.
+        const engine = new GameEngine(makeLevel({
+            items: [{ kind: 'crate_grey', id: 'c1', position: { x: 2, y: 1 } }],
+            decorations: [
+                { kind: 'barrel', id: 'd1', facing: 'south', position: { x: 3, y: 1 } },
+            ],
+        }));
+        const outcome = engine.moveForward();
+
+        expect(outcome.status).toBe('crash');
+        expect(outcome.reason?.code).toBe('crate_blocked');
+        expect(engine.state.crates[0].position).toEqual({ x: 2, y: 1 });
     });
 
     it('crashes pushing a crate off the world edge', () => {
@@ -1581,6 +1627,33 @@ describe('validateLevel', () => {
         }));
         expect(problems.join(' ')).toContain('doppelte Objekt-ID');
         expect(problems.join(' ')).toContain('zwei Objekte stehen auf Feld');
+    });
+
+    it('flags furniture the robot or an item is standing inside', () => {
+        const problems = validateLevel(makeLevel({
+            items: [{ kind: 'crate_grey', id: 'c', position: { x: 2, y: 2 } }],
+            decorations: [
+                { kind: 'shelf', id: 'd1', facing: 'south', position: { x: 1, y: 1 } },
+                { kind: 'pallet', id: 'd2', facing: 'south', position: { x: 2, y: 2 } },
+            ],
+        }));
+
+        expect(problems.join(' ')).toContain('Der Roboter startet in einem Deko-Objekt');
+        expect(problems.join(' ')).toContain('steht bei 2,2 in einem Deko-Objekt');
+    });
+
+    it('flags furniture that overlaps, repeats an id or hangs off the grid', () => {
+        const problems = validateLevel(makeLevel({
+            decorations: [
+                { kind: 'barrel', id: 'd1', facing: 'south', position: { x: 3, y: 3 } },
+                { kind: 'cone', id: 'd1', facing: 'south', position: { x: 3, y: 3 } },
+                { kind: 'pallet', id: 'd2', facing: 'south', position: { x: 4, y: 4 } },
+            ],
+        }));
+
+        expect(problems.join(' ')).toContain('doppelte Deko-ID');
+        expect(problems.join(' ')).toContain('stehen zwei Deko-Objekte übereinander');
+        expect(problems.join(' ')).toContain('teilweise ausserhalb des Rasters');
     });
 
     it('flags a keycard for a door that does not exist', () => {

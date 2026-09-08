@@ -10,10 +10,20 @@ import {
 } from './brush';
 import type { Selection } from './selection';
 import type { CrateColor } from '$lib/game/crate-color';
-import { coordKey, inBounds, parseTileKey, sameCoord } from '$lib/game/grid';
+import {
+    canTurn,
+    clampToGrid,
+    decorationCovers,
+    decorationFits,
+    decorationTiles,
+    footprintOf,
+} from '$lib/game/decorations';
+import { coordKey, inBounds, parseTileKey, sameCoord, turn } from '$lib/game/grid';
 import type {
     BeltControl,
     Coord,
+    Decoration,
+    DecorationKind,
     Direction,
     GoalCondition,
     Item,
@@ -249,6 +259,113 @@ export function removeItemAt(level: Level, coord: Coord): Level {
 
 
 // ============================================================
+// Decorations
+// ============================================================
+
+export function nextDecorationId(level: Level): string {
+    const used = new Set(level.decorations.map((decoration) => decoration.id));
+    let n = 1;
+    while (used.has(`deko-${n}`)) n++;
+    return `deko-${n}`;
+}
+
+/**
+ * Where a piece of furniture would stand if it were dropped on `coord`, or
+ * `null` if it would not fit.
+ *
+ * The click names a tile the piece should cover, not its corner: dropping a
+ * three-wide pallet has to put something under the pointer, and hanging it
+ * off to the south-east instead would make placing one a guessing game. So
+ * the footprint is centred on the click, then slid back onto the grid — a
+ * piece nudged against the wall still lands rather than silently doing
+ * nothing. What is refused is an overlap with furniture already there, since
+ * there is no right direction to shove it.
+ *
+ * Split out from `placeDecoration` so the designer's ghost preview asks the
+ * very same question the click will answer: a ghost that showed a placement
+ * the click then refused would be worse than no ghost at all.
+ */
+export function decorationPlacement(
+    level: Level,
+    coord: Coord,
+    kind: DecorationKind,
+    facing: Direction,
+): Decoration | null {
+    if (!inBounds(level, coord)) return null;
+
+    const { width, depth } = footprintOf(kind, facing);
+    const candidate: Decoration = {
+        kind,
+        id: nextDecorationId(level),
+        facing,
+        position: {
+            x: coord.x - Math.floor((width - 1) / 2),
+            y: coord.y - Math.floor((depth - 1) / 2),
+        },
+    };
+
+    const placed = clampToGrid(level, candidate);
+    return decorationFits(level, placed) ? placed : null;
+}
+
+/**
+ * Stand a piece of furniture where the click landed.
+ *
+ * Items on the covered tiles go: those tiles are solid now, and a crate
+ * inside a shelf is a crate nothing can ever reach. The robot is left where
+ * it is and `validateLevel` reports it — a level has exactly one, and
+ * dropping it is not on the table.
+ */
+export function placeDecoration(
+    level: Level,
+    coord: Coord,
+    kind: DecorationKind,
+    facing: Direction,
+): Level {
+    const placed = decorationPlacement(level, coord, kind, facing);
+    if (!placed) return level;
+
+    const covered = new Set(decorationTiles(placed).map(coordKey));
+    return {
+        ...level,
+        decorations: [...level.decorations, placed],
+        items: level.items.filter((item) => !covered.has(coordKey(item.position))),
+    };
+}
+
+/** Take away whatever piece covers `coord` — not only one anchored there. */
+export function removeDecorationAt(level: Level, coord: Coord): Level {
+    const decorations = level.decorations.filter(
+        (decoration) => !decorationCovers(decoration, coord),
+    );
+    if (decorations.length === level.decorations.length) return level;
+    return { ...level, decorations };
+}
+
+/**
+ * Turn a piece where it stands.
+ *
+ * A quarter turn swaps a 3×2 footprint for a 2×3 one, so the result is slid
+ * back onto the grid and then checked against the other furniture — turning a
+ * shelf into its neighbour is refused rather than allowed to overlap.
+ */
+export function turnDecoration(level: Level, id: string, facing: Direction): Level {
+    const current = level.decorations.find((decoration) => decoration.id === id);
+    if (!current || current.facing === facing) return level;
+
+    const turned = clampToGrid(level, { ...current, facing });
+    if (!decorationFits(level, turned, id)) return level;
+
+    return {
+        ...level,
+        decorations: level.decorations.map((decoration) =>
+            decoration.id === id ? turned : decoration,
+        ),
+    };
+}
+
+
+// ============================================================
 // Robot
 // ============================================================
 
@@ -269,10 +386,17 @@ export function applyBrush(level: Level, brush: Brush, coord: Coord): Level {
             return setTile(level, coord, brush.tile);
         case 'item':
             return placeItem(level, coord, brush.item);
+        case 'decoration':
+            return placeDecoration(level, coord, brush.decoration, brush.facing);
         case 'robot':
             return setRobot(level, coord, brush.facing);
         case 'erase':
-            return removeItemAt(clearTile(level, coord), coord);
+            // Furniture is erased on its own: a shelf standing on a goal tile
+            // has to come off without taking the goal with it. Only once the
+            // tile is clear does the eraser reach the tile itself.
+            return level.decorations.some((decoration) => decorationCovers(decoration, coord))
+                ? removeDecorationAt(level, coord)
+                : removeItemAt(clearTile(level, coord), coord);
         case 'select':
             // The select tool edits nothing; the canvas routes its clicks to
             // `selectAt` instead. Listed so the switch stays exhaustive.
@@ -298,7 +422,53 @@ export function deleteSelection(level: Level, selection: Selection): Level {
             const items = level.items.filter((item) => item.id !== selection.item.id);
             return items.length === level.items.length ? level : { ...level, items };
         }
+        case 'decoration': {
+            const id = selection.decoration.id;
+            const decorations = level.decorations.filter((decoration) => decoration.id !== id);
+            return decorations.length === level.decorations.length
+                ? level
+                : { ...level, decorations };
+        }
         case 'robot':
+            return level;
+    }
+}
+
+/**
+ * Turn what is selected a quarter clockwise.
+ *
+ * Not `setSelectionOption` with a turned direction: that would write one
+ * direction onto every tile a selection covers, and a belt run selected round
+ * a corner would come out of it straight. Each tile is turned from the
+ * direction it already had, so a bend stays bent.
+ *
+ * A crate points nowhere, and a symmetrical piece of furniture has no turn
+ * anybody could see — both are left alone rather than quietly rewritten.
+ */
+export function rotateSelection(level: Level, selection: Selection): Level {
+    switch (selection.kind) {
+        case 'tiles': {
+            if (selection.tile.kind !== 'conveyor' && selection.tile.kind !== 'cargo_conveyor') {
+                return level;
+            }
+            return selection.coords.reduce((next, coord) => {
+                const tile = next.tiles[coordKey(coord)];
+                if (tile?.kind !== 'conveyor' && tile?.kind !== 'cargo_conveyor') return next;
+                return setTile(next, coord, { ...tile, direction: turn(tile.direction, 'right') });
+            }, level);
+        }
+
+        case 'decoration': {
+            const piece = selection.decoration;
+            return canTurn(piece.kind)
+                ? turnDecoration(level, piece.id, turn(piece.facing, 'right'))
+                : level;
+        }
+
+        case 'robot':
+            return setRobot(level, level.robot.position, turn(level.robot.facing, 'right'));
+
+        case 'item':
             return level;
     }
 }
@@ -340,6 +510,11 @@ export function setSelectionOption(
                 items: level.items.map((item) => (item.id === current.id ? replacement : item)),
             };
         }
+
+        case 'decoration':
+            return patch.decorationFacing === undefined
+                ? level
+                : turnDecoration(level, selection.decoration.id, patch.decorationFacing);
 
         case 'robot':
             return patch.facing === undefined
@@ -404,6 +579,11 @@ export function resize(level: Level, width: number, height: number): Level {
         height: h,
         tiles,
         items: level.items.filter((item) => within(item.position)),
+        // Lossy the same way, and for the same reason: half a shelf hanging
+        // off the grid is exactly what `validateLevel` would flag.
+        decorations: level.decorations.filter((decoration) =>
+            decorationTiles(decoration).every(within),
+        ),
         robot: {
             ...level.robot,
             position: {
@@ -463,6 +643,7 @@ export function emptyLevel(
         height,
         tiles: {},
         items: [],
+        decorations: [],
         motionSensors: [],
         robot: { position: { x: 0, y: 0 }, facing: 'south' },
         options: { energy: null, memory: null, showInventory: false, languageStage: 1 },

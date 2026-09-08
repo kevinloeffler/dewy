@@ -22,9 +22,11 @@
 		 * authors here rather than per tile, so a dragged belt run stays one belt.
 		 */
 		onstroke: () => void;
+		/** A quarter turn, asked for with the middle mouse button. */
+		onrotate: () => void;
 	}
 
-	let { draft, brush, selection, onselect, onstroke }: Props = $props();
+	let { draft, brush, selection, onselect, onstroke, onrotate }: Props = $props();
 
 	let canvas: HTMLCanvasElement;
 
@@ -33,6 +35,13 @@
 	let world = $state.raw<World | undefined>(undefined);
 
 	const view = createWorldState({ zoom: 7 });
+
+	/**
+	 * The tile under the pointer. Drives both the hover outline and the ghost
+	 * preview, and is kept as state rather than pushed straight at the world so
+	 * both survive the scene being rebuilt after every edit.
+	 */
+	let hovered = $state.raw<Coord | null>(null);
 
 	/** Non-null while the pointer is down, so a drag paints a stroke. */
 	let stroke: 'paint' | 'erase' | null = null;
@@ -60,6 +69,24 @@
 		world?.setSelection(selection?.coords ?? [], selection?.linked ?? []);
 	});
 
+	// The ghost does not: it is measured against the level, so `loadLevel`
+	// drops it. Reading `draft.level` here puts it straight back, which is what
+	// keeps a click from leaving a hole until the pointer next moves. Declared
+	// after the effect above so it runs after the rebuild, not before it.
+	$effect(() => {
+		draft.level;
+		world?.setHighlight(hovered);
+		world?.setGhost(brush, hovered);
+	});
+
+	/** Only a real change, so a pointer wandering inside one tile is free. */
+	function hover(coord: Coord | null) {
+		const same = coord === null
+			? hovered === null
+			: hovered !== null && sameCoord(coord, hovered);
+		if (!same) hovered = coord;
+	}
+
 	function paint(event: PointerEvent, mode: 'paint' | 'erase') {
 		const coord = world?.pickTile(event.clientX, event.clientY) ?? null;
 		if (!coord || (lastPainted && sameCoord(lastPainted, coord))) return;
@@ -69,6 +96,14 @@
 	}
 
 	function onpointerdown(event: PointerEvent) {
+		// Middle button turns whatever is in hand. Preventing the default stops
+		// Chrome opening its autoscroll cursor over the canvas.
+		if (event.button === 1) {
+			event.preventDefault();
+			onrotate();
+			return;
+		}
+
 		if (event.button !== 0 && event.button !== 2) return;
 
 		// Selecting is a click, not a stroke: there is nothing to drag.
@@ -84,7 +119,7 @@
 	}
 
 	function onpointermove(event: PointerEvent) {
-		world?.setHighlight(world.pickTile(event.clientX, event.clientY));
+		hover(world?.pickTile(event.clientX, event.clientY) ?? null);
 		if (stroke) paint(event, stroke);
 	}
 
@@ -109,7 +144,7 @@
 	{onpointermove}
 	onpointerup={endStroke}
 	onpointercancel={endStroke}
-	onpointerleave={() => world?.setHighlight(null)}
+	onpointerleave={() => hover(null)}
 	oncontextmenu={(event) => event.preventDefault()}
 ></canvas>
 

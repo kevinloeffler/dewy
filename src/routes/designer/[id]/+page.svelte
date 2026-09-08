@@ -13,10 +13,16 @@
 		BRUSH_GROUPS,
 		buildBrush,
 		defaultBrushOptions,
+		rotateBrush,
 		type BrushId,
 		type BrushOptions
 	} from '$lib/game/editor/brush';
-	import { armIds, deleteSelection, setSelectionOption } from '$lib/game/editor/operations';
+	import {
+		armIds,
+		deleteSelection,
+		rotateSelection,
+		setSelectionOption
+	} from '$lib/game/editor/operations';
 	import { selectAt } from '$lib/game/editor/selection';
 	import { validateLevel } from '$lib/game/rules';
 	import type { Coord } from '$lib/game/level';
@@ -58,6 +64,22 @@
 		if (!selection) return;
 		const target = selection;
 		draft.edit((level) => setSelectionOption(level, target, patch));
+	}
+
+	/**
+	 * A quarter turn, from the middle mouse button or `R`.
+	 *
+	 * What it turns is whatever the tool in hand is about: with something
+	 * selected it turns that, and otherwise it turns the brush — which the
+	 * ghost preview under the pointer shows straight away.
+	 */
+	function rotate() {
+		if (selection) {
+			const target = selection;
+			draft.edit((level) => rotateSelection(level, target));
+			return;
+		}
+		options = rotateBrush(selected, options);
 	}
 
 	function removeSelection() {
@@ -107,6 +129,12 @@
 			event.preventDefault();
 			if (event.shiftKey) draft.redo();
 			else draft.undo();
+			return;
+		}
+
+		if (event.key === 'r' || event.key === 'R') {
+			event.preventDefault();
+			rotate();
 			return;
 		}
 
@@ -263,6 +291,7 @@
 				{selection}
 				onselect={(coord) => (seed = coord)}
 				onstroke={armBrush}
+				onrotate={rotate}
 			/>
 		</main>
 

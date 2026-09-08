@@ -2,6 +2,8 @@ import { CRATE_COLORS, type CrateColor } from '$lib/game/crate-color';
 import type {
     BeltControl,
     Coord,
+    Decoration,
+    DecorationKind,
     Direction,
     GoalCondition,
     Item,
@@ -285,6 +287,20 @@ function item(value: unknown, path: string): Item {
     }
 }
 
+const DECORATION_KINDS = [
+    'pallet', 'shelf', 'pillar', 'guard_rail', 'barrel', 'cone', 'tool_cart',
+] as const satisfies readonly DecorationKind[];
+
+function decoration(value: unknown, path: string): Decoration {
+    const source = object(value, path);
+    return {
+        kind: literal(field(source, 'kind', path), `${path}.kind`, DECORATION_KINDS),
+        id: string(field(source, 'id', path), `${path}.id`),
+        position: coord(field(source, 'position', path), `${path}.position`),
+        facing: direction(field(source, 'facing', path), `${path}.facing`),
+    };
+}
+
 function motionSensor(value: unknown, path: string): MotionSensor {
     const source = object(value, path);
     return {
@@ -367,6 +383,15 @@ function level(value: unknown, path: string): Level {
         tiles: tiles(field(source, 'tiles', path), `${path}.tiles`),
         items: array(field(source, 'items', path), `${path}.items`).map(
             (entry, i) => item(entry, `${path}.items[${i}]`),
+        ),
+        // Tolerant read: every level stored before the warehouse kit existed
+        // has no `decorations` key and means an empty list. See `optional`.
+        decorations: optional(
+            source,
+            'decorations',
+            path,
+            (value, at) => array(value, at).map((entry, i) => decoration(entry, `${at}[${i}]`)),
+            [],
         ),
         motionSensors: array(
             field(source, 'motionSensors', path),

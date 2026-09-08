@@ -7,6 +7,8 @@ import {
     defaultBrushOptions,
     mintedIdKey,
     itemOptions,
+    rotatableKey,
+    rotateBrush,
     tileOptions,
     type BrushId,
 } from './brush';
@@ -161,5 +163,41 @@ describe('tileOptions', () => {
             ...base,
             targetId: 'door-1',
         });
+    });
+});
+
+
+describe('rotateBrush', () => {
+    it('turns the field that brush actually points with', () => {
+        const base = defaultBrushOptions();
+
+        expect(rotatableKey('conveyor')).toBe('direction');
+        expect(rotatableKey('robot')).toBe('facing');
+        expect(rotatableKey('shelf')).toBe('decorationFacing');
+
+        // …and leaves the other two where they were, so turning a shelf never
+        // spins the robot brush.
+        const turned = rotateBrush('shelf', base);
+        expect(turned.decorationFacing).toBe('west');
+        expect(turned.facing).toBe(base.facing);
+        expect(turned.direction).toBe(base.direction);
+    });
+
+    it('goes clockwise, and all the way round in four', () => {
+        let options = defaultBrushOptions();
+        const seen = [options.direction];
+        for (let i = 0; i < 4; i++) {
+            options = rotateBrush('conveyor', options);
+            seen.push(options.direction);
+        }
+        expect(seen).toEqual(['north', 'east', 'south', 'west', 'north']);
+    });
+
+    it('hands back the very same options for a brush that points nowhere', () => {
+        const base = defaultBrushOptions();
+        for (const id of ['wall', 'crate_grey', 'barrel', 'pillar', 'select'] as BrushId[]) {
+            expect(rotatableKey(id), id).toBeNull();
+            expect(rotateBrush(id, base), id).toBe(base);
+        }
     });
 });
