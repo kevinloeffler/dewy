@@ -182,7 +182,6 @@
 					<path d="M2 2V5.33333H5.33333" />
 				</svg>
 			{/snippet}
-			Zurücksetzen
 		</Button>
 	</div>
 

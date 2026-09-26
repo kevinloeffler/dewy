@@ -107,6 +107,11 @@
 				{ label: context.stage.title },
 			]}
 			counter="{context.index} / {context.total}"
+			next={{
+				href: nextHref,
+				label: context.nextItemId ? 'Weiter' : 'Zurück zum Kurs',
+				pending: nextLocked,
+			}}
 		>
 			{#snippet actions()}
 				{#if prevHref}

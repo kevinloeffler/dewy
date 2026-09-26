@@ -7,7 +7,7 @@
 		type?: 'button' | 'submit' | 'reset';
 		onclick?: (e: MouseEvent) => void;
 		icon?: Snippet;
-		children: Snippet;
+		children?: Snippet;
 	}
 
 	let { variant = 'primary', disabled = false, type = 'button', onclick, icon, children }: Props = $props();
@@ -17,7 +17,9 @@
 	{#if icon}
 		<span class="btn-icon">{@render icon()}</span>
 	{/if}
-	{@render children()}
+	{#if children}
+		{@render children()}
+	{/if}
 </button>
 
 <style>

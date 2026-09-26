@@ -10,6 +10,7 @@
 	import type { GoalCondition, Level } from '$lib/game/level';
 	import { CodeMirrorEditor, Kbd, Topbar } from '$lib/components/index.js';
 	import RunControls from './RunControls.svelte';
+	import LevelComplete from './LevelComplete.svelte';
 
 	interface Props {
 		level: Level;
@@ -25,6 +26,8 @@
 		solved?: boolean;
 		/** Rendered top-right — prev/next navigation. */
 		actions?: Snippet;
+		/** The "Weiter" button on the completion sheet. Left out, it only closes. */
+		next?: { href: string; label: string; pending?: boolean };
 	}
 
 	let props: Props = $props();
@@ -55,7 +58,9 @@
 	let outcome = $state<RunResult | null>(null);
 
 	/** The one place anything goes wrong out loud — the toast over the editor. */
-	let notice = $state<{ kind: 'error' | 'success'; text: string } | null>(null);
+	let notice = $state<{ kind: 'error'; text: string } | null>(null);
+	/** The sheet a solved run opens. Closing it leaves the solved world in view. */
+	let celebrating = $state(false);
 	// Only what the UI still reads: the world itself shows the robot's pose.
 	let hud = $state({
 		/** One flag per `level.goals`, in order. */
@@ -192,6 +197,7 @@
 		activeLine = null;
 		outcome = null;
 		notice = null;
+		celebrating = false;
 		sync();
 	}
 
@@ -223,11 +229,11 @@
 		outcome = result;
 	}
 
-	/** Settles the UI after a run: the toast, the line marker, the score. */
+	/** Settles the UI after a run: the toast or the sheet, the line marker. */
 	function report(result: RunResult) {
 		switch (result.status) {
 			case 'complete':
-				notice = { kind: 'success', text: '★ Level geschafft!' };
+				celebrating = true;
 				// Fires on every completion, not once per mount: recording it is
 				// idempotent, and a student who resets and solves it again should
 				// not silently stop counting.
@@ -362,7 +368,7 @@
 
 				<div class="notice" role="status" aria-live="polite">
 					{#if notice}
-						<p class="toast" class:is-success={notice.kind === 'success'}>{notice.text}</p>
+						<p class="toast">{notice.text}</p>
 					{/if}
 				</div>
 			</div>
@@ -399,6 +405,8 @@
 			</ul>
 		</section>
 	</main>
+
+<LevelComplete bind:open={celebrating} steps={hud.steps} next={props.next} />
 
 <!--	<footer class="footer">-->
 <!--		<p class="hint">-->
@@ -529,10 +537,6 @@
 		font-size: 0.875rem;
 		font-weight: 500;
 		line-height: 1.35;
-	}
-
-	.toast.is-success {
-		--toast: var(--success);
 	}
 
 	/*
