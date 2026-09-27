@@ -671,7 +671,7 @@ export function emptyLevel(
         decorations: [],
         motionSensors: [],
         robot: { position: { x: 0, y: 0 }, facing: 'south' },
-        options: { energy: null, memory: null, showInventory: false, languageStage: 1 },
+        options: { energy: null, memory: null, showInventory: false, languageStage: 5 },
         goals: [],
     };
 }
