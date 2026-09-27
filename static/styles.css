@@ -587,6 +587,14 @@ kbd {
   text-underline-offset: 2px;
 }
 
+.prose img {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  margin: 1em 0;
+  border-radius: calc(var(--radius) - 6px);
+}
+
 .prose strong { font-weight: 700; }
 .prose em     { font-style: italic; }
 

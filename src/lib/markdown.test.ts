@@ -140,7 +140,43 @@ describe('renderMarkdown — inline', () => {
 	});
 });
 
+describe('renderMarkdown — images', () => {
+	const id = '3f2b8c1e-0d4a-4b7e-9a51-2c6f0e8d7b19';
+
+	it('renders an uploaded image', () => {
+		expect(renderMarkdown(`![Ein Käfer](/images/${id})`)).toBe(
+			`<p><img src="/images/${id}" alt="Ein Käfer" loading="lazy" /></p>`
+		);
+	});
+
+	it('refuses any source that is not an upload, rendering it as text', () => {
+		for (const src of [
+			'https://example.com/x.png',
+			'javascript:alert(1)',
+			'data:image/svg+xml,<svg onload=alert(1)>',
+			'/images/../admin',
+			'//evil.example/x.png'
+		]) {
+			expect(renderMarkdown(`![x](${src})`)).not.toContain('<img');
+		}
+	});
+
+	it('escapes the alt text and does not interpret markers inside it', () => {
+		const html = renderMarkdown(`![a" onerror="alert(1) **b**](/images/${id})`);
+		expect(html).not.toContain('" onerror="');
+		expect(html).not.toContain('<strong>');
+	});
+
+	it('is not mistaken for a link', () => {
+		expect(renderMarkdown(`![x](/images/${id})`)).not.toContain('<a');
+	});
+});
+
 describe('markdownExcerpt', () => {
+	it('drops images entirely', () => {
+		expect(markdownExcerpt('Schau: ![Bild](/images/abc) hier.')).toBe('Schau: hier.');
+	});
+
 	it('strips markers and collapses whitespace', () => {
 		expect(markdownExcerpt('# Title\n\nSome **bold** text.')).toBe('Title Some bold text.');
 	});

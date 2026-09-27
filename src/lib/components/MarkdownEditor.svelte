@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { isImageType, MAX_IMAGE_BYTES } from '$lib/images';
 	import { MARKDOWN_FEATURES, renderMarkdown } from '$lib/markdown';
 	import Panel from './Panel.svelte';
 
@@ -22,6 +23,87 @@
 	const preview = $derived(renderMarkdown(value));
 
 	let showHelp = $state(false);
+
+	// ── Image upload by drop or paste ──────────────────────────
+	let textarea = $state<HTMLTextAreaElement>();
+	let dragging = $state(false);
+	let uploadError = $state<string | null>(null);
+	let pendingUploads = 0;
+
+	function imagesIn(files: FileList | null | undefined): File[] {
+		return Array.from(files ?? []).filter((file) => file.type.startsWith('image/'));
+	}
+
+	function hasFiles(event: DragEvent): boolean {
+		return event.dataTransfer?.types.includes('Files') ?? false;
+	}
+
+	function ondragover(event: DragEvent) {
+		if (!hasFiles(event)) return;
+		event.preventDefault();
+		if (event.dataTransfer) event.dataTransfer.dropEffect = 'copy';
+		dragging = true;
+	}
+
+	function ondrop(event: DragEvent) {
+		dragging = false;
+		const files = imagesIn(event.dataTransfer?.files);
+		if (files.length === 0) return;
+		event.preventDefault();
+		// A drop moves the caret to the drop point before this fires, so the
+		// selection is where the image belongs.
+		insertImages(files);
+	}
+
+	function onpaste(event: ClipboardEvent) {
+		const files = imagesIn(event.clipboardData?.files);
+		if (files.length === 0) return;
+		event.preventDefault();
+		insertImages(files);
+	}
+
+	function insertImages(files: File[]) {
+		uploadError = null;
+		const at = textarea?.selectionStart ?? value.length;
+
+		const placeholders = files.map((file) => `![Wird hochgeladen: ${altFor(file)} #${++pendingUploads}]()`);
+		const inserted = placeholders.join('\n');
+		value = value.slice(0, at) + inserted + value.slice(textarea?.selectionEnd ?? at);
+
+		files.forEach((file, i) => upload(file, placeholders[i]));
+	}
+
+	async function upload(file: File, placeholder: string) {
+		const replace = (text: string) => (value = value.replace(placeholder, text));
+
+		if (!isImageType(file.type)) {
+			replace('');
+			uploadError = 'Nur PNG, JPEG, GIF und WebP werden unterstützt.';
+			return;
+		}
+		if (file.size > MAX_IMAGE_BYTES) {
+			replace('');
+			uploadError = `«${file.name}» ist zu gross (max. ${MAX_IMAGE_BYTES / 1024 / 1024} MB).`;
+			return;
+		}
+
+		const body = new FormData();
+		body.append('file', file);
+		try {
+			const response = await fetch('/api/images', { method: 'POST', body });
+			const result = await response.json().catch(() => null);
+			if (!response.ok) throw new Error(result?.message ?? 'Das Hochladen ist fehlgeschlagen.');
+			replace(`![${altFor(file)}](${result.url})`);
+		} catch (cause) {
+			replace('');
+			uploadError = cause instanceof Error ? cause.message : 'Das Hochladen ist fehlgeschlagen.';
+		}
+	}
+
+	/** The file name without its extension, minus characters that would end the alt text. */
+	function altFor(file: File): string {
+		return file.name.replace(/\.[^.]+$/, '').replace(/[[\]]/g, '') || 'Bild';
+	}
 </script>
 
 <div class="split">
@@ -41,10 +123,20 @@
 			</ul>
 		{/if}
 
+		{#if uploadError}
+			<p class="upload-error" role="alert">{uploadError}</p>
+		{/if}
+
 		<textarea
 			class="source"
+			class:dragging
 			style:min-height={minHeight}
+			bind:this={textarea}
 			bind:value
+			{ondragover}
+			ondragleave={() => (dragging = false)}
+			{ondrop}
+			{onpaste}
 			spellcheck="true"
 			{placeholder}
 		></textarea>
@@ -107,6 +199,17 @@
 		border-radius: calc(var(--radius) - 6px);
 		padding: 9px 12px;
 		resize: vertical;
+	}
+
+	.source.dragging {
+		outline: 2px dashed var(--accent);
+		outline-offset: 1px;
+	}
+
+	.upload-error {
+		margin: 0;
+		font-size: 12px;
+		color: var(--danger);
 	}
 
 	.source:focus-visible {

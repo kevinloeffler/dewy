@@ -1,4 +1,5 @@
 import {
+	blob,
 	check,
 	index,
 	integer,
@@ -337,5 +338,24 @@ export const levelShare = sqliteTable(
 		index('level_share_teacher_idx').on(t.teacherId)
 	]
 );
+
+/**
+ * An image a teacher dropped into a markdown editor, served at `/images/[id]`.
+ *
+ * The bytes live in the database rather than on disk so the one `/data` volume
+ * stays the whole backup. Content refers to an image by URL only, which is why
+ * copying or sharing a course needs no image bookkeeping — and why nothing here
+ * is deleted when the text that used it changes: a copy or an undo may still
+ * point at it. `owner_id` is provenance, not permission; serving is public by
+ * unguessable id, just as published courses are readable without signing in.
+ */
+export const image = sqliteTable('image', {
+	id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+	ownerId: text('owner_id').references(() => user.id, { onDelete: 'set null' }),
+	mime: text('mime').notNull(),
+	bytes: blob('bytes', { mode: 'buffer' }).notNull(),
+	size: integer('size').notNull(),
+	createdAt: integer('created_at', { mode: 'timestamp' }).notNull().$defaultFn(() => new Date())
+});
 
 export * from './auth.schema';

@@ -28,9 +28,12 @@ FROM node:26-alpine
 
 WORKDIR /app
 
+# BODY_SIZE_LIMIT: adapter-node refuses bodies over 512K by default, which
+# would reject most image uploads (capped at 5 MB in `$lib/images`).
 ENV NODE_ENV=production \
 	PORT=3000 \
-	DATABASE_URL=/data/dewy.db
+	DATABASE_URL=/data/dewy.db \
+	BODY_SIZE_LIMIT=6M
 
 COPY --from=build /app/package.json ./
 COPY --from=build /app/node_modules ./node_modules

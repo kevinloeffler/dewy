@@ -31,6 +31,7 @@ export const MARKDOWN_FEATURES: readonly MarkdownFeature[] = [
 	{ syntax: '1. Eintrag', result: 'Eine nummerierte Liste' },
 	{ syntax: '> Zitat', result: 'Ein Zitatblock' },
 	{ syntax: '[Text](https://…)', result: 'Ein Link' },
+	{ syntax: '![Beschreibung](/images/…)', result: 'Ein Bild — zum Hochladen hineinziehen' },
 	{ syntax: '---', result: 'Eine Trennlinie' }
 ];
 
@@ -66,6 +67,16 @@ function safeHref(url: string): string | null {
 	return null;
 }
 
+/**
+ * Image sources are stricter than links: only images uploaded to this site.
+ * An external `src` would load on every student's page view — a tracking pixel
+ * the teacher may not even have meant — so it renders as text instead.
+ */
+function safeImageSrc(url: string): string | null {
+	const trimmed = url.trim();
+	return /^\/images\/[A-Za-z0-9-]+$/.test(trimmed) ? trimmed : null;
+}
+
 // ============================================================
 // Inline
 // ============================================================
@@ -92,6 +103,21 @@ function inline(escaped: string): string {
 			if (end !== -1) {
 				out += `<code>${escaped.slice(i + 1, end)}</code>`;
 				i = end + 1;
+				continue;
+			}
+		}
+
+		// Before links, so the `[` after `!` is never read as one.
+		if (rest.startsWith('![')) {
+			const match = /^!\[([^\]]*)\]\(([^)\s]*)\)/.exec(rest);
+			if (match) {
+				const src = safeImageSrc(match[2]);
+				// `alt` is already escaped and is not run through `inline`: an
+				// attribute has no markup to render.
+				out += src
+					? `<img src="${src}" alt="${match[1]}" loading="lazy" />`
+					: escapeHtml(`![${unescapeForText(match[1])}](${unescapeForText(match[2])})`);
+				i += match[0].length;
 				continue;
 			}
 		}
@@ -313,6 +339,7 @@ export function markdownExcerpt(source: string, max = 140): string {
 		})
 		.join(' ')
 		// Strip the markers themselves — this is for a plain-text preview.
+		.replace(/!\[[^\]]*\]\([^)]*\)/g, '')
 		.replace(/[*_`]/g, '')
 		.replace(/\[([^\]]*)\]\([^)]*\)/g, '$1')
 		.replace(/\s+/g, ' ')

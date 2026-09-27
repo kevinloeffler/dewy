@@ -48,6 +48,8 @@ npm run auth:schema  # regenerate auth schema from better-auth config
 
 **Course sharing:** a **clone** is a live read-only link (`course_share` / `level_share`) — the owner's later edits reach the recipient, who can assign it to classes but never edit it. A **copy** is `duplicateCourse` / `copyLevel`: a deep duplicate the recipient owns, with `copiedFromId` kept as provenance. A borrowed level hangs off `stage_item.linked_level_id` rather than `level.item_id`, which preserves the `UNIQUE` "owned by exactly one stage" guarantee; deleting a course, stage or item that owns a level somebody is borrowing is refused with a message rather than a foreign-key error.
 
+**Images:** teachers drop or paste images into `MarkdownEditor`, which POSTs to `/api/images` and inserts `![alt](/images/<id>)`. Bytes are a BLOB in the `image` table (so `/data/dewy.db` stays the whole backup) and are served publicly by unguessable id from `/images/[id]`. The type is sniffed from magic bytes (`$lib/images`), never trusted from the browser, and SVG is refused. `renderMarkdown` only renders `/images/…` sources, so there are no external tracking pixels. `/api/images` checks the role itself, since no layout guard reaches a `+server.ts`. Images are never deleted automatically: copies and undo may still reference them.
+
 **Database:** `src/lib/server/db/index.ts` creates the Drizzle client with better-sqlite3. `src/lib/server/db/schema.ts` is the single source of truth for app tables; it re-exports `auth.schema.ts`. The DB file path comes from `DATABASE_URL` env var (defaults to `local.db` for local dev).
 
 **Migrations:** `drizzle/` holds the migration history, starting at `0000_init`. The production container runs `scripts/migrate.js` before the server starts, so **every schema change must be committed as a migration** (`npm run db:generate`) — a change applied only with `db:push` never reaches a deployed database. A database created by `db:push` has the tables but no history; `npm run db:baseline` records `0000_init` as applied once, and `migrate.js` refuses such a database otherwise. `drizzle-orm` is a runtime dependency (not dev) because that script runs in the image.
@@ -56,5 +58,6 @@ npm run auth:schema  # regenerate auth schema from better-auth config
 - `DATABASE_URL` — path to SQLite file
 - `ORIGIN` — used as better-auth `baseURL`
 - `BETTER_AUTH_SECRET` — 32-char high-entropy secret for production
+- `BODY_SIZE_LIMIT` — adapter-node request cap; `Dockerfile.prod` sets `6M` for image uploads
 
 **Deployment:** `Dockerfile.prod` builds the production image (adapter-node, `node build` on port 3000, SQLite at `/data/dewy.db` — mount a volume there); `.github/workflows/docker.yml` builds it on PRs and pushes it to GHCR from `main` and `v*` tags. `dockerfile` + `docker-compose.yml` are the dev setup only (`vite dev`).
