@@ -138,6 +138,12 @@
 			return;
 		}
 
+		if (!meta && (event.key === 'd' || event.key === 'D')) {
+			event.preventDefault();
+			selected = 'erase';
+			return;
+		}
+
 		if (selection && (event.key === 'Backspace' || event.key === 'Delete')) {
 			event.preventDefault();
 			removeSelection();
@@ -145,9 +151,10 @@
 		}
 
 		if (event.key === 'Escape') {
-			// One Escape drops the selection, a second reaches for the eraser.
-			if (selection) seed = null;
-			else selected = 'erase';
+			// Escape puts the brush down: back to the selection tool, empty-handed.
+			// The seed is cleared too, or a stale one would resurrect an old selection.
+			seed = null;
+			selected = 'select';
 			return;
 		}
 
