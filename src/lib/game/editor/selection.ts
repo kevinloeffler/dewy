@@ -7,6 +7,7 @@ import type {
     Coord,
     Decoration,
     Direction,
+    FloorTile,
     Item,
     Level,
     PressurePlateTile,
@@ -39,8 +40,11 @@ import type {
  * settings it was authored with without going back to the level for them.
  */
 export type Selection =
-    /** A run of tiles that reads as one object. Always at least one coord. */
-    | { kind: 'tiles'; label: string; coords: Coord[]; linked: Coord[]; tile: Tile }
+    /**
+     * A run of tiles that reads as one object. Always at least one coord, and
+     * never floor — bare floor selects nothing.
+     */
+    | { kind: 'tiles'; label: string; coords: Coord[]; linked: Coord[]; tile: Exclude<Tile, FloorTile> }
     /** A single crate or keycard. Items are never grouped — each is its own. */
     | { kind: 'item'; label: string; coords: Coord[]; linked: Coord[]; item: Item }
     /** One piece of furniture, with every tile it covers. */

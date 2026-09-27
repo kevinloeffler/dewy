@@ -6,6 +6,7 @@
 	import DesignerCanvas from '$lib/components/designer/DesignerCanvas.svelte';
 	import GoalEditor from '$lib/components/designer/GoalEditor.svelte';
 	import LevelInspector from '$lib/components/designer/LevelInspector.svelte';
+	import OptionsSheet from '$lib/components/designer/OptionsSheet.svelte';
 	import TilePalette from '$lib/components/designer/TilePalette.svelte';
 	import ValidationList from '$lib/components/designer/ValidationList.svelte';
 	import { createLevelDraft } from '$lib/game/editor/draft.svelte';
@@ -41,7 +42,7 @@
 	const sharedWith = $derived(new Set(data.shares.map((row) => row.teacherId)));
 	const shareable = $derived(data.teachers.filter((row) => !sharedWith.has(row.id)));
 
-	let selected = $state<BrushId>('wall');
+	let selected = $state<BrushId>('select');
 	let options = $state(defaultBrushOptions());
 	let brush = $derived(buildBrush(selected, options));
 
@@ -280,14 +281,7 @@
 	<div class="editor">
 		<aside class="column">
 			<Panel padding="sm">
-				<TilePalette
-					level={draft.level}
-					bind:selected
-					bind:options
-					{selection}
-					onedit={editSelection}
-					ondelete={removeSelection}
-				/>
+				<TilePalette level={draft.level} bind:selected bind:options />
 			</Panel>
 		</aside>
 
@@ -299,6 +293,14 @@
 				onselect={(coord) => (seed = coord)}
 				onstroke={armBrush}
 				onrotate={rotate}
+			/>
+			<OptionsSheet
+				level={draft.level}
+				{selected}
+				bind:options
+				{selection}
+				onedit={editSelection}
+				ondelete={removeSelection}
 			/>
 		</main>
 
@@ -420,6 +422,8 @@
 	}
 
 	.stage {
+		/* Anchors the floating `OptionsSheet`. */
+		position: relative;
 		min-width: 0;
 		min-height: 0;
 	}

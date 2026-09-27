@@ -99,7 +99,7 @@
 	</div>
 
 	{#if bays.length === 0}
-		<p class="hint">Mal eine Abgabestelle, um ein Lieferziel hinzuzufügen.</p>
+		<p class="hint">Platziere eine Abgabestelle, um ein Lieferziel hinzuzufügen.</p>
 	{/if}
 </div>
 

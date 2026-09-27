@@ -495,7 +495,8 @@ export function setSelectionOption(
         case 'tiles':
             return selection.coords.reduce((next, coord) => {
                 const tile = next.tiles[coordKey(coord)];
-                if (!tile) return next;
+                // Bare floor has no settings to change.
+                if (!tile || tile.kind === 'floor') return next;
 
                 const brush = buildBrush(tile.kind, { ...tileOptions(tile), ...patch });
                 return brush.kind === 'tile' ? setTile(next, coord, brush.tile) : next;

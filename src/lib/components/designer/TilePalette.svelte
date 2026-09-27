@@ -1,89 +1,90 @@
 <script lang="ts">
 	import { CRATE_COLORS, type CrateColor } from '$lib/game/crate-color';
 	import { COLORS } from '$lib/game/models/tiles';
-	import { DECORATION_SWATCHES } from '$lib/game/models/warehouse';
 	import ChevronDown from '@lucide/svelte/icons/chevron-down';
-	import OptionFields from './OptionFields.svelte';
-	import { armIds, nextBeltId } from '$lib/game/editor/operations';
+	import ArrowBigRightDash from '@lucide/svelte/icons/arrow-big-right-dash';
+	import Bot from '@lucide/svelte/icons/bot';
+	import BrickWall from '@lucide/svelte/icons/brick-wall';
+	import ChevronsRight from '@lucide/svelte/icons/chevrons-right';
+	import Cuboid from '@lucide/svelte/icons/cuboid';
+	import Cylinder from '@lucide/svelte/icons/cylinder';
+	import DoorClosed from '@lucide/svelte/icons/door-closed';
+	import Eraser from '@lucide/svelte/icons/eraser';
+	import Fence from '@lucide/svelte/icons/fence';
+	import Flag from '@lucide/svelte/icons/flag';
+	import Footprints from '@lucide/svelte/icons/footprints';
+	import Inbox from '@lucide/svelte/icons/inbox';
+	import KeyRound from '@lucide/svelte/icons/key-round';
+	import Layers from '@lucide/svelte/icons/layers';
+	import LibraryBig from '@lucide/svelte/icons/library-big';
+	import MousePointer2 from '@lucide/svelte/icons/mouse-pointer-2';
+	import Package from '@lucide/svelte/icons/package';
+	import PanelBottomOpen from '@lucide/svelte/icons/panel-bottom-open';
+	import SquareDashed from '@lucide/svelte/icons/square-dashed';
+	import ToggleLeft from '@lucide/svelte/icons/toggle-left';
+	import Toolbox from '@lucide/svelte/icons/toolbox';
+	import TrafficCone from '@lucide/svelte/icons/traffic-cone';
+	import { armIds } from '$lib/game/editor/operations';
 	import {
 		BRUSH_GROUPS,
 		BRUSH_LABELS,
 		TOOL_IDS,
-		brushOptionKeys,
-		decorationOptions,
-		defaultBrushOptions,
-		itemOptions,
-		tileOptions,
 		type BrushId,
 		type BrushOptions
 	} from '$lib/game/editor/brush';
-	import type { Selection } from '$lib/game/editor/selection';
 	import type { Level } from '$lib/game/level';
 
 	interface Props {
 		level: Level;
 		selected: BrushId;
+		/** The brush settings live in `OptionsSheet`; the palette only re-arms ids. */
 		options: BrushOptions;
-		/** What the select tool has picked, if it is the active tool. */
-		selection: Selection | null;
-		/** One changed setting on the selection — applied to every tile it covers. */
-		onedit: (patch: Partial<BrushOptions>) => void;
-		ondelete: () => void;
 	}
 
-	let {
-		level,
-		selected = $bindable(),
-		options = $bindable(),
-		selection,
-		onedit,
-		ondelete
-	}: Props = $props();
+	let { level, selected = $bindable(), options = $bindable() }: Props = $props();
 
 	const hex = (value: number) => `#${value.toString(16).padStart(6, '0')}`;
 
-	// Mirrors the palette in `models/tiles.ts` so a brush looks like the tile
-	// it paints. The robot and keycard are not tiles and carry their own.
-	const SWATCHES: Record<BrushId, string> = {
-		floor: hex(COLORS.floorLight),
-		pit: hex(COLORS.void),
-		wall: hex(COLORS.wall),
-		robot_gap: hex(COLORS.wall),
-		goal: hex(COLORS.goal),
-		conveyor: hex(COLORS.conveyor),
-		cargo_conveyor: hex(COLORS.cargo),
-		door: hex(COLORS.door),
-		pressure_plate: hex(COLORS.plate),
-		switch: hex(COLORS.lever),
-		drop_off: hex(COLORS.goal),
-		crate_grey: hex(CRATE_COLORS.grey),
-		crate_colour: hex(CRATE_COLORS.red),
-		keycard: '#f0c419',
-		pallet: hex(DECORATION_SWATCHES.pallet),
-		shelf: hex(DECORATION_SWATCHES.shelf),
-		pillar: hex(DECORATION_SWATCHES.pillar),
-		guard_rail: hex(DECORATION_SWATCHES.guard_rail),
-		barrel: hex(DECORATION_SWATCHES.barrel),
-		cone: hex(DECORATION_SWATCHES.cone),
-		tool_cart: hex(DECORATION_SWATCHES.tool_cart),
-		robot: '#ff9600',
-		select: 'transparent',
-		erase: 'transparent'
+	const ICONS: Record<BrushId, typeof Package> = {
+		pit: SquareDashed,
+		wall: BrickWall,
+		robot_gap: PanelBottomOpen,
+		goal: Flag,
+		conveyor: ChevronsRight,
+		cargo_conveyor: ArrowBigRightDash,
+		door: DoorClosed,
+		pressure_plate: Footprints,
+		switch: ToggleLeft,
+		drop_off: Inbox,
+		crate_grey: Package,
+		crate_colour: Package,
+		keycard: KeyRound,
+		pallet: Layers,
+		shelf: LibraryBig,
+		pillar: Cuboid,
+		guard_rail: Fence,
+		barrel: Cylinder,
+		cone: TrafficCone,
+		tool_cart: Toolbox,
+		robot: Bot,
+		select: MousePointer2,
+		erase: Eraser
 	};
 
-	// Two brushes wear the colour they are currently set to.
-	const swatch = (id: BrushId) => {
+	// Two brushes wear the colour they are currently set to, and the goal the
+	// green it has in the level; the rest take the text colour, so no light
+	// tile colour is lost against the panel.
+	const tint = (id: BrushId) => {
+		if (id === 'goal') return hex(COLORS.goal);
 		if (id === 'crate_colour') return hex(CRATE_COLORS[options.crateColor]);
-		if (id === 'drop_off') {
-			return options.bayColor ? hex(CRATE_COLORS[options.bayColor]) : hex(COLORS.goal);
-		}
-		return SWATCHES[id];
+		if (id === 'drop_off' && options.bayColor) return hex(CRATE_COLORS[options.bayColor]);
+		return undefined;
 	};
 
-	let optionKeys = $derived(brushOptionKeys(selected, options));
-
-	/** Groups the author has folded away, by title. Every group starts open. */
-	let collapsed = $state<Record<string, boolean>>({});
+	/** Groups the author has folded away, by title. */
+	let collapsed = $state<Record<string, boolean>>(
+		Object.fromEntries(BRUSH_GROUPS.map((group) => [group.title, group.collapsed ?? false]))
+	);
 
 	/**
 	 * Picking a brush re-arms the id it would author, so the next door painted
@@ -93,110 +94,26 @@
 		selected = id;
 		options = armIds(level, id, options);
 	}
-
-	/**
-	 * The same on a changed setting — switching a belt's drive on has to find
-	 * it a free id. Except when the change *is* an id: that is the author
-	 * saying "this one joins that belt", and is not to be second-guessed.
-	 */
-	function changeOption(patch: Partial<BrushOptions>) {
-		const next = { ...options, ...patch };
-		options =
-			patch.beltId === undefined && patch.doorId === undefined
-				? armIds(level, selected, next)
-				: next;
-	}
-
-	/**
-	 * The selected thing as the option fields want it: which settings to show,
-	 * and the values it was authored with. The same controls the brushes use,
-	 * so a switch offers its link whether you are about to paint one or are
-	 * looking at one.
-	 */
-	let selectedThing = $derived.by(() => {
-		if (!selection) return null;
-		switch (selection.kind) {
-			case 'tiles': {
-				// A belt with no drive yet is offered a *free* belt id, so
-				// switching one on cannot quietly enrol it in `belt-1`.
-				const base = { ...defaultBrushOptions(), beltId: nextBeltId(level) };
-				return { id: selection.tile.kind, options: tileOptions(selection.tile, base) };
-			}
-			case 'item':
-				return { id: selection.item.kind, options: itemOptions(selection.item) };
-			case 'decoration':
-				return {
-					id: selection.decoration.kind,
-					options: decorationOptions(selection.decoration, options)
-				};
-			case 'robot':
-				return { id: 'robot' as const, options: { ...options, facing: selection.facing } };
-		}
-	});
 </script>
 
 {#snippet brushButton(id: BrushId)}
+	{@const Icon = ICONS[id]}
 	<button class="brush" class:active={selected === id} type="button" onclick={() => pick(id)}>
-		<span
-			class="swatch"
-			class:empty={id === 'erase'}
-			class:marquee={id === 'select'}
-			style="background: {swatch(id)}"
-		></span>
+		<Icon size={16} class="brush-icon" color={tint(id)} />
 		{BRUSH_LABELS[id]}
 	</button>
 {/snippet}
 
 <div class="palette">
-	<!-- Pinned above the groups, so the select tool and the eraser are one
-	     click away however far down the list has been scrolled. -->
-	<div class="tools">
-		{#each TOOL_IDS as id (id)}
-			{@render brushButton(id)}
-		{/each}
+	<!-- Pinned above the groups, so the tools stay in reach however far down
+	     the list has been scrolled. -->
+	<div class="pinned">
+		<div class="tools">
+			{#each TOOL_IDS as id (id)}
+				{@render brushButton(id)}
+			{/each}
+		</div>
 	</div>
-
-	{#if selected === 'select'}
-		<div class="group options">
-			<h3 class="group-title">Auswahl</h3>
-
-			{#if selection && selectedThing}
-				<p class="selected-thing">
-					{selection.label}
-					{#if selection.linked.length > 0}
-						<span class="count">steuert {selection.linked.length}</span>
-					{:else if selection.coords.length > 1}
-						<span class="count">{selection.coords.length} Felder</span>
-					{/if}
-				</p>
-
-				<!-- The same controls the brushes use, writing to what is selected
-				     instead of to the next thing painted. -->
-				<OptionFields {level} id={selectedThing.id} options={selectedThing.options} onchange={onedit} />
-
-				{#if selection.kind === 'robot'}
-					<p class="hint">Jedes Level behält seinen Roboter — verschieb ihn mit dem Pinsel „Roboter-Start“.</p>
-				{:else}
-					<button class="btn btn-ghost danger-btn" type="button" onclick={ondelete}>
-						Löschen (⌫)
-					</button>
-				{/if}
-			{:else}
-				<p class="hint">
-					Klick etwas an, um es auszuwählen. Ein Band, eine Tür oder eine Wand kommt als Ganzes, und
-					ein Schalter bringt mit, was er steuert.
-				</p>
-			{/if}
-		</div>
-	{/if}
-
-	{#if optionKeys.length > 0}
-		<div class="group options">
-			<h3 class="group-title">Optionen für {BRUSH_LABELS[selected]}</h3>
-
-			<OptionFields {level} id={selected} {options} onchange={changeOption} />
-		</div>
-	{/if}
 
 	{#each BRUSH_GROUPS as group (group.title)}
 		{@const open = !collapsed[group.title]}
@@ -221,7 +138,9 @@
 	{/each}
 
 	<p class="hint footnote">
-		Ziehen zum Malen · Rechtsklick zum Radieren · <kbd>R</kbd> oder mittlere Maustaste zum Drehen
+		Klick/drag zum platzieren<br>
+		Rechtsklick zum Radieren<br>
+		<kbd>R</kbd> zum Drehen
 	</p>
 </div>
 
@@ -232,23 +151,24 @@
 		gap: 18px;
 	}
 
-	.tools {
+	.pinned {
 		position: sticky;
 		/* Flush with the scrolling column's top edge, over the panel padding. */
-		top: -12px;
+		top: 2px;
 		z-index: 1;
 		display: flex;
-		gap: 4px;
+		flex-direction: column;
 		margin: -12px -12px 0;
-		padding: 12px 12px 10px;
+		padding: 12px 12px 0;
 		border-bottom: 1px solid var(--panel-border);
 		border-radius: var(--radius) var(--radius) 0 0;
 		background: var(--panel);
 	}
 
-	.tools .brush {
-		flex: 1;
-		min-width: 0;
+	.tools {
+		display: flex;
+		flex-direction: column;
+		padding-bottom: 4px;
 	}
 
 	.group-toggle {
@@ -293,7 +213,6 @@
 	.brushes {
 		display: flex;
 		flex-direction: column;
-		gap: 2px;
 	}
 
 	.brush {
@@ -324,48 +243,13 @@
 		font-weight: 600;
 	}
 
-	.swatch {
-		width: 14px;
-		height: 14px;
+	.brush :global(.brush-icon) {
 		flex: none;
-		border-radius: 4px;
-		box-shadow: inset 0 0 0 1px rgb(0 0 0 / 0.15);
+		color: var(--text-muted);
 	}
 
-	.swatch.empty {
-		box-shadow: inset 0 0 0 1px var(--danger);
-	}
-
-	.swatch.marquee {
-		border: 1px dashed var(--accent);
-		box-shadow: none;
-	}
-
-	.selected-thing {
-		display: flex;
-		align-items: baseline;
-		justify-content: space-between;
-		gap: 8px;
-		margin: 0 0 10px;
-		font-size: 13px;
-		font-weight: 600;
-		color: var(--text);
-	}
-
-	.count {
-		font-size: 12px;
-		font-weight: 400;
-		color: var(--text-faint);
-	}
-
-	.danger-btn {
-		width: 100%;
-		color: var(--danger);
-	}
-
-	.options {
-		padding-bottom: 14px;
-		border-bottom: 1px solid var(--panel-border);
+	.brush.active :global(.brush-icon) {
+		color: var(--accent);
 	}
 
 	.hint {

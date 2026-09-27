@@ -55,7 +55,7 @@ export type Brush =
 // ============================================================
 
 export type BrushId =
-    | 'floor' | 'wall' | 'pit' | 'robot_gap' | 'goal'
+    | 'wall' | 'pit' | 'robot_gap' | 'goal'
     | 'conveyor' | 'cargo_conveyor' | 'door' | 'pressure_plate' | 'switch' | 'drop_off'
     | 'crate_grey' | 'crate_colour' | 'keycard'
     | DecorationKind
@@ -127,22 +127,24 @@ export function defaultBrushOptions(): BrushOptions {
     };
 }
 
-export const BRUSH_GROUPS: { title: string; ids: BrushId[] }[] = [
+export const BRUSH_GROUPS: { title: string; ids: BrushId[]; collapsed?: boolean }[] = [
     {
-        title: 'Boden',
-        ids: ['floor', 'pit', 'conveyor', 'cargo_conveyor', 'goal', 'drop_off'],
+        title: 'Aufgabe',
+        ids: ['goal', 'drop_off', 'crate_colour', 'crate_grey', 'robot'],
     },
     {
-        title: 'Aufbau',
-        ids: ['wall', 'robot_gap', 'door', 'switch', 'pressure_plate'],
+        title: 'Items',
+        ids: ['keycard', 'conveyor', 'cargo_conveyor'],
     },
     {
-        title: 'Inhalt',
-        ids: ['crate_grey', 'crate_colour', 'keycard', 'robot'],
+        title: 'Hindernisse',
+        ids: ['pit', 'wall', 'robot_gap', 'door', 'switch', 'pressure_plate'],
     },
     {
         title: 'Deko',
         ids: [...DECORATION_IDS],
+        /** Starts folded: furniture is the last thing a level needs. */
+        collapsed: true,
     },
 ];
 
@@ -154,14 +156,13 @@ export const BRUSH_GROUPS: { title: string; ids: BrushId[] }[] = [
 export const TOOL_IDS: BrushId[] = ['select', 'erase'];
 
 export const BRUSH_LABELS: Record<BrushId, string> = {
-    floor: 'Boden',
     wall: 'Wand',
     pit: 'Loch',
-    robot_gap: 'Roboterlücke',
+    robot_gap: 'Lücke',
     goal: 'Ziel',
     conveyor: 'Förderband',
     cargo_conveyor: 'Kistenband',
-    door: 'Tür',
+    door: 'Türe',
     pressure_plate: 'Druckplatte',
     switch: 'Schalter',
     drop_off: 'Abgabestelle',
@@ -329,7 +330,6 @@ export function buildBrush(id: BrushId, options: BrushOptions): Brush {
     }
 
     switch (id) {
-        case 'floor':
         case 'wall':
         case 'pit':
         case 'robot_gap':
