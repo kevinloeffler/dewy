@@ -8,6 +8,7 @@
 	import { draggable, droppable, type DragDropState } from '@thisux/sveltednd';
 	import { autosave, SaveTracker } from '$lib/autosave.svelte.js';
 	import { Button, Callout, Modal } from '$lib/components/index.js';
+	import { dismiss } from '$lib/dismiss.js';
 	import type { ActionData, PageServerData } from './$types';
 
 	let { data, form }: { data: PageServerData; form: ActionData } = $props();
@@ -470,7 +471,12 @@
 <!-- ── Dialogs ─────────────────────────────────────────────── -->
 
 <Modal bind:open={addingStage} title="Neues Kapitel">
-	<form class="dialog-form" method="POST" action="?/addStage" use:enhance>
+	<form
+		class="dialog-form"
+		method="POST"
+		action="?/addStage"
+		use:enhance={dismiss(() => (addingStage = false))}
+	>
 		<label class="field-label" for="new-stage-title">Kapitelname</label>
 		<input
 			class="field"
@@ -487,7 +493,12 @@
 </Modal>
 
 <Modal open={addingLevel !== null} title="Neues Level" onclose={() => (addingLevel = null)}>
-	<form class="dialog-form" method="POST" action="?/addLevel" use:enhance>
+	<form
+		class="dialog-form"
+		method="POST"
+		action="?/addLevel"
+		use:enhance={dismiss(() => (addingLevel = null))}
+	>
 		<input type="hidden" name="stageId" value={addingLevel} />
 		<label class="field-label" for="new-level-name">Levelname</label>
 		<input
@@ -505,7 +516,11 @@
 	</form>
 
 	{#if data.sharedLevels.length > 0}
-		<form class="dialog-form borrow" method="POST" use:enhance>
+		<form
+			class="dialog-form borrow"
+			method="POST"
+			use:enhance={dismiss(() => (addingLevel = null))}
+		>
 			<input type="hidden" name="stageId" value={addingLevel} />
 			<label class="field-label" for="borrow-level">Oder ein geteiltes Level übernehmen</label>
 			<select class="field" id="borrow-level" name="levelId" bind:value={borrowed}>
@@ -541,7 +556,12 @@
 </Modal>
 
 <Modal open={addingTheory !== null} title="Neuer Theorieblock" onclose={() => (addingTheory = null)}>
-	<form class="dialog-form" method="POST" action="?/addTheory" use:enhance>
+	<form
+		class="dialog-form"
+		method="POST"
+		action="?/addTheory"
+		use:enhance={dismiss(() => (addingTheory = null))}
+	>
 		<input type="hidden" name="stageId" value={addingTheory} />
 		<label class="field-label" for="new-theory-title">Titel</label>
 		<input
@@ -604,7 +624,12 @@
 		„{course.title}“ und damit jedes Kapitel, jeden Theorieblock und jedes Level darin werden
 		gelöscht. Das lässt sich nicht rückgängig machen.
 	</p>
-	<form class="dialog-actions" method="POST" action="?/deleteCourse" use:enhance>
+	<form
+		class="dialog-actions"
+		method="POST"
+		action="?/deleteCourse"
+		use:enhance={dismiss(() => (deletingCourse = false))}
+	>
 		<Button type="button" variant="ghost" onclick={() => (deletingCourse = false)}>Abbrechen</Button
 		>
 		<button class="btn btn-danger" type="submit">Endgültig löschen</button>

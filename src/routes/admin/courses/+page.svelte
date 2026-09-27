@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { enhance } from '$app/forms';
 	import { Button, Callout, Modal } from '$lib/components/index.js';
+	import { dismiss } from '$lib/dismiss.js';
 	import type { ActionData, PageServerData } from './$types';
 
 	let { data, form }: { data: PageServerData; form: ActionData } = $props();
@@ -119,7 +120,12 @@
 </main>
 
 <Modal bind:open={creating} title="Neuer Kurs">
-	<form class="dialog-form" method="POST" action="?/create" use:enhance>
+	<form
+		class="dialog-form"
+		method="POST"
+		action="?/create"
+		use:enhance={dismiss(() => (creating = false))}
+	>
 		<label class="field-label" for="new-course-title">Kursname</label>
 		<input
 			class="field"
@@ -144,7 +150,12 @@
 		„{deleting?.title}“ und damit jedes Kapitel, jeden Theorieblock und jedes Level darin werden
 		gelöscht. Das lässt sich nicht rückgängig machen.
 	</p>
-	<form class="dialog-actions" method="POST" action="?/delete" use:enhance>
+	<form
+		class="dialog-actions"
+		method="POST"
+		action="?/delete"
+		use:enhance={dismiss(() => (deleting = null))}
+	>
 		<input type="hidden" name="id" value={deleting?.id} />
 		<Button type="button" variant="ghost" onclick={() => (deleting = null)}>Abbrechen</Button>
 		<button class="btn btn-danger" type="submit">Endgültig löschen</button>
