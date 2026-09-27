@@ -270,13 +270,56 @@ describe('setSelectionOption', () => {
         });
 
         const edited = setSelectionOption(level, selectAt(level, { x: 3, y: 0 })!, {
-            targetId: 'belt-1',
+            plateTargetId: 'belt-1',
         });
 
         expect(edited.tiles['3,0']).toEqual({ kind: 'pressure_plate', targetId: 'belt-1' });
         expect(edited.tiles['4,0']).toEqual({ kind: 'pressure_plate', targetId: 'belt-1' });
         // The door it used to open is linked, not selected: it stays as it was.
         expect(edited.tiles['1,0']).toEqual({ kind: 'door', doorId: 'door-1', initiallyOpen: false, facing: 'south' });
+    });
+
+    it('names every tile of a door at once, keeping its id, and shows the name on its switch', () => {
+        const door = { kind: 'door', doorId: 'door-1', initiallyOpen: false, facing: 'south' } as const;
+        const level = paint(base(), {
+            '1,0': door,
+            '2,0': door,
+            '4,4': { kind: 'switch', targetId: 'door-1', initiallyOn: false },
+        });
+
+        const named = setSelectionOption(level, selectAt(level, { x: 1, y: 0 })!, { doorName: 'Tor A' });
+
+        expect(named.tiles['1,0']).toEqual({ ...door, name: 'Tor A' });
+        expect(named.tiles['2,0']).toEqual({ ...door, name: 'Tor A' });
+        expect(selectAt(named, { x: 1, y: 0 })!.label).toBe('Türe „Tor A“');
+        expect(selectAt(named, { x: 4, y: 4 })!.label).toBe('Schalter → Tor A');
+
+        // Clearing the name leaves an unnamed door, not an empty-named one.
+        const cleared = setSelectionOption(named, selectAt(named, { x: 1, y: 0 })!, { doorName: '' });
+        expect(cleared.tiles['1,0']).toEqual(door);
+    });
+
+    it('renames every run of a belt, not just the selected one', () => {
+        const drive: BeltControl = { beltId: 'belt-1', effect: 'power', initiallyOn: true };
+        const level = paint(base(), {
+            '1,1': belt('east', drive),
+            '2,1': belt('east', drive),
+            // A second run of the same belt, elsewhere, not flow-connected.
+            '4,4': belt('north', drive),
+            '5,5': belt('north', { ...drive, beltId: 'belt-2' }),
+            '2,3': { kind: 'pressure_plate', targetId: 'belt-1' },
+        });
+
+        const named = setSelectionOption(level, selectAt(level, { x: 1, y: 1 })!, { beltName: 'Hauptband' });
+
+        const control = { ...drive, name: 'Hauptband' };
+        expect(named.tiles['1,1']).toEqual(belt('east', control));
+        expect(named.tiles['4,4']).toEqual(belt('north', control));
+        expect(named.tiles['5,5']).toEqual(belt('north', { ...drive, beltId: 'belt-2' }));
+        expect(selectAt(named, { x: 2, y: 3 })!.label).toBe('Druckplatte → Hauptband');
+
+        const cleared = setSelectionOption(named, selectAt(named, { x: 4, y: 4 })!, { beltName: '' });
+        expect(cleared.tiles['1,1']).toEqual(belt('east', drive));
     });
 
     it('changes only the named field, tile by tile', () => {

@@ -21,6 +21,8 @@ import {
 import { coordKey, inBounds, parseTileKey, sameCoord, turn } from '$lib/game/grid';
 import type {
     BeltControl,
+    CargoConveyorTile,
+    ConveyorTile,
     Coord,
     Decoration,
     DecorationKind,
@@ -53,7 +55,7 @@ import type {
 
 function sameBeltControl(a: BeltControl | null, b: BeltControl | null): boolean {
     if (a === null || b === null) return a === b;
-    return a.beltId === b.beltId && a.effect === b.effect && a.initiallyOn === b.initiallyOn;
+    return a.beltId === b.beltId && a.name === b.name && a.effect === b.effect && a.initiallyOn === b.initiallyOn;
 }
 
 /** Field-by-field, so two separately-built `{ kind: 'wall' }` count as equal. */
@@ -66,6 +68,7 @@ function sameTile(a: Tile, b: Tile): boolean {
                 && sameBeltControl(a.control, (b as typeof a).control);
         case 'door':
             return a.doorId === (b as typeof a).doorId
+                && a.name === (b as typeof a).name
                 && a.initiallyOpen === (b as typeof a).initiallyOpen
                 && a.facing === (b as typeof a).facing;
         case 'pressure_plate':
@@ -168,28 +171,23 @@ export function nextBeltId(level: Level): string {
  *
  * A brush that authors an id moves on to a free one as soon as the level has
  * claimed the one it was holding, so the second door you paint is `door-2`
- * rather than another tile of `door-1`. A keycard shares the `doorId` field
- * but only refers to it, so it is pulled the other way — back onto a door that
- * exists, since the door brush moving on would otherwise leave the keycard
- * pointing at a door yet to be built.
+ * rather than another tile of `door-1` — and a new door or belt starts
+ * unnamed, so it cannot borrow the last one's name. A keycard, switch or plate is never
+ * touched: what it links to is the author's choice alone.
  *
  * Returns the very same options when there is nothing to do, so callers can
  * assign the result unconditionally.
  */
 export function armIds(level: Level, id: BrushId, options: BrushOptions): BrushOptions {
     const key = mintedIdKey(id, options);
-
-    if (key === null) {
-        if (id !== 'keycard') return options;
-        const doors = doorIds(level);
-        if (doors.length === 0 || doors.includes(options.doorId)) return options;
-        return { ...options, doorId: doors.at(-1)! };
-    }
+    if (key === null) return options;
 
     const taken = key === 'doorId' ? doorIds(level) : beltIds(level);
     if (!taken.includes(options[key])) return options;
 
-    return { ...options, [key]: key === 'doorId' ? nextDoorId(level) : nextBeltId(level) };
+    return key === 'doorId'
+        ? { ...options, doorId: nextDoorId(level), doorName: '' }
+        : { ...options, beltId: nextBeltId(level), beltName: '' };
 }
 
 /**
@@ -475,6 +473,20 @@ export function rotateSelection(level: Level, selection: Selection): Level {
     }
 }
 
+function isBeltTile(tile: Tile): tile is ConveyorTile | CargoConveyorTile {
+    return tile.kind === 'conveyor' || tile.kind === 'cargo_conveyor';
+}
+
+/** Give every tile of one driven belt the same name, or none. */
+function nameBelt(level: Level, beltId: string, name: string | undefined): Level {
+    return Object.entries(level.tiles).reduce((next, [key, tile]) => {
+        if (!tile || !isBeltTile(tile) || tile.control?.beltId !== beltId) return next;
+        const { name: _, ...control } = tile.control;
+        const renamed = { ...tile, control: name ? { ...control, name } : control };
+        return setTile(next, parseTileKey(key as TileKey), renamed);
+    }, level);
+}
+
 /**
  * Re-author a selection with some of its options changed.
  *
@@ -482,6 +494,10 @@ export function rotateSelection(level: Level, selection: Selection): Level {
  * carries — so re-pointing a switch leaves each plate's own start value alone,
  * and giving a belt run a drive keeps every tile's direction, corners and all.
  * Only a field the patch actually names is overwritten, on every tile at once.
+ *
+ * A belt's name is the exception: it belongs to the whole belt, and a belt can
+ * span several runs sharing one `beltId`, so renaming the selected run renames
+ * every tile of that belt with it.
  *
  * Items keep their id and position: those are not the palette's to change, and
  * the renderer keys its objects by the id.
@@ -492,8 +508,8 @@ export function setSelectionOption(
     patch: Partial<BrushOptions>,
 ): Level {
     switch (selection.kind) {
-        case 'tiles':
-            return selection.coords.reduce((next, coord) => {
+        case 'tiles': {
+            const edited = selection.coords.reduce((next, coord) => {
                 const tile = next.tiles[coordKey(coord)];
                 // Bare floor has no settings to change.
                 if (!tile || tile.kind === 'floor') return next;
@@ -501,6 +517,12 @@ export function setSelectionOption(
                 const brush = buildBrush(tile.kind, { ...tileOptions(tile), ...patch });
                 return brush.kind === 'tile' ? setTile(next, coord, brush.tile) : next;
             }, level);
+
+            if (patch.beltName === undefined) return edited;
+            const first = edited.tiles[coordKey(selection.coords[0])];
+            if (!first || !isBeltTile(first) || !first.control) return edited;
+            return nameBelt(edited, first.control.beltId, first.control.name);
+        }
 
         case 'item': {
             const current = selection.item;

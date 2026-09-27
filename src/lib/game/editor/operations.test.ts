@@ -214,7 +214,7 @@ describe('armIds', () => {
         expect(armIds(level, 'conveyor', undriven)).toBe(undriven);
     });
 
-    it('moves the door brush on, and pulls the keycard back onto a door that exists', () => {
+    it('moves the door brush on, and never links a keycard for the author', () => {
         const level = setTile(base(), { x: 1, y: 1 }, {
             kind: 'door', doorId: 'door-1', initiallyOpen: false, facing: 'south',
         });
@@ -222,14 +222,12 @@ describe('armIds', () => {
         const options = armIds(level, 'door', defaultBrushOptions());
         expect(options.doorId).toBe('door-2');
 
-        // The two brushes share the field, so without this the keycard would
-        // be left opening a door nobody has painted yet.
-        expect(armIds(level, 'keycard', options).doorId).toBe('door-1');
-    });
+        // A new door does not inherit the last one's name.
+        expect(armIds(level, 'door', { ...defaultBrushOptions(), doorName: 'Tor A' }).doorName).toBe('');
 
-    it('leaves the keycard alone when there is no door to point it at', () => {
-        const options = { ...defaultBrushOptions(), doorId: 'door-9' };
-        expect(armIds(base(), 'keycard', options)).toBe(options);
+        // A door to open exists, but picking it is the author's call.
+        expect(armIds(level, 'keycard', options)).toBe(options);
+        expect(options.keycardDoorId).toBe('');
     });
 });
 

@@ -33,6 +33,12 @@ export type RobotGapTile = { kind: 'robot_gap' };
 export type BeltControl = {
     /** Groups belt tiles into one driven belt; also what a control names. */
     beltId: string;
+    /**
+     * What the author calls the belt, shown wherever something links to it.
+     * Every tile sharing the `beltId` carries the same name. Absent on an
+     * unnamed belt, which is shown by its id instead.
+     */
+    name?: string;
     /** What an asserted control does: cut the power, or flip the direction. */
     effect: 'power' | 'reverse';
     /**
@@ -57,7 +63,14 @@ export type CargoConveyorTile = {
 
 export type DoorTile = {
     kind: 'door';
+    /** Fixed behind the scenes — what keycards and triggers point at. */
     doorId: string;
+    /**
+     * What the author calls the door, shown wherever something links to it.
+     * Every tile of one door carries the same name. Absent on an unnamed door,
+     * which is shown by its id instead.
+     */
+    name?: string;
     /** Authored starting value. The live flag lives in `DoorState.open`. */
     initiallyOpen: boolean;
     /**
@@ -138,6 +151,29 @@ export function isCrate(item: Item): item is Crate {
     return item.kind === 'crate_grey' || item.kind === 'crate_colour';
 }
 
+/**
+ * The name the author gave each link target — door, driven belt or motion
+ * sensor — keyed by its id. Unnamed targets are absent.
+ */
+export function linkNames(level: Level): Map<string, string> {
+    const names = new Map<string, string>();
+    for (const tile of Object.values(level.tiles)) {
+        if (tile?.kind === 'door' && tile.name) names.set(tile.doorId, tile.name);
+        if ((tile?.kind === 'conveyor' || tile?.kind === 'cargo_conveyor') && tile.control?.name) {
+            names.set(tile.control.beltId, tile.control.name);
+        }
+    }
+    for (const sensor of level.motionSensors) {
+        if (sensor.name) names.set(sensor.sensorId, sensor.name);
+    }
+    return names;
+}
+
+/** How a link target reads to the author: by its name, or by its id if it has none. */
+export function linkLabel(level: Level, id: string): string {
+    return linkNames(level).get(id) ?? id;
+}
+
 export function isKeycard(item: Item): item is Keycard {
     return item.kind === 'keycard';
 }
@@ -191,6 +227,8 @@ export type Decoration = {
 
 export type MotionSensor = {
     sensorId: string;
+    /** What the author calls the sensor; absent shows it by its id. */
+    name?: string;
     forbiddenTiles: Coord[];
     /** Authored starting value. The live flag lives in `MotionSensorState.active`. */
     initiallyActive: boolean;

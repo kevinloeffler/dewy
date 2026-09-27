@@ -177,6 +177,7 @@ function beltControl(value: unknown, path: string): BeltControl {
     const source = object(value, path);
     return {
         beltId: string(field(source, 'beltId', path), `${path}.beltId`),
+        ...('name' in source ? { name: string(source.name, `${path}.name`) } : {}),
         effect: literal(field(source, 'effect', path), `${path}.effect`, BELT_EFFECTS),
         initiallyOn: boolean(field(source, 'initiallyOn', path), `${path}.initiallyOn`),
     };
@@ -217,6 +218,7 @@ function tile(value: unknown, path: string): Tile {
                     `${path}.initiallyOpen`,
                 ),
                 facing: optional(source, 'facing', path, direction, 'south'),
+                ...('name' in source ? { name: string(source.name, `${path}.name`) } : {}),
             };
 
         case 'pressure_plate':
@@ -306,6 +308,7 @@ function motionSensor(value: unknown, path: string): MotionSensor {
     const source = object(value, path);
     return {
         sensorId: string(field(source, 'sensorId', path), `${path}.sensorId`),
+        ...('name' in source ? { name: string(source.name, `${path}.name`) } : {}),
         forbiddenTiles: array(
             field(source, 'forbiddenTiles', path),
             `${path}.forbiddenTiles`,

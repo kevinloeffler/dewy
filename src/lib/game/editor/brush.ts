@@ -78,14 +78,19 @@ export type BrushOptions = {
     crateColor: CrateColor;
     /** `null` is a plain bay, which accepts a crate of any colour. */
     bayColor: CrateColor | null;
+    /** The id a door brush paints. Minted, never typed — see `doorName`. */
     doorId: string;
+    /** What the author calls the door; empty leaves it unnamed. */
+    doorName: string;
     /**
-     * What a switch or a plate drives. Empty means *not linked yet* — the
-     * state a control is in the moment it is painted into a level with no door
-     * or driven belt to point at. `validateLevel` reports it, rather than the
-     * palette inventing a link to something that may not exist.
+     * What a keycard opens, a switch drives and a plate drives. Each brush
+     * keeps its own, and each starts empty — *not linked* — so every link in
+     * a level is one the author picked, never one that happened because two
+     * brushes shared a default. `validateLevel` reports a link left empty.
      */
-    targetId: string;
+    keycardDoorId: string;
+    switchTargetId: string;
+    plateTargetId: string;
     initiallyOpen: boolean;
     initiallyOn: boolean;
     /**
@@ -94,7 +99,10 @@ export type BrushOptions = {
      * the effect picker rather than adding a checkbox in front of it.
      */
     beltEffect: 'none' | BeltControl['effect'];
+    /** Minted, never typed — see `beltName`. */
     beltId: string;
+    /** What the author calls the belt; empty leaves it unnamed. */
+    beltName: string;
     /** Belts get their own starting value: `initiallyOn` is the switch's. */
     beltInitiallyOn: boolean;
     /**
@@ -116,11 +124,15 @@ export function defaultBrushOptions(): BrushOptions {
         crateColor: 'red',
         bayColor: 'red',
         doorId: 'door-1',
-        targetId: '',
+        doorName: '',
+        keycardDoorId: '',
+        switchTargetId: '',
+        plateTargetId: '',
         initiallyOpen: false,
         initiallyOn: false,
         beltEffect: 'none',
         beltId: 'belt-1',
+        beltName: '',
         beltInitiallyOn: true,
         decorationFacing: 'south',
         doorFacing: 'south',
@@ -193,19 +205,19 @@ export function brushOptionKeys(id: BrushId, options: BrushOptions): (keyof Brus
         case 'cargo_conveyor':
             return options.beltEffect === 'none'
                 ? ['direction', 'beltEffect']
-                : ['direction', 'beltEffect', 'beltId', 'beltInitiallyOn'];
+                : ['direction', 'beltEffect', 'beltName', 'beltInitiallyOn'];
         case 'door':
-            return ['doorFacing', 'doorId', 'initiallyOpen'];
+            return ['doorFacing', 'doorName', 'initiallyOpen'];
         case 'pressure_plate':
-            return ['targetId'];
+            return ['plateTargetId'];
         case 'switch':
-            return ['targetId', 'initiallyOn'];
+            return ['switchTargetId', 'initiallyOn'];
         case 'drop_off':
             return ['bayColor'];
         case 'crate_colour':
             return ['crateColor'];
         case 'keycard':
-            return ['doorId'];
+            return ['keycardDoorId'];
         case 'robot':
             return ['facing'];
         default:
@@ -285,19 +297,21 @@ export function tileOptions(tile: Tile, base: BrushOptions = defaultBrushOptions
                 direction: tile.direction,
                 beltEffect: tile.control?.effect ?? 'none',
                 beltId: tile.control?.beltId ?? base.beltId,
+                beltName: tile.control?.name ?? '',
                 beltInitiallyOn: tile.control?.initiallyOn ?? base.beltInitiallyOn,
             };
         case 'door':
             return {
                 ...base,
                 doorId: tile.doorId,
+                doorName: tile.name ?? '',
                 initiallyOpen: tile.initiallyOpen,
                 doorFacing: tile.facing,
             };
         case 'pressure_plate':
-            return { ...base, targetId: tile.targetId };
+            return { ...base, plateTargetId: tile.targetId };
         case 'switch':
-            return { ...base, targetId: tile.targetId, initiallyOn: tile.initiallyOn };
+            return { ...base, switchTargetId: tile.targetId, initiallyOn: tile.initiallyOn };
         case 'drop_off':
             return { ...base, bayColor: tile.color };
         default:
@@ -310,7 +324,7 @@ export function itemOptions(item: Item, base: BrushOptions = defaultBrushOptions
         case 'crate_colour':
             return { ...base, crateColor: item.color };
         case 'keycard':
-            return { ...base, doorId: item.doorId };
+            return { ...base, keycardDoorId: item.doorId };
         default:
             return base;
     }
@@ -347,6 +361,7 @@ export function buildBrush(id: BrushId, options: BrushOptions): Brush {
                         ? null
                         : {
                               beltId: options.beltId,
+                              ...(options.beltName.trim() ? { name: options.beltName.trim() } : {}),
                               effect: options.beltEffect,
                               initiallyOn: options.beltInitiallyOn,
                           },
@@ -361,18 +376,19 @@ export function buildBrush(id: BrushId, options: BrushOptions): Brush {
                     doorId: options.doorId,
                     initiallyOpen: options.initiallyOpen,
                     facing: options.doorFacing,
+                    ...(options.doorName.trim() ? { name: options.doorName.trim() } : {}),
                 },
             };
 
         case 'pressure_plate':
-            return { kind: 'tile', tile: { kind: 'pressure_plate', targetId: options.targetId } };
+            return { kind: 'tile', tile: { kind: 'pressure_plate', targetId: options.plateTargetId } };
 
         case 'switch':
             return {
                 kind: 'tile',
                 tile: {
                     kind: 'switch',
-                    targetId: options.targetId,
+                    targetId: options.switchTargetId,
                     initiallyOn: options.initiallyOn,
                 },
             };
@@ -387,7 +403,7 @@ export function buildBrush(id: BrushId, options: BrushOptions): Brush {
             return { kind: 'item', item: { kind: 'crate_colour', color: options.crateColor } };
 
         case 'keycard':
-            return { kind: 'item', item: { kind: 'keycard', doorId: options.doorId } };
+            return { kind: 'item', item: { kind: 'keycard', doorId: options.keycardDoorId } };
 
         case 'robot':
             return { kind: 'robot', facing: options.facing };

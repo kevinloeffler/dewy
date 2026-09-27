@@ -1,7 +1,7 @@
 import type { Coord, DecorationKind, Direction, DropOffTile, Level } from './level';
 import type { CrateState, KeycardState, LevelState } from './level-state';
 import { coordKey, opposite, sameCoord, tileAt } from './grid';
-import { isCrate } from './level';
+import { isCrate, linkNames } from './level';
 import {
     DECORATION_NAMES,
     decorationAt,
@@ -228,6 +228,19 @@ export function validateLevel(level: Level): string[] {
         }
     }
 
+    // A name is how the author tells link targets apart in every dropdown —
+    // doors, belts and sensors share the switch's — so two targets sharing
+    // one would make those links ambiguous.
+    const namesSeen = new Set<string>();
+    const namesReported = new Set<string>();
+    for (const name of linkNames(level).values()) {
+        if (namesSeen.has(name) && !namesReported.has(name)) {
+            problems.push(`Mehrere Türen, Bänder oder Melder heissen „${name}“`);
+            namesReported.add(name);
+        }
+        namesSeen.add(name);
+    }
+
     for (const [key, tile] of Object.entries(level.tiles)) {
         if (tile?.kind !== 'switch' && tile?.kind !== 'pressure_plate') continue;
         if (targetIds.has(tile.targetId)) continue;
@@ -297,7 +310,11 @@ export function validateLevel(level: Level): string[] {
             problems.push(`Objekt „${item.id}“ steht bei ${key} in einem Deko-Objekt`);
         }
         if (item.kind === 'keycard' && !doorIds.has(item.doorId)) {
-            problems.push(`Keycard „${item.id}“ öffnet Tür „${item.doorId}“, zu der es kein Türfeld gibt`);
+            problems.push(
+                item.doorId === ''
+                    ? `Keycard „${item.id}“ ist mit keiner Tür verknüpft`
+                    : `Keycard „${item.id}“ öffnet Tür „${item.doorId}“, zu der es kein Türfeld gibt`,
+            );
         }
     }
 

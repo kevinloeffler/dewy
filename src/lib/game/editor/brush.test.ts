@@ -13,9 +13,10 @@ import {
     tileOptions,
     type BrushId,
 } from './brush';
-import { applyBrush, emptyLevel } from './operations';
+import { applyBrush, emptyLevel, setTile } from './operations';
 import { parseLevel } from './parse';
 import { validateLevel } from '../rules';
+import { linkLabel } from '../level';
 
 const ids = [...BRUSH_GROUPS.flatMap((group) => group.ids), ...TOOL_IDS];
 
@@ -51,13 +52,13 @@ describe('buildBrush', () => {
         }
     });
 
-    it('only offers belt id and starting value once the belt has a drive', () => {
+    it('only offers belt name and starting value once the belt has a drive', () => {
         const off = defaultBrushOptions();
         expect(brushOptionKeys('conveyor', off)).toEqual(['direction', 'beltEffect']);
 
         const driven = { ...off, beltEffect: 'power' as const };
         expect(brushOptionKeys('conveyor', driven)).toEqual([
-            'direction', 'beltEffect', 'beltId', 'beltInitiallyOn',
+            'direction', 'beltEffect', 'beltName', 'beltInitiallyOn',
         ]);
     });
 
@@ -106,7 +107,44 @@ describe('buildBrush', () => {
             kind: 'tile', tile: { kind: 'drop_off', color: null },
         });
         expect(buildBrush('keycard', options)).toEqual({
-            kind: 'item', item: { kind: 'keycard', doorId: 'door-1' },
+            kind: 'item', item: { kind: 'keycard', doorId: '' },
+        });
+    });
+
+    it('reports two doors sharing a name, but not one door spread over several tiles', () => {
+        const door = (doorId: string) =>
+            ({ kind: 'door', doorId, initiallyOpen: false, facing: 'south', name: 'Tor' }) as const;
+        let level = setTile(emptyLevel('t', 'T', 4, 4), { x: 0, y: 0 }, door('door-1'));
+        level = setTile(level, { x: 1, y: 0 }, door('door-1'));
+        expect(validateLevel(level)).not.toContain('Mehrere Türen, Bänder oder Melder heissen „Tor“');
+
+        level = setTile(level, { x: 3, y: 3 }, door('door-2'));
+        expect(validateLevel(level)).toContain('Mehrere Türen, Bänder oder Melder heissen „Tor“');
+    });
+
+    it('names a motion sensor in links, and counts it towards duplicate names', () => {
+        let level = emptyLevel('t', 'T', 4, 4);
+        level = {
+            ...level,
+            motionSensors: [{ sensorId: 'sensor-1', name: 'Wache', forbiddenTiles: [], initiallyActive: true }],
+        };
+        expect(linkLabel(level, 'sensor-1')).toBe('Wache');
+        expect(linkLabel(level, 'belt-9')).toBe('belt-9');
+
+        level = setTile(level, { x: 0, y: 0 }, {
+            kind: 'door', doorId: 'door-1', initiallyOpen: false, facing: 'south', name: 'Wache',
+        });
+        expect(validateLevel(level)).toContain('Mehrere Türen, Bänder oder Melder heissen „Wache“');
+    });
+
+    it('starts every link empty, whatever the door brush is holding', () => {
+        const options = { ...defaultBrushOptions(), doorId: 'door-4' };
+
+        expect(buildBrush('keycard', options)).toEqual({
+            kind: 'item', item: { kind: 'keycard', doorId: '' },
+        });
+        expect(buildBrush('pressure_plate', options)).toEqual({
+            kind: 'tile', tile: { kind: 'pressure_plate', targetId: '' },
         });
     });
 });
@@ -138,7 +176,9 @@ describe('tileOptions', () => {
             beltInitiallyOn: false,
             doorId: 'door-3',
             initiallyOpen: true,
-            targetId: 'belt-7',
+            keycardDoorId: 'door-3',
+            switchTargetId: 'belt-7',
+            plateTargetId: 'door-3',
             initiallyOn: true,
             bayColor: null,
             crateColor: 'blue' as const,
@@ -162,7 +202,7 @@ describe('tileOptions', () => {
         expect(tileOptions({ kind: 'wall' }, base)).toBe(base);
         expect(tileOptions({ kind: 'pressure_plate', targetId: 'door-1' }, base)).toEqual({
             ...base,
-            targetId: 'door-1',
+            plateTargetId: 'door-1',
         });
     });
 });

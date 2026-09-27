@@ -1,6 +1,7 @@
 import { BRUSH_LABELS } from './brush';
 import { decorationAt, decorationTiles } from '$lib/game/decorations';
 import { ahead, coordKey, inBounds, parseTileKey, sameCoord, tileAt } from '$lib/game/grid';
+import { linkLabel } from '$lib/game/level';
 import type {
     CargoConveyorTile,
     ConveyorTile,
@@ -126,7 +127,9 @@ export function selectAt(level: Level, coord: Coord): Selection | null {
 
     return {
         kind: 'tiles',
-        label: BRUSH_LABELS[tile.kind],
+        label: tile.kind === 'door' && tile.name
+            ? `${BRUSH_LABELS.door} „${tile.name}“`
+            : BRUSH_LABELS[tile.kind],
         coords: connected(level, coord, tile),
         linked: [],
         tile,
@@ -166,7 +169,7 @@ function control(level: Level, seed: Coord, tile: SwitchTile | PressurePlateTile
     const label = BRUSH_LABELS[tile.kind];
     return {
         kind: 'tiles',
-        label: driven.length > 0 ? `${label} → ${targetId}` : label,
+        label: driven.length > 0 ? `${label} → ${linkLabel(level, targetId)}` : label,
         coords: sortCoords(controls),
         linked: sortCoords(driven),
         tile,
