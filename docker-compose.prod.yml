@@ -1,0 +1,28 @@
+services:
+  dewy:
+    image: ghcr.io/kevinloeffler/dewy:latest
+    container_name: dewy
+    restart: unless-stopped
+    environment:
+      - ORIGIN=https://dewy.tempus-schule.dev
+      - BETTER_AUTH_SECRET=${BETTER_AUTH_SECRET:?set BETTER_AUTH_SECRET in the stack environment}
+    volumes:
+      - dewy-data:/data
+    networks:
+      - portainer_traefik
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=portainer_traefik"
+
+      - "traefik.http.routers.dewy.rule=Host(`dewy.tempus-schule.dev`)"
+      - "traefik.http.routers.dewy.entrypoints=websecure"
+      - "traefik.http.routers.dewy.tls.certresolver=leresolver"
+      - "traefik.http.routers.dewy.service=dewy"
+      - "traefik.http.services.dewy.loadbalancer.server.port=3000"
+
+volumes:
+  dewy-data:
+
+networks:
+  portainer_traefik:
+    external: true
