@@ -38,8 +38,6 @@
 
 	/** What a tool does, for the tools that paint nothing and so have no options. */
 	const TOOL_HINTS: Partial<Record<BrushId, string>> = {
-		select:
-			'Klick etwas an, um es auszuwählen.',
 		erase:
 			'Klick ein Feld an, um es zu leeren.'
 	};

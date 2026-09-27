@@ -14,7 +14,6 @@
 			<li>{problem}</li>
 		{/each}
 	</ul>
-	<p class="note">Probleme blockieren das Speichern nicht — ein halbfertiges Level lohnt sich trotzdem.</p>
 {/if}
 
 <style>

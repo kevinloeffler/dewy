@@ -305,6 +305,12 @@ export function validateLevel(level: Level): string[] {
         problems.push('Der Roboter startet ausserhalb des Rasters');
     }
 
+    // The engine never counts an empty goal list as won, so such a level can
+    // be played but never finished.
+    if (level.goals.length === 0) {
+        problems.push('Das Level hat keine Ziele und lässt sich nicht abschliessen');
+    }
+
     for (const goal of level.goals) {
         if (goal.kind === 'reach_goal' && !hasGoalTile) {
             problems.push('Ziel „reach_goal“, aber das Level hat kein Zielfeld');

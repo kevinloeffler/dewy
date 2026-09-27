@@ -1656,6 +1656,11 @@ describe('validateLevel', () => {
         expect(problems.join(' ')).toContain('teilweise ausserhalb des Rasters');
     });
 
+    it('flags a level with no goals', () => {
+        const problems = validateLevel(makeLevel());
+        expect(problems.join(' ')).toContain('keine Ziele');
+    });
+
     it('flags a keycard for a door that does not exist', () => {
         const problems = validateLevel(makeLevel({
             items: [{ kind: 'keycard', id: 'k', doorId: 'ghost', position: { x: 2, y: 1 } }],
@@ -1678,8 +1683,10 @@ describe('validateLevel', () => {
                 '2,2': { kind: 'switch', targetId: 'door-1', initiallyOn: false },
                 '3,2': { kind: 'switch', targetId: 'belt-1', initiallyOn: false },
                 '4,2': { kind: 'pressure_plate', targetId: 'alarm' },
+                '4,4': { kind: 'goal' },
             },
             motionSensors: [{ sensorId: 'alarm', forbiddenTiles: [], initiallyActive: true }],
+            goals: [{ kind: 'reach_goal' }],
         }));
         expect(problems).toEqual([]);
     });
