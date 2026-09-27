@@ -1,0 +1,45 @@
+# Production image: builds the SvelteKit app with adapter-node and serves it
+# with plain `node build`. The `dockerfile` next to this one is the dev setup.
+
+FROM node:26-alpine AS build
+
+# better-sqlite3 is a native module; build tools let it compile if no
+# prebuilt binary matches this Node/musl combination.
+RUN apk add --no-cache python3 make g++
+
+WORKDIR /app
+
+COPY package*.json ./
+RUN npm ci
+
+COPY . .
+
+# The build imports the server modules while analysing routes, and both the db
+# module and better-auth refuse to load without their env vars. These values
+# exist only for this RUN step and are never shipped; the real ones are
+# supplied when the container starts.
+RUN DATABASE_URL=/tmp/build.db \
+	BETTER_AUTH_SECRET=build-time-placeholder-not-used-at-runtime \
+	ORIGIN=http://localhost \
+	npm run build \
+	&& npm prune --omit=dev
+
+FROM node:26-alpine
+
+WORKDIR /app
+
+ENV NODE_ENV=production \
+	PORT=3000 \
+	DATABASE_URL=/data/dewy.db
+
+COPY --from=build /app/package.json ./
+COPY --from=build /app/node_modules ./node_modules
+COPY --from=build /app/build ./build
+
+RUN mkdir -p /data && chown node:node /data
+VOLUME /data
+
+USER node
+EXPOSE 3000
+
+CMD ["node", "build"]
