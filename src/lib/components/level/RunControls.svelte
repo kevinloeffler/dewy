@@ -160,7 +160,7 @@
 					/>
 				</svg>
 			{/snippet}
-			Schritt
+			
 		</Button>
 
 		<Button variant="ghost" onclick={onreset}>
@@ -183,6 +183,9 @@
 				</svg>
 			{/snippet}
 		</Button>
+
+		<!-- A new tab, so looking something up never costs the code in the editor. -->
+		<a class="btn btn-ghost" href="/docs/language" target="_blank" rel="noopener">Hilfe</a>
 	</div>
 
 	<div class="readout">

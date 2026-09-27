@@ -169,7 +169,33 @@
 	</label>
 
 	<label class="field">
-		Sprachstufe
+		<span class="field-label">
+			Sprachstufe
+			<!-- A new tab, so the overview never costs an unsaved level. -->
+			<a
+				class="info"
+				href="/docs/language/stages"
+				target="_blank"
+				rel="noopener"
+				title="Was gehört zu welcher Stufe?"
+				aria-label="Übersicht der Sprachstufen"
+			>
+				<svg
+					width="13"
+					height="13"
+					viewBox="0 0 16 16"
+					fill="none"
+					stroke="currentColor"
+					stroke-width="1.6"
+					stroke-linecap="round"
+					aria-hidden="true"
+				>
+					<circle cx="8" cy="8" r="6.5" />
+					<path d="M8 7.25V11" />
+					<circle cx="8" cy="4.9" r="0.4" fill="currentColor" />
+				</svg>
+			</a>
+		</span>
 		<select
 			value={level.options.languageStage}
 			onchange={(event) =>
@@ -224,6 +250,22 @@
 		padding: 6px 8px;
 		width: 100%;
 		resize: vertical;
+	}
+
+	.field-label {
+		display: flex;
+		align-items: center;
+		gap: 5px;
+	}
+
+	.info {
+		display: inline-flex;
+		color: var(--text-faint);
+	}
+
+	.info:hover,
+	.info:focus-visible {
+		color: var(--accent);
 	}
 
 	.size {
