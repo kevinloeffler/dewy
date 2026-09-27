@@ -40,6 +40,7 @@ export const tutorial01: Level = {
     id: 'tutorial-01',
     name: 'Erste Lieferung',
     description: 'Hol die rote Kiste und stell sie in die rote Abgabestelle. Pass auf die Löcher auf.',
+    instructions: null,
     width: 6,
     height: 6,
     tiles,

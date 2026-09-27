@@ -5,6 +5,7 @@
 	import type { LanguageStage } from '$lib/game/level';
 	import { decorationTiles } from '$lib/game/decorations';
 	import { inBounds } from '$lib/game/grid';
+	import { Button, MarkdownEditor, Modal } from '$lib/components/index.js';
 
 	interface Props {
 		draft: LevelDraft;
@@ -57,6 +58,21 @@
 	function applySize() {
 		draft.edit((current) => resize(current, width, height));
 	}
+
+	// The modal edits a copy and hands it to the draft once, on "Übernehmen" —
+	// one undo step for the whole text rather than one per keystroke.
+	let instructionsOpen = $state(false);
+	let instructions = $state('');
+
+	function editInstructions() {
+		instructions = level.instructions ?? '';
+		instructionsOpen = true;
+	}
+
+	function applyInstructions(next: string | null) {
+		draft.edit((current) => setMeta(current, { instructions: next }));
+		instructionsOpen = false;
+	}
 </script>
 
 <div class="inspector">
@@ -80,6 +96,16 @@
 				)}
 		></textarea>
 	</label>
+
+	<div class="field">
+		Anleitung
+		<div class="instructions">
+			<button class="btn btn-ghost small" type="button" onclick={editInstructions}>
+				{level.instructions ? 'Anleitung bearbeiten' : 'Anleitung hinzufügen'}
+			</button>
+			<span class="muted">{level.instructions ? 'vorhanden' : 'keine'}</span>
+		</div>
+	</div>
 
 	<div class="field">
 		Rastergrösse
@@ -212,6 +238,27 @@
 	</label>
 </div>
 
+<Modal bind:open={instructionsOpen} size="large" title="Anleitung">
+	<MarkdownEditor
+		bind:value={instructions}
+		minHeight="50vh"
+		placeholder="Was soll in diesem Level erledigt werden? Die Anleitung steht über den Steuerknöpfen."
+	/>
+
+	{#snippet actions()}
+		{#if level.instructions}
+			<button class="btn btn-ghost danger" type="button" onclick={() => applyInstructions(null)}>
+				Entfernen
+			</button>
+		{/if}
+		<span class="spacer"></span>
+		<Button variant="ghost" onclick={() => (instructionsOpen = false)}>Abbrechen</Button>
+		<Button onclick={() => applyInstructions(instructions.trim() || null)}>
+			Übernehmen
+		</Button>
+	{/snippet}
+</Modal>
+
 <style>
 	.inspector {
 		display: flex;
@@ -283,6 +330,28 @@
 		padding: 5px 10px;
 		font-size: 12px;
 		margin-top: 6px;
+	}
+
+	.instructions {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+	}
+
+	.instructions .small {
+		margin-top: 0;
+	}
+
+	.muted {
+		color: var(--text-faint);
+	}
+
+	.spacer {
+		flex: 1;
+	}
+
+	.danger {
+		color: var(--danger);
 	}
 
 	.warn {

@@ -555,12 +555,19 @@ export function setSelectionOption(
 
 export function setMeta(
     level: Level,
-    patch: { name?: string; description?: string | null },
+    patch: { name?: string; description?: string | null; instructions?: string | null },
 ): Level {
     const name = patch.name ?? level.name;
     const description = patch.description === undefined ? level.description : patch.description;
-    if (name === level.name && description === level.description) return level;
-    return { ...level, name, description };
+    const instructions = patch.instructions === undefined ? level.instructions : patch.instructions;
+    if (
+        name === level.name
+        && description === level.description
+        && instructions === level.instructions
+    ) {
+        return level;
+    }
+    return { ...level, name, description, instructions };
 }
 
 export function setOptions(level: Level, patch: Partial<LevelOptions>): Level {
@@ -664,6 +671,7 @@ export function emptyLevel(
         id,
         name,
         description: null,
+        instructions: null,
         width,
         height,
         tiles: {},

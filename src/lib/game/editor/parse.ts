@@ -382,6 +382,15 @@ function level(value: unknown, path: string): Level {
             `${path}.description`,
             string,
         ),
+        // Tolerant read, like `decorations`: a level stored before
+        // instructions existed has no key and means none.
+        instructions: optional(
+            source,
+            'instructions',
+            path,
+            (value, at) => nullable(value, at, string),
+            null,
+        ),
         width: positiveInteger(field(source, 'width', path), `${path}.width`),
         height: positiveInteger(field(source, 'height', path), `${path}.height`),
         tiles: tiles(field(source, 'tiles', path), `${path}.tiles`),

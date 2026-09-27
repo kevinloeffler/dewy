@@ -110,6 +110,10 @@
 	function onkeydown(event: KeyboardEvent) {
 		const meta = event.metaKey || event.ctrlKey;
 
+		// A modal owns the keyboard: nothing here should reach the canvas behind
+		// it, and saving would skip text a modal has not handed to the draft yet.
+		if (document.querySelector('dialog[open]')) return;
+
 		if (meta && event.key.toLowerCase() === 's') {
 			event.preventDefault();
 			save();

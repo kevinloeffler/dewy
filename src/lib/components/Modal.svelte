@@ -13,9 +13,18 @@
 		 * boolean — "which stage am I adding to" — and so cannot be bound.
 		 */
 		onclose?: () => void;
+		/** `large` is for editors that need the room — most of the viewport. */
+		size?: 'default' | 'large';
 	}
 
-	let { open = $bindable(false), title, children, actions, onclose }: Props = $props();
+	let {
+		open = $bindable(false),
+		title,
+		children,
+		actions,
+		onclose,
+		size = 'default'
+	}: Props = $props();
 
 	function close() {
 		open = false;
@@ -61,6 +70,7 @@
 <dialog
 	bind:this={dialog}
 	class="modal"
+	class:large={size === 'large'}
 	onclose={close}
 	onmousedown={(event) => (pressedOutside = event.target === dialog)}
 	onclick={(event) => {
@@ -96,6 +106,19 @@
 		background: var(--panel);
 		color: var(--text);
 		box-shadow: var(--panel-shadow);
+	}
+
+	/* A column so a long body scrolls between a fixed head and footer. */
+	.modal.large[open] {
+		width: min(1180px, calc(100vw - 32px));
+		max-height: calc(100vh - 32px);
+		display: flex;
+		flex-direction: column;
+	}
+
+	.modal.large .modal-body {
+		overflow: auto;
+		min-height: 0;
 	}
 
 	.modal::backdrop {

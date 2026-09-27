@@ -308,6 +308,12 @@ export type Level = {
     id: string;
     name: string;
     description: string | null;
+    /**
+     * Markdown shown to the student above the run controls, rendered by
+     * `$lib/markdown`. `null` when the level has none. Levels stored before
+     * this existed have no key and read as `null` — see `parse.ts`.
+     */
+    instructions: string | null;
     width: number;
     height: number;
     /**

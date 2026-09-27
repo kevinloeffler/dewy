@@ -1,8 +1,7 @@
 <script lang="ts">
 	import { untrack } from 'svelte';
 	import { enhance } from '$app/forms';
-	import { Button, Panel, Topbar } from '$lib/components/index.js';
-	import { MARKDOWN_FEATURES, renderMarkdown } from '$lib/markdown';
+	import { Button, MarkdownEditor, Topbar } from '$lib/components/index.js';
 	import type { ActionData, PageServerData } from './$types';
 
 	let { data, form }: { data: PageServerData; form: ActionData } = $props();
@@ -14,13 +13,10 @@
 	let title = $state(untrack(() => data.item.title));
 	let body = $state(untrack(() => data.item.body));
 
-	// The same renderer the student page uses, so the preview cannot drift.
-	const preview = $derived(renderMarkdown(body));
 	const dirty = $derived(title !== data.item.title || body !== data.item.body);
 
 	let saving = $state(false);
 	let savedAt = $state<number | null>(null);
-	let showHelp = $state(false);
 
 	function onkeydown(event: KeyboardEvent) {
 		if ((event.metaKey || event.ctrlKey) && event.key === 's') {
@@ -83,45 +79,7 @@
 			<p class="error">{form.message}</p>
 		{/if}
 
-		<div class="split">
-			<section class="pane">
-				<header class="pane-head">
-					<span class="hud-label">Markdown</span>
-					<button class="btn btn-ghost" type="button" onclick={() => (showHelp = !showHelp)}>
-						{showHelp ? 'Ausblenden' : 'Formatierung'}
-					</button>
-				</header>
-
-				{#if showHelp}
-					<ul class="help">
-						{#each MARKDOWN_FEATURES as feature (feature.syntax)}
-							<li><code>{feature.syntax}</code><span>{feature.result}</span></li>
-						{/each}
-					</ul>
-				{/if}
-
-				<textarea
-					class="field source"
-					bind:value={body}
-					spellcheck="true"
-					placeholder="Schreib die Lektion hier."
-				></textarea>
-			</section>
-
-			<section class="pane">
-				<header class="pane-head">
-					<span class="hud-label">Vorschau</span>
-				</header>
-				<Panel>
-					<article class="prose">
-						<h1>{title}</h1>
-						<!-- Safe by construction: `renderMarkdown` escapes every text run
-						     and only ever emits tags it chose itself. -->
-						{@html preview}
-					</article>
-				</Panel>
-			</section>
-		</div>
+		<MarkdownEditor bind:value={body} heading={title} placeholder="Schreib die Lektion hier." />
 	</form>
 
 	<form class="delete" method="POST" action="?/delete" use:enhance>
@@ -192,70 +150,6 @@
 		font-family: var(--font-display);
 		font-weight: var(--font-display-wt);
 		font-size: 18px;
-	}
-
-	.split {
-		display: grid;
-		grid-template-columns: 1fr 1fr;
-		gap: 16px;
-		align-items: start;
-	}
-
-	@media (max-width: 900px) {
-		.split {
-			grid-template-columns: 1fr;
-		}
-	}
-
-	.pane {
-		display: flex;
-		flex-direction: column;
-		gap: 8px;
-		min-width: 0;
-	}
-
-	.pane-head {
-		display: flex;
-		align-items: center;
-		justify-content: space-between;
-		gap: 8px;
-		min-height: 32px;
-	}
-
-	.source {
-		min-height: 460px;
-		font-family: var(--font-code);
-		font-size: 13px;
-		line-height: 1.6;
-		resize: vertical;
-	}
-
-	.help {
-		list-style: none;
-		margin: 0;
-		padding: 10px 12px;
-		background: var(--chip-bg);
-		border-radius: calc(var(--radius) - 6px);
-		display: flex;
-		flex-direction: column;
-		gap: 5px;
-		font-size: 12px;
-	}
-
-	.help li {
-		display: flex;
-		gap: 10px;
-	}
-
-	.help code {
-		font-family: var(--font-code);
-		color: var(--text);
-		min-width: 150px;
-		white-space: pre;
-	}
-
-	.help span {
-		color: var(--text-muted);
 	}
 
 	.error {

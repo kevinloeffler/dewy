@@ -9,6 +9,7 @@ export { default as CredentialsSheet }  from './CredentialsSheet.svelte';
 export { default as Field }             from './Field.svelte';
 export { default as GemCounter }  from './GemCounter.svelte';
 export { default as Kbd }         from './Kbd.svelte';
+export { default as MarkdownEditor } from './MarkdownEditor.svelte';
 export { default as Modal }       from './Modal.svelte';
 export { default as Panel }       from './Panel.svelte';
 export { default as Progress }    from './Progress.svelte';

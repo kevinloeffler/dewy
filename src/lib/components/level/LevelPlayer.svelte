@@ -10,6 +10,7 @@
 	import type { GoalCondition, Level } from '$lib/game/level';
 	import { CodeMirrorEditor, Kbd, Topbar } from '$lib/components/index.js';
 	import RunControls from './RunControls.svelte';
+	import LevelInstructions from './LevelInstructions.svelte';
 	import LevelComplete from './LevelComplete.svelte';
 
 	interface Props {
@@ -354,6 +355,12 @@
 
 	<main class="stage">
 		<section class="column">
+			{#if level.instructions}
+				<div class="instructions-cell">
+					<LevelInstructions source={level.instructions} />
+				</div>
+			{/if}
+
 			<div class="editor">
 				<CodeMirrorEditor
 					{code}
@@ -475,38 +482,42 @@
 	/* ── Main split ─────────────────────────────────────────── */
 
 	/*
-		Four cells, not two columns of two: the bottom row is shared, so the
-		control strip and the goals panel are always exactly as tall as each
-		other — however many goals wrap onto a second line — and the editor and
-		the arena above them end at the same y.
+		Two independent columns. The left one stacks instructions, controls and
+		editor; the right one stacks goals and viewport. Nothing is shared
+		between them, so a tall instructions block only ever squeezes the
+		editor — the world stays where it is.
 	*/
 	.stage {
 		flex: 1;
 		min-height: 0;
 		display: grid;
 		grid-template-columns: 480px 1fr;
-		grid-template-rows: 48px minmax(0, 1fr);
-		grid-template-areas:
-			'controls goals'
-			'editor viewport';
 		gap: 16px;
 		padding: 16px;
 	}
 
-	/* The sections group the markup; the grid places their children. */
 	.column,
 	.arena {
-		display: contents;
+		display: flex;
+		flex-direction: column;
+		gap: 16px;
+		min-width: 0;
+		min-height: 0;
+	}
+
+	.instructions-cell {
+		flex-shrink: 0;
 	}
 
 	.editor {
-		grid-area: editor;
+		flex: 1;
 		position: relative;
 		min-height: 0;
 	}
 
 	.controls-cell {
-		grid-area: controls;
+		flex-shrink: 0;
+		height: 48px;
 		display: flex;
 		align-items: stretch;
 	}
@@ -542,7 +553,7 @@
 		only shows through before the first frame is painted.
 	*/
 	.viewport {
-		grid-area: viewport;
+		flex: 1;
 		position: relative;
 		min-height: 0;
 		background: var(--accent-soft);
@@ -557,7 +568,8 @@
 	}
 
 	.goals {
-		grid-area: goals;
+		flex-shrink: 0;
+		min-height: 48px;
 		display: flex;
 		flex-wrap: wrap;
 		align-items: center;
@@ -624,12 +636,19 @@
 
 		.stage {
 			grid-template-columns: 1fr;
-			grid-template-rows: auto;
-			grid-template-areas:
-				'editor'
-				'controls'
-				'viewport'
-				'goals';
+		}
+
+		/* Code first, then how to run it; the world, then what it asks for. */
+		.editor {
+			order: -1;
+		}
+
+		.instructions-cell {
+			order: -2;
+		}
+
+		.goals {
+			order: 1;
 		}
 
 		.editor {

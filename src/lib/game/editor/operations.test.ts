@@ -456,6 +456,14 @@ describe('meta, options and goals', () => {
         expect(setMeta(level, { description: null }).description).toBe(null);
     });
 
+    it('patches instructions and clears them with null', () => {
+        const level = setMeta(base(), { instructions: '# Aufgabe' });
+        expect(level.instructions).toBe('# Aufgabe');
+        expect(setMeta(level, { instructions: '# Aufgabe' })).toBe(level);
+        expect(setMeta(level, { name: 'Renamed' }).instructions).toBe('# Aufgabe');
+        expect(setMeta(level, { instructions: null }).instructions).toBe(null);
+    });
+
     it('patches options', () => {
         const level = setOptions(base(), { energy: 12, memory: 8, languageStage: 3 });
         expect(level.options).toEqual({

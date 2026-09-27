@@ -22,6 +22,23 @@ describe('parseLevel', () => {
         if (result.ok) expect(result.level).toEqual(level);
     });
 
+    it('reads a level stored before instructions existed as having none', () => {
+        const level = roundTrip(emptyLevel('old', 'Old'));
+        delete level.instructions;
+        const result = parseLevel(level);
+
+        expect(result.ok).toBe(true);
+        if (result.ok) expect(result.level.instructions).toBe(null);
+    });
+
+    it('round-trips instructions', () => {
+        const level = { ...emptyLevel('with', 'With'), instructions: '# Aufgabe\n\nFahr **vorwärts**.' };
+        const result = parseLevel(roundTrip(level));
+
+        expect(result.ok).toBe(true);
+        if (result.ok) expect(result.level).toEqual(level);
+    });
+
     it('accepts every tile kind', () => {
         const level = {
             ...roundTrip(emptyLevel('all', 'All')),

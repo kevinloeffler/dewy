@@ -32,6 +32,7 @@ function makeLevel(opts: {
         id: 'test',
         name: 'Test',
         description: null,
+        instructions: null,
         width,
         height,
         tiles: opts.tiles ?? {},
