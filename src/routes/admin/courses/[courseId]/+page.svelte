@@ -393,7 +393,7 @@
 						</div>
 					</li>
 				{:else}
-					<li class="empty-slot">Noch nichts drin — füg ein Level oder einen Theorieblock hinzu.</li>
+					<li class="empty-slot">Leer... Erstelle das erste Level oder ein Theorieblock.</li>
 				{/each}
 			</ol>
 
@@ -500,15 +500,15 @@
 		use:enhance={dismiss(() => (addingLevel = null))}
 	>
 		<input type="hidden" name="stageId" value={addingLevel} />
-		<label class="field-label" for="new-level-name">Levelname</label>
+		<label class="field-label" for="new-level-name">Name:</label>
 		<input
 			class="field"
 			id="new-level-name"
 			name="name"
-			placeholder="z. B. Erste Schritte"
+			placeholder="z.B. Loops"
 			autocomplete="off"
 		/>
-		<p class="dialog-note">Das leere Level öffnet sich danach direkt im Designer.</p>
+		<p class="dialog-note">Das neue Level öffnet sich danach direkt im Designer.</p>
 		<div class="dialog-actions">
 			<Button type="button" variant="ghost" onclick={() => (addingLevel = null)}>Abbrechen</Button>
 			<Button type="submit">Level erstellen</Button>

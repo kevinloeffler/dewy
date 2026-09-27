@@ -24,16 +24,49 @@
 
 	let dialog = $state<HTMLDialogElement | undefined>();
 
+	/**
+	 * The backdrop is part of the `<dialog>` itself — the box has no padding, so
+	 * a click that lands on the dialog and not on anything inside it came from
+	 * outside the box. Both ends of the click have to be out there: a drag that
+	 * starts in a field and is let go over the backdrop, selecting text, is not a
+	 * request to throw the dialog away.
+	 */
+	let pressedOutside = false;
+
 	// `showModal()` is what gives the native focus trap, the Escape key and the
 	// top-layer stacking — so `open` drives the method rather than the attribute.
 	$effect(() => {
 		if (!dialog) return;
-		if (open && !dialog.open) dialog.showModal();
+		if (open && !dialog.open) {
+			dialog.showModal();
+			focusFirstField(dialog);
+		}
 		if (!open && dialog.open) dialog.close();
 	});
+
+	/**
+	 * `showModal()` focuses the first focusable element, which is the close
+	 * button in the header. A dialog that asks for something should start in the
+	 * box you type into, so the first field wins; a confirm-only dialog has none
+	 * and keeps the native behaviour.
+	 */
+	function focusFirstField(dialog: HTMLDialogElement) {
+		const field = dialog.querySelector<HTMLElement>(
+			'.modal-body :is(input:not([type="hidden"]), select, textarea):not(:disabled)'
+		);
+		field?.focus();
+	}
 </script>
 
-<dialog bind:this={dialog} class="modal" onclose={close}>
+<dialog
+	bind:this={dialog}
+	class="modal"
+	onclose={close}
+	onmousedown={(event) => (pressedOutside = event.target === dialog)}
+	onclick={(event) => {
+		if (pressedOutside && event.target === dialog) open = false;
+	}}
+>
 	<div class="modal-head">
 		<h2 class="modal-title">{title}</h2>
 		<!-- Setting `open` routes through `dialog.close()`, so `onclose` fires once
