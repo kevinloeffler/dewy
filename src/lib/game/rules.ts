@@ -333,6 +333,9 @@ export function validateLevel(level: Level): string[] {
             problems.push('Ziel „reach_goal“, aber das Level hat kein Zielfeld');
         }
         if (goal.kind === 'deliver_specific') {
+            if (goal.color === 'grey') {
+                problems.push('Ziel „deliver_specific“ will eine graue Kiste — graue Kisten sind Werkzeuge und werden nicht ausgeliefert');
+            }
             const tile = tileAt(level, goal.dropOffPosition);
             if (tile?.kind !== 'drop_off') {
                 problems.push(`Ziel „deliver_specific“ zeigt auf ${coordKey(goal.dropOffPosition)} — dort ist keine Abgabestelle`);

@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { CRATE_COLORS, CRATE_COLOR_NAMES, type CrateColor } from '$lib/game/crate-color';
+	import { CRATE_COLOR_NAMES, DELIVERY_COLORS, type CrateColor } from '$lib/game/crate-color';
 	import { doorIds, targetIds } from '$lib/game/editor/operations';
 	import {
 		brushOptionKeys,
@@ -21,7 +21,6 @@
 	let { level, id, options, onchange }: Props = $props();
 
 	const DIRECTIONS: Direction[] = ['north', 'east', 'south', 'west'];
-	const COLOR_NAMES = Object.keys(CRATE_COLORS) as CrateColor[];
 
 	const DIRECTION_NAMES: Record<Direction, string> = {
 		north: 'Norden',
@@ -102,7 +101,7 @@
 				value={options.crateColor}
 				onchange={(event) => onchange({ crateColor: event.currentTarget.value as CrateColor })}
 			>
-				{#each COLOR_NAMES as color (color)}
+				{#each DELIVERY_COLORS as color (color)}
 					<option value={color}>{CRATE_COLOR_NAMES[color]}</option>
 				{/each}
 			</select>
@@ -116,7 +115,7 @@
 					onchange({ bayColor: (event.currentTarget.value || null) as CrateColor | null })}
 			>
 				<option value="">jede Farbe</option>
-				{#each COLOR_NAMES as color (color)}
+				{#each DELIVERY_COLORS as color (color)}
 					<option value={color}>{CRATE_COLOR_NAMES[color]}</option>
 				{/each}
 			</select>

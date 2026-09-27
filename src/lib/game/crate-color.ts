@@ -10,6 +10,15 @@ export const CRATE_COLORS = {
 
 export type CrateColor = keyof typeof CRATE_COLORS;
 
+/**
+ * The colours a crate can be delivered in — every one but grey. A grey crate
+ * is a tool (something to push onto a belt or a plate), never a delivery, so
+ * no picker offers grey for a coloured crate, a bay or a goal.
+ */
+export const DELIVERY_COLORS = (Object.keys(CRATE_COLORS) as CrateColor[]).filter(
+	(color) => color !== 'grey',
+);
+
 /** What each colour is called in the UI. The stored keys stay English. */
 export const CRATE_COLOR_NAMES: Record<CrateColor, string> = {
 	grey: 'Grau',

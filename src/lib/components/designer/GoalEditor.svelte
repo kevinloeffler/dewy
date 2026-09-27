@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { CRATE_COLORS, CRATE_COLOR_NAMES, type CrateColor } from '$lib/game/crate-color';
+	import { CRATE_COLOR_NAMES, DELIVERY_COLORS, type CrateColor } from '$lib/game/crate-color';
 	import { addGoal, dropOffBays, removeGoal } from '$lib/game/editor/operations';
 	import type { LevelDraft } from '$lib/game/editor/draft.svelte';
 	import type { GoalCondition } from '$lib/game/level';
@@ -10,7 +10,6 @@
 
 	let { draft }: Props = $props();
 
-	const COLOR_NAMES = Object.keys(CRATE_COLORS) as CrateColor[];
 
 	let level = $derived(draft.level);
 	let bays = $derived(dropOffBays(level));
@@ -77,7 +76,7 @@
 
 	<div class="specific">
 		<select bind:value={color}>
-			{#each COLOR_NAMES as name (name)}
+			{#each DELIVERY_COLORS as name (name)}
 				<option value={name}>{CRATE_COLOR_NAMES[name]}</option>
 			{/each}
 		</select>
