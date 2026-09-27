@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import type { CargoConveyorTile, ConveyorTile, Coord, DoorTile, Tile } from '$lib/game/level';
+import type { CargoConveyorTile, ConveyorTile, Coord, DoorTile, SwitchTile, Tile } from '$lib/game/level';
 import { DIRECTION_YAW } from '$lib/game/grid';
 import { createDropOffBay } from '$lib/game/models/drop-off-bay';
 
@@ -14,7 +14,7 @@ import { createDropOffBay } from '$lib/game/models/drop-off-bay';
  * geometries rather than allocating four hundred.
  *
  * Animated sub-objects are named so `World` can find them:
- *   'doorLeaves' | 'switchLever' | 'platePad'
+ *   'doorLeaves' | 'switchLever' | 'switchLight' | 'platePad'
  */
 
 const TILE = 1;
@@ -37,6 +37,8 @@ export const COLORS = {
     plate:      0xd0c48a,
     switchBase: 0x4a4d58,
     lever:      0xe85d3a,
+    switchOn:   0x3ddc6a,
+    switchOff:  0xe8403a,
     goal:       0x4caf82,
 } as const;
 
@@ -69,7 +71,7 @@ export class TileFactory {
             case 'pressure_plate':
                 return this.pressurePlate(coord);
             case 'switch':
-                return this.switchTile(coord);
+                return this.switchTile(tile, coord);
             case 'goal':
                 return this.goal(coord);
             case 'drop_off': {
@@ -218,25 +220,39 @@ export class TileFactory {
         return group;
     }
 
-    private switchTile(coord: Coord) {
+    /**
+     * The light gets its own material rather than the memoised shared one:
+     * `World` recolours it as the switch flips, and a shared material would
+     * flip every other switch in the level with it. Like a driven belt's
+     * chevrons, the clone is not in `shared()` and is disposed with the level.
+     */
+    private switchTile(tile: SwitchTile, coord: Coord) {
         const group = new THREE.Group();
         group.add(this.floor(coord));
 
-        const base = new THREE.Mesh(
-            this.geo('cyl:switchBase', () => new THREE.CylinderGeometry(0.14, 0.14, 0.06, 10)),
-            this.mat(COLORS.switchBase),
-        );
-        base.position.y = 0.03;
-        group.add(base);
+        group.add(this.box(0.56, 0.1, 0.42, COLORS.switchBase, 0.05));
 
-        // Pivot at the base so the lever swings rather than slides.
+        // Pivot at the top of the base so the lever swings rather than slides.
         const lever = new THREE.Group();
         lever.name = 'switchLever';
-        lever.position.y = 0.06;
-        const stick = this.box(0.06, 0.3, 0.06, COLORS.lever, 0.15);
-        lever.add(stick);
-        lever.rotation.x = 0.5;
+        lever.position.set(-0.08, 0.1, 0);
+        lever.add(this.box(0.07, 0.3, 0.07, COLORS.lever, 0.15));
+        lever.rotation.x = tile.initiallyOn ? -0.5 : 0.5;
         group.add(lever);
+
+        const color = tile.initiallyOn ? COLORS.switchOn : COLORS.switchOff;
+        const light = new THREE.Mesh(
+            this.geo('sphere:switchLight', () => new THREE.SphereGeometry(0.045, 12, 8)),
+            new THREE.MeshStandardMaterial({
+                color,
+                emissive: new THREE.Color(color),
+                emissiveIntensity: 0.8,
+                roughness: 0.3,
+            }),
+        );
+        light.name = 'switchLight';
+        light.position.set(0.18, 0.1, 0);
+        group.add(light);
         return group;
     }
 

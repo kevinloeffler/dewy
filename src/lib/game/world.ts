@@ -245,6 +245,7 @@ export class World implements EventPlayer {
     private keycardMeshes = new Map<string, THREE.Object3D>()
     private doorLeaves = new Map<string, THREE.Object3D[]>()
     private switchLevers = new Map<TileKey, THREE.Object3D>()
+    private switchLights = new Map<TileKey, THREE.MeshStandardMaterial>()
     private platePads = new Map<TileKey, THREE.Object3D>()
     private sensorZones = new Map<string, THREE.Object3D[]>()
     /** One entry per conveyor tile, scrolled by `tick` and dimmed by `setBeltState`. */
@@ -490,6 +491,8 @@ export class World implements EventPlayer {
                 } else if (tile.kind === 'switch') {
                     const lever = object.getObjectByName('switchLever')
                     if (lever) this.switchLevers.set(key, lever)
+                    const light = object.getObjectByName('switchLight')
+                    if (light instanceof THREE.Mesh) this.switchLights.set(key, light.material as THREE.MeshStandardMaterial)
                 } else if (tile.kind === 'pressure_plate') {
                     const pad = object.getObjectByName('platePad')
                     if (pad) this.platePads.set(key, pad)
@@ -606,6 +609,7 @@ export class World implements EventPlayer {
         this.keycardMeshes.clear()
         this.doorLeaves.clear()
         this.switchLevers.clear()
+        this.switchLights.clear()
         this.platePads.clear()
         this.sensorZones.clear()
         this.belts = []
@@ -1191,10 +1195,19 @@ export class World implements EventPlayer {
 
     private setSwitchOn(key: TileKey, on: boolean, t: number) {
         const lever = this.switchLevers.get(key)
-        if (!lever) return
-        const from = on ? 0.5 : -0.5
-        const to = on ? -0.5 : 0.5
-        lever.rotation.x = lerp(from, to, t)
+        if (lever) {
+            const from = on ? 0.5 : -0.5
+            const to = on ? -0.5 : 0.5
+            lever.rotation.x = lerp(from, to, t)
+        }
+
+        // The light snaps once the lever is past halfway, like a real contact.
+        const light = this.switchLights.get(key)
+        if (light) {
+            const color = (t >= 0.5) === on ? COLORS.switchOn : COLORS.switchOff
+            light.color.setHex(color)
+            light.emissive.setHex(color)
+        }
     }
 }
 
