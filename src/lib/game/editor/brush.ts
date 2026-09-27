@@ -102,6 +102,11 @@ export type BrushOptions = {
      * which is the robot's: turning a shelf must not spin the robot brush.
      */
     decorationFacing: Direction;
+    /**
+     * Which way a door is hung. Its own field for the same reason: turning a
+     * door must not swing the belt brush or the robot round with it.
+     */
+    doorFacing: Direction;
 };
 
 export function defaultBrushOptions(): BrushOptions {
@@ -118,6 +123,7 @@ export function defaultBrushOptions(): BrushOptions {
         beltId: 'belt-1',
         beltInitiallyOn: true,
         decorationFacing: 'south',
+        doorFacing: 'south',
     };
 }
 
@@ -138,11 +144,14 @@ export const BRUSH_GROUPS: { title: string; ids: BrushId[] }[] = [
         title: 'Deko',
         ids: [...DECORATION_IDS],
     },
-    {
-        title: 'Werkzeuge',
-        ids: ['select', 'erase'],
-    },
 ];
+
+/**
+ * The tools that paint nothing. Kept out of `BRUSH_GROUPS` because the palette
+ * pins them above the collapsible groups rather than listing them as one —
+ * and so the number keys go on meaning the first nine *brushes*.
+ */
+export const TOOL_IDS: BrushId[] = ['select', 'erase'];
 
 export const BRUSH_LABELS: Record<BrushId, string> = {
     floor: 'Boden',
@@ -185,7 +194,7 @@ export function brushOptionKeys(id: BrushId, options: BrushOptions): (keyof Brus
                 ? ['direction', 'beltEffect']
                 : ['direction', 'beltEffect', 'beltId', 'beltInitiallyOn'];
         case 'door':
-            return ['doorId', 'initiallyOpen'];
+            return ['doorFacing', 'doorId', 'initiallyOpen'];
         case 'pressure_plate':
             return ['targetId'];
         case 'switch':
@@ -226,22 +235,25 @@ export function mintedIdKey(id: BrushId, options: BrushOptions): 'doorId' | 'bel
 }
 
 /**
- * Which of the three facing fields a quarter turn moves, if any.
+ * Which of the facing fields a quarter turn moves, if any.
  *
- * Three brushes point somewhere and they keep the fields apart on purpose — a
+ * Four brushes point somewhere and they keep the fields apart on purpose — a
  * belt's `direction` is the way it travels, the robot's `facing` is where it
- * looks, and a shelf's is how it stands — so "rotate" has to be told which one
+ * looks, a shelf's is how it stands and a door's is how it is hung — so
+ * "rotate" has to be told which one
  * it is turning. A wall or a crate points nowhere and is left alone.
  */
 export function rotatableKey(
     id: BrushId,
-): 'direction' | 'facing' | 'decorationFacing' | null {
+): 'direction' | 'facing' | 'decorationFacing' | 'doorFacing' | null {
     switch (id) {
         case 'conveyor':
         case 'cargo_conveyor':
             return 'direction';
         case 'robot':
             return 'facing';
+        case 'door':
+            return 'doorFacing';
         default:
             return isDecorationId(id) && canTurn(id) ? 'decorationFacing' : null;
     }
@@ -275,7 +287,12 @@ export function tileOptions(tile: Tile, base: BrushOptions = defaultBrushOptions
                 beltInitiallyOn: tile.control?.initiallyOn ?? base.beltInitiallyOn,
             };
         case 'door':
-            return { ...base, doorId: tile.doorId, initiallyOpen: tile.initiallyOpen };
+            return {
+                ...base,
+                doorId: tile.doorId,
+                initiallyOpen: tile.initiallyOpen,
+                doorFacing: tile.facing,
+            };
         case 'pressure_plate':
             return { ...base, targetId: tile.targetId };
         case 'switch':
@@ -343,6 +360,7 @@ export function buildBrush(id: BrushId, options: BrushOptions): Brush {
                     kind: 'door',
                     doorId: options.doorId,
                     initiallyOpen: options.initiallyOpen,
+                    facing: options.doorFacing,
                 },
             };
 

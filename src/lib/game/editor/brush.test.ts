@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
     BRUSH_GROUPS,
+    TOOL_IDS,
     BRUSH_LABELS,
     brushOptionKeys,
     buildBrush,
@@ -16,7 +17,7 @@ import { applyBrush, emptyLevel } from './operations';
 import { parseLevel } from './parse';
 import { validateLevel } from '../rules';
 
-const ids = BRUSH_GROUPS.flatMap((group) => group.ids);
+const ids = [...BRUSH_GROUPS.flatMap((group) => group.ids), ...TOOL_IDS];
 
 describe('the palette', () => {
     it('lists every brush exactly once', () => {
@@ -174,6 +175,7 @@ describe('rotateBrush', () => {
         expect(rotatableKey('conveyor')).toBe('direction');
         expect(rotatableKey('robot')).toBe('facing');
         expect(rotatableKey('shelf')).toBe('decorationFacing');
+        expect(rotatableKey('door')).toBe('doorFacing');
 
         // …and leaves the other two where they were, so turning a shelf never
         // spins the robot brush.

@@ -108,10 +108,10 @@ describe('items', () => {
 describe('doors and bays', () => {
     it('collects door ids from tiles and suggests a free one', () => {
         let level = setTile(base(), { x: 1, y: 1 }, {
-            kind: 'door', doorId: 'door-1', initiallyOpen: false,
+            kind: 'door', doorId: 'door-1', initiallyOpen: false, facing: 'south',
         });
         level = setTile(level, { x: 2, y: 1 }, {
-            kind: 'door', doorId: 'door-1', initiallyOpen: false,
+            kind: 'door', doorId: 'door-1', initiallyOpen: false, facing: 'south',
         });
 
         expect(doorIds(level)).toEqual(['door-1']);
@@ -130,7 +130,7 @@ describe('doors and bays', () => {
             kind: 'conveyor', direction: 'east', control: null,
         });
         level = setTile(level, { x: 0, y: 0 }, {
-            kind: 'door', doorId: 'door-1', initiallyOpen: false,
+            kind: 'door', doorId: 'door-1', initiallyOpen: false, facing: 'south',
         });
 
         expect(beltIds(level)).toEqual(['belt-1']);
@@ -216,7 +216,7 @@ describe('armIds', () => {
 
     it('moves the door brush on, and pulls the keycard back onto a door that exists', () => {
         const level = setTile(base(), { x: 1, y: 1 }, {
-            kind: 'door', doorId: 'door-1', initiallyOpen: false,
+            kind: 'door', doorId: 'door-1', initiallyOpen: false, facing: 'south',
         });
 
         const options = armIds(level, 'door', defaultBrushOptions());
@@ -378,6 +378,17 @@ describe('rotateSelection', () => {
         const withShelf = placeDecoration(base(), { x: 4, y: 4 }, 'shelf', 'south');
         const turned = rotateSelection(withShelf, pick(withShelf, 4, 4));
         expect(turned.decorations[0].facing).toBe('west');
+    });
+
+    it('turns every tile of a door', () => {
+        const door = { kind: 'door', doorId: 'door-1', initiallyOpen: false, facing: 'south' } as const;
+        let level = setTile(base(), { x: 1, y: 1 }, door);
+        level = setTile(level, { x: 2, y: 1 }, door);
+
+        const turned = rotateSelection(level, pick(level, 1, 1));
+
+        expect(turned.tiles['1,1']).toMatchObject({ facing: 'west' });
+        expect(turned.tiles['2,1']).toMatchObject({ facing: 'west' });
     });
 
     it('leaves alone what has no turn to make', () => {

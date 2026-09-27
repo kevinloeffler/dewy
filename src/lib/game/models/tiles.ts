@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import type { CargoConveyorTile, ConveyorTile, Coord, Tile } from '$lib/game/level';
+import type { CargoConveyorTile, ConveyorTile, Coord, DoorTile, Tile } from '$lib/game/level';
 import { DIRECTION_YAW } from '$lib/game/grid';
 import { createDropOffBay } from '$lib/game/models/drop-off-bay';
 
@@ -65,7 +65,7 @@ export class TileFactory {
             case 'cargo_conveyor':
                 return this.conveyor(tile, COLORS.cargo);
             case 'door':
-                return this.door(coord);
+                return this.door(tile, coord);
             case 'pressure_plate':
                 return this.pressurePlate(coord);
             case 'switch':
@@ -189,7 +189,11 @@ export class TileFactory {
         return group;
     }
 
-    private door(coord: Coord) {
+    /**
+     * The leaves group is turned rather than the whole tile, so `World` can go
+     * on sliding each leaf along its local x whichever way the door is hung.
+     */
+    private door(tile: DoorTile, coord: Coord) {
         const group = new THREE.Group();
         group.add(this.floor(coord));
 
@@ -200,6 +204,7 @@ export class TileFactory {
             leaf.position.x = side * 0.25;
             leaves.add(leaf);
         }
+        leaves.rotation.y = DIRECTION_YAW[tile.facing];
         group.add(leaves);
         return group;
     }

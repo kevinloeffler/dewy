@@ -216,6 +216,7 @@ function tile(value: unknown, path: string): Tile {
                     field(source, 'initiallyOpen', path),
                     `${path}.initiallyOpen`,
                 ),
+                facing: optional(source, 'facing', path, direction, 'south'),
             };
 
         case 'pressure_plate':

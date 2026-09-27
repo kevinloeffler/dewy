@@ -94,7 +94,7 @@ describe('moveForward', () => {
 
     const blockers: [string, Tile | null, string][] = [
         ['wall',           { kind: 'wall' },                                'wall'],
-        ['closed door',    { kind: 'door', doorId: 'd', initiallyOpen: false }, 'door_closed'],
+        ['closed door',    { kind: 'door', doorId: 'd', initiallyOpen: false, facing: 'south' }, 'door_closed'],
         ['switch',         { kind: 'switch', targetId: 't', initiallyOn: false }, 'switch_blocked'],
         ['cargo belt',     cargo('east'),                                   'cargo_belt'],
     ];
@@ -164,7 +164,7 @@ describe('moveForward', () => {
 
     it('walks through an open door', () => {
         const engine = new GameEngine(makeLevel({
-            tiles: { '2,1': { kind: 'door', doorId: 'd', initiallyOpen: true } },
+            tiles: { '2,1': { kind: 'door', doorId: 'd', initiallyOpen: true, facing: 'south' } },
         }));
         expect(engine.moveForward().status).toBe('ok');
     });
@@ -203,7 +203,7 @@ describe('pushing', () => {
         ['a pit',       { kind: 'pit' }],
         ['a robot gap', { kind: 'robot_gap' }],
         ['a switch',    { kind: 'switch', targetId: 't', initiallyOn: false }],
-        ['a closed door', { kind: 'door', doorId: 'd', initiallyOpen: false }],
+        ['a closed door', { kind: 'door', doorId: 'd', initiallyOpen: false, facing: 'south' }],
     ];
 
     for (const [label, tile] of unpushable) {
@@ -360,7 +360,7 @@ describe('pick', () => {
 
     it('pockets a keycard, even with a crate already in hand', () => {
         const engine = new GameEngine(makeLevel({
-            tiles: { '3,1': { kind: 'door', doorId: 'd', initiallyOpen: false } },
+            tiles: { '3,1': { kind: 'door', doorId: 'd', initiallyOpen: false, facing: 'south' } },
             items: [
                 { kind: 'crate_grey', id: 'c', position: { x: 2, y: 1 } },
                 { kind: 'keycard', id: 'k', doorId: 'd', position: { x: 1, y: 2 } },
@@ -394,7 +394,7 @@ describe('pick', () => {
 
     it('prefers the crate when a tile holds both', () => {
         const engine = new GameEngine(makeLevel({
-            tiles: { '3,1': { kind: 'door', doorId: 'd', initiallyOpen: false } },
+            tiles: { '3,1': { kind: 'door', doorId: 'd', initiallyOpen: false, facing: 'south' } },
             items: [
                 { kind: 'crate_grey', id: 'c', position: { x: 2, y: 1 } },
                 { kind: 'keycard', id: 'k', doorId: 'd', position: { x: 2, y: 1 } },
@@ -468,7 +468,7 @@ describe('drop', () => {
     const undroppable: [string, Tile][] = [
         ['a wall',        { kind: 'wall' }],
         ['a pit',         { kind: 'pit' }],
-        ['a closed door', { kind: 'door', doorId: 'd', initiallyOpen: false }],
+        ['a closed door', { kind: 'door', doorId: 'd', initiallyOpen: false, facing: 'south' }],
         ['a robot gap',   { kind: 'robot_gap' }],
         ['a switch',      { kind: 'switch', targetId: 't', initiallyOn: false }],
     ];
@@ -503,7 +503,7 @@ describe('doors, switches and plates', () => {
             robot: { position: { x: 1, y: 1 }, facing: 'east' },
             tiles: {
                 '2,1': { kind: 'pressure_plate', targetId: 'd' },
-                '4,1': { kind: 'door', doorId: 'd', initiallyOpen: false },
+                '4,1': { kind: 'door', doorId: 'd', initiallyOpen: false, facing: 'south' },
             },
         }));
         expect(engine.state.doors[0].open).toBe(false);
@@ -523,7 +523,7 @@ describe('doors, switches and plates', () => {
             robot: { position: { x: 1, y: 1 }, facing: 'east' },
             tiles: {
                 '1,1': { kind: 'pressure_plate', targetId: 'd' },
-                '2,1': { kind: 'door', doorId: 'd', initiallyOpen: false },
+                '2,1': { kind: 'door', doorId: 'd', initiallyOpen: false, facing: 'south' },
             },
         }));
         // Standing on the plate from the start, so the door settles open.
@@ -542,7 +542,7 @@ describe('doors, switches and plates', () => {
         const engine = new GameEngine(makeLevel({
             tiles: {
                 '3,1': { kind: 'pressure_plate', targetId: 'd' },
-                '4,1': { kind: 'door', doorId: 'd', initiallyOpen: false },
+                '4,1': { kind: 'door', doorId: 'd', initiallyOpen: false, facing: 'south' },
             },
             items: [{ kind: 'crate_grey', id: 'c', position: { x: 2, y: 1 } }],
         }));
@@ -555,7 +555,7 @@ describe('doors, switches and plates', () => {
         const engine = new GameEngine(makeLevel({
             tiles: {
                 '3,3': { kind: 'pressure_plate', targetId: 'd' },
-                '4,1': { kind: 'door', doorId: 'd', initiallyOpen: false },
+                '4,1': { kind: 'door', doorId: 'd', initiallyOpen: false, facing: 'south' },
             },
             items: [{ kind: 'crate_grey', id: 'c', position: { x: 3, y: 3 } }],
         }));
@@ -568,7 +568,7 @@ describe('doors, switches and plates', () => {
     it('leaves an initiallyOpen door open when its switch starts off', () => {
         const engine = new GameEngine(makeLevel({
             tiles: {
-                '2,1': { kind: 'door', doorId: 'd', initiallyOpen: true },
+                '2,1': { kind: 'door', doorId: 'd', initiallyOpen: true, facing: 'south' },
                 '1,2': { kind: 'switch', targetId: 'd', initiallyOn: false },
             },
         }));
@@ -582,7 +582,7 @@ describe('doors, switches and plates', () => {
         const closes = new GameEngine(makeLevel({
             tiles: {
                 '2,1': { kind: 'switch', targetId: 'd', initiallyOn: false },
-                '4,1': { kind: 'door', doorId: 'd', initiallyOpen: true },
+                '4,1': { kind: 'door', doorId: 'd', initiallyOpen: true, facing: 'south' },
             },
         }));
         expect(closes.state.doors[0].open).toBe(true);
@@ -595,7 +595,7 @@ describe('doors, switches and plates', () => {
             tiles: {
                 '2,1': { kind: 'switch', targetId: 'd', initiallyOn: false },
                 '1,2': { kind: 'switch', targetId: 'd', initiallyOn: false },
-                '4,1': { kind: 'door', doorId: 'd', initiallyOpen: false },
+                '4,1': { kind: 'door', doorId: 'd', initiallyOpen: false, facing: 'south' },
             },
         }));
         const outcome = engine.toggle();
@@ -609,7 +609,7 @@ describe('doors, switches and plates', () => {
             tiles: {
                 '2,1': { kind: 'switch', targetId: 'd', initiallyOn: false },
                 '1,2': { kind: 'switch', targetId: 'd', initiallyOn: false },
-                '4,1': { kind: 'door', doorId: 'd', initiallyOpen: false },
+                '4,1': { kind: 'door', doorId: 'd', initiallyOpen: false, facing: 'south' },
             },
         }));
         engine.toggle();                 // east switch on  → open
@@ -629,7 +629,7 @@ describe('doors, switches and plates', () => {
         const engine = new GameEngine(makeLevel({
             tiles: {
                 '1,2': { kind: 'switch', targetId: 'd', initiallyOn: false },
-                '4,1': { kind: 'door', doorId: 'd', initiallyOpen: false },
+                '4,1': { kind: 'door', doorId: 'd', initiallyOpen: false, facing: 'south' },
             },
             items: [{ kind: 'crate_grey', id: 'c', position: { x: 2, y: 1 } }],
         }));
@@ -648,7 +648,7 @@ describe('open', () => {
             items.push({ kind: 'keycard', id: 'k', doorId: 'd', position: { x: 1, y: 2 } });
         }
         const engine = new GameEngine(makeLevel({
-            tiles: { '2,1': { kind: 'door', doorId: 'd', initiallyOpen: opts.initiallyOpen ?? false } },
+            tiles: { '2,1': { kind: 'door', doorId: 'd', initiallyOpen: opts.initiallyOpen ?? false, facing: 'south' } },
             items,
         }));
         if (opts.held) {
@@ -688,7 +688,7 @@ describe('open', () => {
             robot: { position: { x: 1, y: 1 }, facing: 'east' },
             tiles: {
                 '1,1': { kind: 'pressure_plate', targetId: 'd' },
-                '2,1': { kind: 'door', doorId: 'd', initiallyOpen: false },
+                '2,1': { kind: 'door', doorId: 'd', initiallyOpen: false, facing: 'south' },
             },
             items: [{ kind: 'keycard', id: 'k', doorId: 'd', position: { x: 1, y: 2 } }],
         }));
@@ -708,8 +708,8 @@ describe('open', () => {
     it('opens every tile of a multi-tile door at once', () => {
         const engine = new GameEngine(makeLevel({
             tiles: {
-                '2,1': { kind: 'door', doorId: 'd', initiallyOpen: false },
-                '2,2': { kind: 'door', doorId: 'd', initiallyOpen: false },
+                '2,1': { kind: 'door', doorId: 'd', initiallyOpen: false, facing: 'south' },
+                '2,2': { kind: 'door', doorId: 'd', initiallyOpen: false, facing: 'south' },
             },
             items: [{ kind: 'keycard', id: 'k', doorId: 'd', position: { x: 1, y: 2 } }],
         }));
@@ -911,7 +911,7 @@ describe('conveyors', () => {
     const jams: [string, Tile][] = [
         ['a wall',        { kind: 'wall' }],
         ['a pit',         { kind: 'pit' }],
-        ['a closed door', { kind: 'door', doorId: 'd', initiallyOpen: false }],
+        ['a closed door', { kind: 'door', doorId: 'd', initiallyOpen: false, facing: 'south' }],
     ];
 
     for (const [label, blocker] of jams) {
@@ -1036,7 +1036,7 @@ describe('conveyors', () => {
             tiles: {
                 '1,1': belt('east'),
                 '2,1': belt('east'),
-                '3,1': { kind: 'door', doorId: 'd', initiallyOpen: false },
+                '3,1': { kind: 'door', doorId: 'd', initiallyOpen: false, facing: 'south' },
                 '1,3': cargo('east'),
                 '2,3': cargo('east'),
                 '3,3': { kind: 'pressure_plate', targetId: 'd' },
@@ -1092,7 +1092,7 @@ describe('conveyors', () => {
             tiles: {
                 '2,1': belt('east'),
                 '3,1': { kind: 'pressure_plate', targetId: 'd' },
-                '4,1': { kind: 'door', doorId: 'd', initiallyOpen: false },
+                '4,1': { kind: 'door', doorId: 'd', initiallyOpen: false, facing: 'south' },
             },
             items: [grey('c', 2, 1)],
         }));
@@ -1107,7 +1107,7 @@ describe('conveyors', () => {
         const engine = new GameEngine(makeLevel({
             tiles: {
                 '2,1': { kind: 'pressure_plate', targetId: 'd' },
-                '3,1': { kind: 'door', doorId: 'd', initiallyOpen: false },
+                '3,1': { kind: 'door', doorId: 'd', initiallyOpen: false, facing: 'south' },
             },
         }));
         // Step onto the plate: settle opens the door before the belt would
@@ -1275,8 +1275,8 @@ describe('sensing', () => {
             { kind: 'pit' },
             { kind: 'switch', targetId: 't', initiallyOn: false },
             cargo('east'),
-            { kind: 'door', doorId: 'd', initiallyOpen: false },
-            { kind: 'door', doorId: 'd', initiallyOpen: true },
+            { kind: 'door', doorId: 'd', initiallyOpen: false, facing: 'south' },
+            { kind: 'door', doorId: 'd', initiallyOpen: true, facing: 'south' },
             { kind: 'goal' },
             { kind: 'robot_gap' },
         ];
@@ -1673,7 +1673,7 @@ describe('validateLevel', () => {
     it('accepts a control linked to a door, a belt or a sensor', () => {
         const problems = validateLevel(makeLevel({
             tiles: {
-                '0,0': { kind: 'door', doorId: 'door-1', initiallyOpen: false },
+                '0,0': { kind: 'door', doorId: 'door-1', initiallyOpen: false, facing: 'south' },
                 '1,0': belt('east', { beltId: 'belt-1', effect: 'power', initiallyOn: true }),
                 '2,2': { kind: 'switch', targetId: 'door-1', initiallyOn: false },
                 '3,2': { kind: 'switch', targetId: 'belt-1', initiallyOn: false },

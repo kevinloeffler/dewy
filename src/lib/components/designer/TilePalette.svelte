@@ -2,11 +2,13 @@
 	import { CRATE_COLORS, type CrateColor } from '$lib/game/crate-color';
 	import { COLORS } from '$lib/game/models/tiles';
 	import { DECORATION_SWATCHES } from '$lib/game/models/warehouse';
+	import ChevronDown from '@lucide/svelte/icons/chevron-down';
 	import OptionFields from './OptionFields.svelte';
 	import { armIds, nextBeltId } from '$lib/game/editor/operations';
 	import {
 		BRUSH_GROUPS,
 		BRUSH_LABELS,
+		TOOL_IDS,
 		brushOptionKeys,
 		decorationOptions,
 		defaultBrushOptions,
@@ -80,6 +82,9 @@
 
 	let optionKeys = $derived(brushOptionKeys(selected, options));
 
+	/** Groups the author has folded away, by title. Every group starts open. */
+	let collapsed = $state<Record<string, boolean>>({});
+
 	/**
 	 * Picking a brush re-arms the id it would author, so the next door painted
 	 * is a new door rather than another tile of the last one.
@@ -130,30 +135,26 @@
 	});
 </script>
 
+{#snippet brushButton(id: BrushId)}
+	<button class="brush" class:active={selected === id} type="button" onclick={() => pick(id)}>
+		<span
+			class="swatch"
+			class:empty={id === 'erase'}
+			class:marquee={id === 'select'}
+			style="background: {swatch(id)}"
+		></span>
+		{BRUSH_LABELS[id]}
+	</button>
+{/snippet}
+
 <div class="palette">
-	{#each BRUSH_GROUPS as group (group.title)}
-		<div class="group">
-			<h3 class="group-title">{group.title}</h3>
-			<div class="brushes">
-				{#each group.ids as id (id)}
-					<button
-						class="brush"
-						class:active={selected === id}
-						type="button"
-						onclick={() => pick(id)}
-					>
-						<span
-							class="swatch"
-							class:empty={id === 'erase'}
-							class:marquee={id === 'select'}
-							style="background: {swatch(id)}"
-						></span>
-						{BRUSH_LABELS[id]}
-					</button>
-				{/each}
-			</div>
-		</div>
-	{/each}
+	<!-- Pinned above the groups, so the select tool and the eraser are one
+	     click away however far down the list has been scrolled. -->
+	<div class="tools">
+		{#each TOOL_IDS as id (id)}
+			{@render brushButton(id)}
+		{/each}
+	</div>
 
 	{#if selected === 'select'}
 		<div class="group options">
@@ -197,6 +198,28 @@
 		</div>
 	{/if}
 
+	{#each BRUSH_GROUPS as group (group.title)}
+		{@const open = !collapsed[group.title]}
+		<div class="group">
+			<button
+				class="group-toggle"
+				type="button"
+				aria-expanded={open}
+				onclick={() => (collapsed[group.title] = open)}
+			>
+				<span class="group-title">{group.title}</span>
+				<ChevronDown size={14} class="chevron {open ? '' : 'folded'}" />
+			</button>
+			{#if open}
+				<div class="brushes">
+					{#each group.ids as id (id)}
+						{@render brushButton(id)}
+					{/each}
+				</div>
+			{/if}
+		</div>
+	{/each}
+
 	<p class="hint footnote">
 		Ziehen zum Malen · Rechtsklick zum Radieren · <kbd>R</kbd> oder mittlere Maustaste zum Drehen
 	</p>
@@ -207,6 +230,54 @@
 		display: flex;
 		flex-direction: column;
 		gap: 18px;
+	}
+
+	.tools {
+		position: sticky;
+		/* Flush with the scrolling column's top edge, over the panel padding. */
+		top: -12px;
+		z-index: 1;
+		display: flex;
+		gap: 4px;
+		margin: -12px -12px 0;
+		padding: 12px 12px 10px;
+		border-bottom: 1px solid var(--panel-border);
+		border-radius: var(--radius) var(--radius) 0 0;
+		background: var(--panel);
+	}
+
+	.tools .brush {
+		flex: 1;
+		min-width: 0;
+	}
+
+	.group-toggle {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		width: 100%;
+		margin: 0 0 8px;
+		padding: 0;
+		border: none;
+		background: none;
+		color: var(--text-faint);
+		cursor: pointer;
+	}
+
+	.group-toggle:hover {
+		color: var(--text);
+	}
+
+	.group-toggle :global(.chevron) {
+		transition: transform 0.15s ease;
+	}
+
+	.group-toggle :global(.chevron.folded) {
+		transform: rotate(-90deg);
+	}
+
+	.group-toggle .group-title {
+		margin: 0;
 	}
 
 	.group-title {
@@ -293,8 +364,8 @@
 	}
 
 	.options {
-		padding-top: 14px;
-		border-top: 1px solid var(--panel-border);
+		padding-bottom: 14px;
+		border-bottom: 1px solid var(--panel-border);
 	}
 
 	.hint {

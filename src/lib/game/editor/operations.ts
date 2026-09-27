@@ -66,7 +66,8 @@ function sameTile(a: Tile, b: Tile): boolean {
                 && sameBeltControl(a.control, (b as typeof a).control);
         case 'door':
             return a.doorId === (b as typeof a).doorId
-                && a.initiallyOpen === (b as typeof a).initiallyOpen;
+                && a.initiallyOpen === (b as typeof a).initiallyOpen
+                && a.facing === (b as typeof a).facing;
         case 'pressure_plate':
             return a.targetId === (b as typeof a).targetId;
         case 'switch':
@@ -447,16 +448,17 @@ export function deleteSelection(level: Level, selection: Selection): Level {
  */
 export function rotateSelection(level: Level, selection: Selection): Level {
     switch (selection.kind) {
-        case 'tiles': {
-            if (selection.tile.kind !== 'conveyor' && selection.tile.kind !== 'cargo_conveyor') {
-                return level;
-            }
+        case 'tiles':
             return selection.coords.reduce((next, coord) => {
                 const tile = next.tiles[coordKey(coord)];
-                if (tile?.kind !== 'conveyor' && tile?.kind !== 'cargo_conveyor') return next;
-                return setTile(next, coord, { ...tile, direction: turn(tile.direction, 'right') });
+                if (tile?.kind === 'conveyor' || tile?.kind === 'cargo_conveyor') {
+                    return setTile(next, coord, { ...tile, direction: turn(tile.direction, 'right') });
+                }
+                if (tile?.kind === 'door') {
+                    return setTile(next, coord, { ...tile, facing: turn(tile.facing, 'right') });
+                }
+                return next;
             }, level);
-        }
 
         case 'decoration': {
             const piece = selection.decoration;

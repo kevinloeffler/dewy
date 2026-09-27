@@ -60,6 +60,13 @@ export type DoorTile = {
     doorId: string;
     /** Authored starting value. The live flag lives in `DoorState.open`. */
     initiallyOpen: boolean;
+    /**
+     * Which way the door is hung — purely visual; a closed door blocks its
+     * tile whichever way it faces. A door is symmetrical, so north and south
+     * (and east and west) look alike. Levels written before doors turned have
+     * none and read as `'south'`.
+     */
+    facing: Direction;
 };
 
 export type PressurePlateTile = {

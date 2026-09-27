@@ -97,7 +97,7 @@ describe('pickTileFrom', () => {
 
     it('walks up from a child mesh to the tile that owns it', () => {
         const level = setTile(emptyLevel('x', 'X', 6, 6), { x: 3, y: 2 }, {
-            kind: 'door', doorId: 'door-1', initiallyOpen: false,
+            kind: 'door', doorId: 'door-1', initiallyOpen: false, facing: 'south',
         });
         const root = buildTileRoot(level);
         const camera = cameraFor(level);

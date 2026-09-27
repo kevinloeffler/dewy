@@ -32,7 +32,7 @@ describe('parseLevel', () => {
                 '3,0': { kind: 'goal' },
                 '4,0': { kind: 'conveyor', direction: 'north', control: null },
                 '5,0': { kind: 'cargo_conveyor', direction: 'west', control: null },
-                '6,0': { kind: 'door', doorId: 'door-1', initiallyOpen: false },
+                '6,0': { kind: 'door', doorId: 'door-1', initiallyOpen: false, facing: 'south' },
                 '0,1': { kind: 'pressure_plate', targetId: 'door-1' },
                 '1,1': { kind: 'switch', targetId: 'door-1', initiallyOn: true },
                 '2,1': { kind: 'drop_off', color: 'red' },
@@ -60,7 +60,7 @@ describe('parseLevel', () => {
     });
 
     it('reads a belt stored before controls existed as undriven', () => {
-        // `control` is the one field allowed to be missing — rows written
+        // `control` may be missing — rows written
         // before belts could be driven have no key at all.
         const level = {
             ...roundTrip(emptyLevel('old', 'Old')),
@@ -71,6 +71,19 @@ describe('parseLevel', () => {
         expect(result.ok).toBe(true);
         if (result.ok) expect(result.level.tiles['1,1']).toEqual({
             kind: 'cargo_conveyor', direction: 'south', control: null,
+        });
+    });
+
+    it('reads a door stored before doors turned as facing south', () => {
+        const level = {
+            ...roundTrip(emptyLevel('old', 'Old')),
+            tiles: { '1,1': { kind: 'door', doorId: 'door-1', initiallyOpen: false } },
+        };
+
+        const result = parseLevel(level);
+        expect(result.ok).toBe(true);
+        if (result.ok) expect(result.level.tiles['1,1']).toEqual({
+            kind: 'door', doorId: 'door-1', initiallyOpen: false, facing: 'south',
         });
     });
 

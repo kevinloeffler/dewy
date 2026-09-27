@@ -65,9 +65,9 @@ describe('selectAt', () => {
 
     it('takes every tile of a door, sharing an id but not an edge', () => {
         const level = paint(base(), {
-            '1,0': { kind: 'door', doorId: 'door-1', initiallyOpen: false },
-            '3,0': { kind: 'door', doorId: 'door-1', initiallyOpen: false },
-            '4,0': { kind: 'door', doorId: 'door-2', initiallyOpen: false },
+            '1,0': { kind: 'door', doorId: 'door-1', initiallyOpen: false, facing: 'south' },
+            '3,0': { kind: 'door', doorId: 'door-1', initiallyOpen: false, facing: 'south' },
+            '4,0': { kind: 'door', doorId: 'door-2', initiallyOpen: false, facing: 'south' },
         });
 
         expect(keys(level, { x: 1, y: 0 })).toEqual(['1,0', '3,0']);
@@ -166,9 +166,9 @@ describe('selecting a switch or a plate', () => {
     it('brings along every tile of the door it opens', () => {
         const level = paint(base(), {
             '0,2': { kind: 'pressure_plate', targetId: 'door-1' },
-            '1,0': { kind: 'door', doorId: 'door-1', initiallyOpen: false },
-            '3,0': { kind: 'door', doorId: 'door-1', initiallyOpen: false },
-            '4,0': { kind: 'door', doorId: 'door-2', initiallyOpen: false },
+            '1,0': { kind: 'door', doorId: 'door-1', initiallyOpen: false, facing: 'south' },
+            '3,0': { kind: 'door', doorId: 'door-1', initiallyOpen: false, facing: 'south' },
+            '4,0': { kind: 'door', doorId: 'door-2', initiallyOpen: false, facing: 'south' },
         });
 
         expect(keys(level, { x: 0, y: 2 })).toEqual(['0,2']);
@@ -266,7 +266,7 @@ describe('setSelectionOption', () => {
         const level = paint(base(), {
             '3,0': { kind: 'pressure_plate', targetId: 'door-1' },
             '4,0': { kind: 'pressure_plate', targetId: 'door-1' },
-            '1,0': { kind: 'door', doorId: 'door-1', initiallyOpen: false },
+            '1,0': { kind: 'door', doorId: 'door-1', initiallyOpen: false, facing: 'south' },
         });
 
         const edited = setSelectionOption(level, selectAt(level, { x: 3, y: 0 })!, {
@@ -276,7 +276,7 @@ describe('setSelectionOption', () => {
         expect(edited.tiles['3,0']).toEqual({ kind: 'pressure_plate', targetId: 'belt-1' });
         expect(edited.tiles['4,0']).toEqual({ kind: 'pressure_plate', targetId: 'belt-1' });
         // The door it used to open is linked, not selected: it stays as it was.
-        expect(edited.tiles['1,0']).toEqual({ kind: 'door', doorId: 'door-1', initiallyOpen: false });
+        expect(edited.tiles['1,0']).toEqual({ kind: 'door', doorId: 'door-1', initiallyOpen: false, facing: 'south' });
     });
 
     it('changes only the named field, tile by tile', () => {
