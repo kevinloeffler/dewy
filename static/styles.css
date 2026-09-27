@@ -269,8 +269,12 @@ kbd {
   font-weight: 600;
   font-size: 0.8125rem;
   letter-spacing: 0.2px;
+  /* A fixed line box the same height as `.btn-icon` in `Button.svelte`, and a
+     border on every variant: text, icon and icon + text buttons then all come
+     out the same height, whatever the variant. */
+  line-height: 1rem;
   cursor: pointer;
-  border: none;
+  border: 1px solid transparent;
   text-decoration: none;
   transition: transform 80ms ease, opacity 150ms ease;
   white-space: nowrap;
@@ -294,7 +298,7 @@ kbd {
 .btn-ghost {
   background: var(--btn-ghost-bg);
   color: var(--btn-ghost-text);
-  border: 1px solid var(--btn-ghost-border);
+  border-color: var(--btn-ghost-border);
 }
 
 /* The solid "add something" button — the one the course editor centres under

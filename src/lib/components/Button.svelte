@@ -23,7 +23,14 @@
 </button>
 
 <style>
+	/* A fixed square, matching the `.btn` line height, so an icon's own size
+	   never decides how tall the button is. */
 	.btn-icon {
-		display: contents;
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		flex-shrink: 0;
+		width: 1rem;
+		height: 1rem;
 	}
 </style>

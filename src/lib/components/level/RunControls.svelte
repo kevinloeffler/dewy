@@ -242,12 +242,6 @@
 		border-radius: 8px;
 		font-size: 0.8125rem;
 		font-weight: 500;
-		/*height: 100%;*/
-	}
-
-	.controls :global(.btn-primary) {
-		border: 1px solid transparent;
-		padding: 11px 13px;
 	}
 
 	.controls-wrapper {
