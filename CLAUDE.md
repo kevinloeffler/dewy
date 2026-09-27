@@ -18,6 +18,7 @@ npm run check:watch  # type-check in watch mode
 npm run db:push      # push schema changes to DB (no migration file)
 npm run db:generate  # generate migration files
 npm run db:migrate   # run migrations
+npm run db:baseline  # one-off: adopt a db:push-made database into migration history
 npm run db:studio    # open Drizzle Studio
 
 npm run auth:schema  # regenerate auth schema from better-auth config
@@ -49,9 +50,11 @@ npm run auth:schema  # regenerate auth schema from better-auth config
 
 **Database:** `src/lib/server/db/index.ts` creates the Drizzle client with better-sqlite3. `src/lib/server/db/schema.ts` is the single source of truth for app tables; it re-exports `auth.schema.ts`. The DB file path comes from `DATABASE_URL` env var (defaults to `local.db` for local dev).
 
+**Migrations:** `drizzle/` holds the migration history, starting at `0000_init`. The production container runs `scripts/migrate.js` before the server starts, so **every schema change must be committed as a migration** (`npm run db:generate`) — a change applied only with `db:push` never reaches a deployed database. A database created by `db:push` has the tables but no history; `npm run db:baseline` records `0000_init` as applied once, and `migrate.js` refuses such a database otherwise. `drizzle-orm` is a runtime dependency (not dev) because that script runs in the image.
+
 **Environment variables** (see `.env.example`):
 - `DATABASE_URL` — path to SQLite file
 - `ORIGIN` — used as better-auth `baseURL`
 - `BETTER_AUTH_SECRET` — 32-char high-entropy secret for production
 
-**Deployment:** Docker via `dockerfile` + `docker-compose.yml`. The Node adapter serves the built app.
+**Deployment:** `Dockerfile.prod` builds the production image (adapter-node, `node build` on port 3000, SQLite at `/data/dewy.db` — mount a volume there); `.github/workflows/docker.yml` builds it on PRs and pushes it to GHCR from `main` and `v*` tags. `dockerfile` + `docker-compose.yml` are the dev setup only (`vite dev`).

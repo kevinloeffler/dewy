@@ -35,6 +35,8 @@ ENV NODE_ENV=production \
 COPY --from=build /app/package.json ./
 COPY --from=build /app/node_modules ./node_modules
 COPY --from=build /app/build ./build
+COPY --from=build /app/drizzle ./drizzle
+COPY --from=build /app/scripts/migrate.js ./scripts/migrate.js
 
 RUN mkdir -p /data && chown node:node /data
 VOLUME /data
@@ -42,4 +44,6 @@ VOLUME /data
 USER node
 EXPOSE 3000
 
-CMD ["node", "build"]
+# Migrate first so the server never starts against a stale schema; a failed
+# migration stops the container instead of serving errors.
+CMD ["sh", "-c", "node scripts/migrate.js && exec node build"]
