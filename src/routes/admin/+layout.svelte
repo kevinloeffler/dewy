@@ -1,9 +1,9 @@
 <script lang="ts">
 	import { page } from '$app/state';
 	import type { Snippet } from 'svelte';
-	import type { LayoutServerData } from './$types';
+	import { Topbar } from '$lib/components/index.js';
 
-	let { data, children }: { data: LayoutServerData; children: Snippet } = $props();
+	let { children }: { children: Snippet } = $props();
 
 	const tabs = [
 		{ href: '/admin/courses', label: 'Kurse' },
@@ -15,52 +15,21 @@
 	const current = $derived(page.url.pathname);
 </script>
 
-<header class="nav">
-	<a class="wordmark" href="/admin/courses">Dewy</a>
-	<span class="nav-divider"></span>
-
-	<nav class="tabs">
-		{#each tabs as tab (tab.href)}
-			<a class="tab" href={tab.href} class:is-current={current.startsWith(tab.href)}>
-				{tab.label}
-			</a>
-		{/each}
-	</nav>
-
-	<span class="who">{data.user.name}</span>
-	<form method="POST" action="/logout">
-		<button class="btn btn-ghost" type="submit">Abmelden</button>
-	</form>
-</header>
+<Topbar size="large" account>
+	{#snippet left()}
+		<nav class="tabs">
+			{#each tabs as tab (tab.href)}
+				<a class="tab" href={tab.href} class:is-current={current.startsWith(tab.href)}>
+					{tab.label}
+				</a>
+			{/each}
+		</nav>
+	{/snippet}
+</Topbar>
 
 {@render children()}
 
 <style>
-	.nav {
-		display: flex;
-		align-items: center;
-		gap: 20px;
-		height: 82px;
-		padding: 0 40px;
-		background: var(--panel);
-		border-bottom: 1px solid var(--panel-border);
-	}
-
-	.wordmark {
-		font-family: var(--font-display);
-		font-weight: 800;
-		font-size: 1.25rem;
-		letter-spacing: -0.3px;
-		color: var(--text);
-		text-decoration: none;
-	}
-
-	.nav-divider {
-		width: 1px;
-		height: 26px;
-		background: var(--panel-border);
-	}
-
 	.tabs {
 		display: flex;
 		align-items: center;
@@ -80,11 +49,5 @@
 
 	.tab.is-current {
 		color: var(--accent);
-	}
-
-	.who {
-		margin-left: auto;
-		font-size: 0.9375rem;
-		color: var(--text);
 	}
 </style>

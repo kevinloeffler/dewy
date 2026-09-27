@@ -14,7 +14,6 @@
 
 <Topbar>
 	{#snippet left()}
-		<span class="topbar-wordmark">Dewy</span>
 		<span class="chip">Einrichtung</span>
 	{/snippet}
 </Topbar>

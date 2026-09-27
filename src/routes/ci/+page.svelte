@@ -535,9 +535,6 @@ robot.forward();`;
 			<div class="topbar-demo">
 				<Topbar>
 					{#snippet left()}
-						<div class="topbar-logo">D</div>
-						<span class="topbar-wordmark">Dewlab</span>
-						<div class="divider-v" style="height:18px; margin:0 4px"></div>
 						<Badge variant="chapter">CH 1 · LOOPS</Badge>
 						<span style="color:var(--text-muted); font-size:0.8125rem">Mission 1.3 — Pickup Run</span>
 					{/snippet}
@@ -557,9 +554,6 @@ robot.forward();`;
 			<div class="game-preview">
 				<Topbar>
 					{#snippet left()}
-						<div class="topbar-logo" style="width:24px;height:24px;font-size:0.875rem">D</div>
-						<span class="topbar-wordmark" style="font-size:0.875rem">Dewlab</span>
-						<div class="divider-v" style="height:16px"></div>
 						<Badge variant="chapter">CH 1 · LOOPS</Badge>
 						<span style="color:var(--text-muted); font-size:0.75rem">Mission 1.3</span>
 					{/snippet}

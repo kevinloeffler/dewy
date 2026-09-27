@@ -13,10 +13,8 @@
 	<title>{course.title} · Dewy</title>
 </svelte:head>
 
-<Topbar>
+<Topbar home="/courses">
 	{#snippet left()}
-		<a class="topbar-wordmark" href="/courses">Dewy</a>
-		<span class="divider-v"></span>
 		<span class="chip">Kurs</span>
 		<span class="mission">{course.title}</span>
 	{/snippet}

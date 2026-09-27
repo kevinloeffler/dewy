@@ -16,7 +16,10 @@ declare global {
 		}
 
 		// interface Error {}
-		// interface PageData {}
+		interface PageData {
+			/** Who is signed in, trimmed to what the navbar shows. Set by the root layout. */
+			viewer: { name: string } | null;
+		}
 		// interface PageState {}
 		// interface Platform {}
 	}

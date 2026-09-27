@@ -328,8 +328,6 @@
 <div class="screen">
 	<Topbar>
 		{#snippet left()}
-			<span class="topbar-wordmark">Dewy</span>
-			<span class="divider-v"></span>
 			<nav class="crumbs" aria-label="Kurs">
 				{#each props.crumbs ?? [] as crumb, index (index)}
 					{#if crumb.href}

@@ -44,10 +44,8 @@
 </svelte:head>
 
 {#if item.kind === 'theory'}
-	<Topbar>
+	<Topbar home="/courses">
 		{#snippet left()}
-			<a class="topbar-wordmark" href="/courses">Dewy</a>
-			<span class="divider-v"></span>
 			<a class="crumb" href="/courses/{courseId}">{context.course.title}</a>
 			<span class="crumb-sep">›</span>
 			<span class="crumb-current">{context.stage.title}</span>

@@ -9,11 +9,8 @@
 	<title>Kurse · Dewy</title>
 </svelte:head>
 
-<Topbar>
+<Topbar account>
 	{#snippet left()}
-		<span class="topbar-logo">D</span>
-		<span class="topbar-wordmark">Dewy</span>
-		<span class="divider-v"></span>
 		<span class="chip">Kurse</span>
 	{/snippet}
 	{#snippet right()}

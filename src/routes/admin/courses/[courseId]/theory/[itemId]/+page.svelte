@@ -38,7 +38,7 @@
 
 <svelte:window {onkeydown} />
 
-<Topbar>
+<Topbar brand={false}>
 	{#snippet left()}
 		<a class="crumb" href="/admin/courses/{data.context.course.id}">{data.context.course.title}</a>
 		<span class="crumb-sep">›</span>

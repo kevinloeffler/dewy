@@ -12,11 +12,7 @@
 	<title>Anmelden · Dewy</title>
 </svelte:head>
 
-<Topbar>
-	{#snippet left()}
-		<a class="topbar-wordmark" href="/">Dewy</a>
-	{/snippet}
-</Topbar>
+<Topbar />
 
 <main class="page">
 	<Panel padding="lg">
