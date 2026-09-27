@@ -236,7 +236,7 @@
 							draft.markSaved(submitted);
 							if (playAfterSave) {
 								playAfterSave = false;
-								await goto(`/level/${data.level.id}`);
+								await goto(`/level/${data.level.id}?from=designer`);
 							}
 							return;
 						}
