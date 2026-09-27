@@ -13,6 +13,7 @@ export { default as MarkdownEditor } from './MarkdownEditor.svelte';
 export { default as Modal }       from './Modal.svelte';
 export { default as Panel }       from './Panel.svelte';
 export { default as Progress }    from './Progress.svelte';
+export { default as RobotPortrait } from './RobotPortrait.svelte';
 export { default as Select }      from './Select.svelte';
 export { default as StatusDot }   from './StatusDot.svelte';
 export { default as StudentRoster } from './StudentRoster.svelte';

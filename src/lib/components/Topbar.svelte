@@ -3,7 +3,7 @@
 	import type { Snippet } from 'svelte';
 
 	interface Props {
-		/** Where the brand links to. `/` already redirects by role. */
+		/** Where the brand links to. `/` redirects a signed-in reader by role. */
 		home?: string;
 		/** `large` is the roomy header of the list pages; `default` suits dense workspaces. */
 		size?: 'default' | 'large';

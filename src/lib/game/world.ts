@@ -18,7 +18,7 @@ import { aimIsometricCamera, clearGroup, createIsometricCamera, disposeObject } 
 import { pickTileFrom } from './editor/picking'
 import type { Brush } from './editor/brush'
 import { decorationPlacement } from './editor/operations'
-import { createRoboter, type Roboter } from '$lib/game/models/roboter'
+import { CELEBRATE_DURATION, createRoboter, type Roboter } from '$lib/game/models/roboter'
 import { createCrate } from '$lib/game/models/crate'
 import { createKeycard } from '$lib/game/models/keycard'
 import { COLORS, TileFactory } from '$lib/game/models/tiles'
@@ -104,7 +104,7 @@ const DURATIONS: Record<WorldEventKind, number> = {
     crateDelivered: 0.35,
     bump:        0.25,
     crash:       0.90,
-    goalReached: 0.50,
+    goalReached: CELEBRATE_DURATION,
 }
 
 
@@ -1149,7 +1149,10 @@ export class World implements EventPlayer {
                 return [instant(() => robot.panic()), hold(seconds)]
 
             case 'goalReached':
-                return [hold(seconds)]
+                // Self-timed like the crash. At speed 1 the hold covers it
+                // exactly, so the level-complete sheet opens as Dewy lands;
+                // faster, the sheet opens while it is still finishing.
+                return [instant(() => robot.celebrate()), hold(seconds)]
         }
     }
 

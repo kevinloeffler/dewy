@@ -92,6 +92,34 @@ export const PANIC_DURATION = 0.9;
 const PANIC_SHAKE = 0.055;  // peak positional shake, world units
 const PANIC_HZ    = 14;     // shake frequency
 
+/** How long one wave runs, in seconds: lift, three swings, lower. */
+export const WAVE_DURATION = 1.8;
+const WAVE_SWINGS = 3;
+
+/** How long the goal celebration runs, in seconds. */
+export const CELEBRATE_DURATION = 1.6;
+const CELEBRATE_HOP = 0.18; // peak hop height, model units
+
+/**
+ * How far a gesture lifts an arm at the shoulder. The boom rests at +0.47
+ * (tipped down), so this brings it to about 80° up — high enough to read as
+ * raised, short of straight up so the jaws still lean toward the viewer.
+ */
+const GESTURE_LIFT = -1.85;
+/** Share of a gesture spent easing in, and again easing out. */
+const GESTURE_RAMP = 0.2;
+
+/** 0 → 1 → 0 over a gesture's progress `p`, eased at both ends. */
+function gestureEnvelope(p: number): number {
+	const ramp = Math.min(p / GESTURE_RAMP, (1 - p) / GESTURE_RAMP, 1);
+	return ramp * ramp * (3 - 2 * ramp);
+}
+
+function easeInOut(t: number): number {
+	const c = Math.min(1, Math.max(0, t));
+	return c * c * (3 - 2 * c);
+}
+
 /**
  * Live handle returned by createRoboter.
  * Add `group` to the scene; call `update` every frame.
@@ -135,7 +163,21 @@ export interface Roboter {
 
 	/** Crash animation — shake and flash. Returns its duration in seconds. */
 	panic(): number;
-	/** Clear transient state (shake, eye colour). Used on reset. */
+	/**
+	 * Wave hello with the arm on the model's -x side — the one nearer a viewer
+	 * looking from the front and a little to that side. Returns its duration
+	 * in seconds. Purely cosmetic: position and yaw are left where they are.
+	 */
+	wave(): number;
+	/**
+	 * Goal celebration — two hops, a full spin, both arms up and the eyes
+	 * brightening. Returns its duration in seconds. The spin is an offset on
+	 * top of the yaw, so the robot ends facing exactly where it started. The
+	 * arms stay down while carrying, so the claws never leave the crate.
+	 */
+	celebrate(): number;
+
+	/** Clear transient state (shake, eye colour, gestures). Used on reset. */
 	resetPose(): void;
 
 	/**
@@ -326,6 +368,11 @@ export function createRoboter(options: {
 	const buildArm = (side: 1 | -1, name: string): THREE.Group => {
 		const { root, pivot } = buildBoom(side * 0.38);
 		root.name = name;
+		// Gestures turn the root, never the pivot inside it: `update` eases the
+		// pivot to the boom's target every frame, and would fight them. ZYX so
+		// the lift (x) happens first and the swing (z) then tips the raised arm
+		// sideways, rather than twisting it on its own axis.
+		root.rotation.order = 'ZYX';
 
 		// Shoulder cap stays on the root — it is the joint, so it must not turn.
 		// Accent, matching the boom, so the arm visibly mounts to the hull
@@ -354,8 +401,9 @@ export function createRoboter(options: {
 		return root;
 	};
 
-	group.add(buildArm( 1, 'armR'));
-	group.add(buildArm(-1, 'armL'));
+	const armR = buildArm( 1, 'armR');
+	const armL = buildArm(-1, 'armL');
+	group.add(armR, armL);
 
 	// ─── Carry slot ──────────────────────────────────────────────────────────────
 	// A third, invisible boom on the centre line, its pivot on the same list as
@@ -379,6 +427,11 @@ export function createRoboter(options: {
 	let yaw   = 0;
 	let panicRemaining = 0;
 
+	// Gesture offsets, layered on the base transform like the shake.
+	let gesture: { kind: 'wave' | 'celebrate'; elapsed: number } | null = null;
+	let hop  = 0;
+	let spin = 0;
+
 	const eyeRestColor = new THREE.Color(eyeColor);
 	const eyePanicColor = new THREE.Color(0xff2a2a);
 
@@ -388,8 +441,56 @@ export function createRoboter(options: {
 	};
 
 	const applyTransform = () => {
-		group.position.set(baseX, group.position.y, baseZ);
-		group.rotation.y = yaw;
+		group.position.set(baseX, hop, baseZ);
+		group.rotation.y = yaw + spin;
+	};
+
+	/** Put everything a gesture touches back to rest. */
+	const clearGesture = () => {
+		gesture = null;
+		hop = 0;
+		spin = 0;
+		armL.rotation.set(0, 0, 0);
+		armR.rotation.set(0, 0, 0);
+		head.rotation.x = 0;
+		head.rotation.z = 0;
+		matEye.emissiveIntensity = 0.60;
+		applyTransform();
+	};
+
+	/** Pose the wave at progress `p` (0 → 1). */
+	const poseWave = (p: number) => {
+		const e = gestureEnvelope(p);
+		const swing = Math.sin(p * WAVE_SWINGS * Math.PI * 2);
+		armL.rotation.x = GESTURE_LIFT * e;
+		// Positive z tips this arm outward, away from the head, so the swing
+		// stays off-centre and never clips the visor.
+		armL.rotation.z = (0.4 + 0.25 * swing) * e;
+		// A small head tilt toward the waving arm, as if leaning into it.
+		head.rotation.z = 0.06 * e;
+	};
+
+	/** Pose the celebration at progress `p` (0 → 1). */
+	const poseCelebrate = (p: number) => {
+		const e = gestureEnvelope(p);
+
+		// Two hops, landing between them and at the end.
+		hop = Math.abs(Math.sin(p * Math.PI * 2)) * CELEBRATE_HOP * scale;
+		// One full turn through the middle, so it starts and ends at rest.
+		spin = easeInOut((p - 0.2) / 0.6) * Math.PI * 2;
+		applyTransform();
+
+		if (!raised) {
+			// Both arms up and pumping, mirrored — z tips each one outward.
+			const pump = 0.12 * Math.sin(p * Math.PI * 6);
+			armL.rotation.x = armR.rotation.x = (GESTURE_LIFT + pump) * e;
+			armL.rotation.z = 0.35 * e;
+			armR.rotation.z = -0.35 * e;
+		}
+		// Look up a touch. Shallow for the same reason as the panic rock: the
+		// head sits flush on the chassis.
+		head.rotation.x = -0.08 * e;
+		matEye.emissiveIntensity = 0.60 + 0.9 * e;
 	};
 
 	return {
@@ -411,11 +512,25 @@ export function createRoboter(options: {
 		lower(immediate = false)  { raised = false; if (immediate) snapPose(); },
 
 		panic() {
+			clearGesture();
 			panicRemaining = PANIC_DURATION;
 			return PANIC_DURATION;
 		},
 
+		wave() {
+			clearGesture();
+			gesture = { kind: 'wave', elapsed: 0 };
+			return WAVE_DURATION;
+		},
+
+		celebrate() {
+			clearGesture();
+			gesture = { kind: 'celebrate', elapsed: 0 };
+			return CELEBRATE_DURATION;
+		},
+
 		resetPose() {
+			clearGesture();
 			panicRemaining = 0;
 			head.rotation.z = 0;
 			matEye.emissive.copy(eyeRestColor);
@@ -432,6 +547,15 @@ export function createRoboter(options: {
 			const target = raised ? BOOM_RAISED : BOOM_REST;
 			for (const pivot of boomPivots) {
 				pivot.rotation.x += (target - pivot.rotation.x) * t;
+			}
+
+			if (gesture) {
+				gesture.elapsed += deltaSeconds;
+				const duration = gesture.kind === 'wave' ? WAVE_DURATION : CELEBRATE_DURATION;
+				const p = gesture.elapsed / duration;
+				if (p >= 1) clearGesture();
+				else if (gesture.kind === 'wave') poseWave(p);
+				else poseCelebrate(p);
 			}
 
 			if (panicRemaining <= 0) return;
