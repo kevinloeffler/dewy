@@ -2,6 +2,7 @@
 	import { Button } from '$lib/components/index.js';
 
 	interface Props {
+		/** A run is going on its own — shows Stopp. A run paused between steps shows Start. */
 		running: boolean;
 		/** Commands run so far, i.e. energy spent. */
 		steps: number;

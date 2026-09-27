@@ -584,16 +584,27 @@ export function setOptions(level: Level, patch: Partial<LevelOptions>): Level {
     return { ...level, options };
 }
 
+/** Smallest and largest warehouse, in tiles along either axis. */
+export const MIN_SIZE = 4;
+export const MAX_SIZE = 24;
+
+/** Pulls a requested side length onto a whole number of tiles within bounds. */
+export function clampSize(n: number): number {
+    if (!Number.isFinite(n)) return MIN_SIZE;
+    return Math.min(Math.max(Math.floor(n), MIN_SIZE), MAX_SIZE);
+}
+
 /**
- * Grow or shrink the grid, dropping everything that falls outside.
+ * Grow or shrink the grid, dropping everything that falls outside. Each side
+ * is clamped to `MIN_SIZE`..`MAX_SIZE`.
  *
  * Shrinking is lossy on purpose — the alternative is a level whose items sit
  * off-world, which is exactly what `validateLevel` flags. The robot is clamped
  * rather than dropped, since a level always has exactly one.
  */
 export function resize(level: Level, width: number, height: number): Level {
-    const w = Math.max(1, Math.floor(width));
-    const h = Math.max(1, Math.floor(height));
+    const w = clampSize(width);
+    const h = clampSize(height);
     if (w === level.width && h === level.height) return level;
 
     // `inBounds` wants a whole `Level`; the new grid does not exist yet.

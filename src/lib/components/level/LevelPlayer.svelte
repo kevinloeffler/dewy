@@ -104,16 +104,19 @@
 	/**
 	 * Run pacing. `Step` hands the interpreter exactly one statement at a
 	 * time by parking it in `gate`; `Run` opens the gate and leaves it open.
+	 * `Stop` only closes it again: the run parks before its next statement, so
+	 * Step and Run carry on from that line. Only Reset ends a run early.
 	 */
 	let controller: AbortController | null = null;
 	let active: Promise<void> | null = null;
-	let unlimited = false;
+	/** The gate is open — the run is going on its own, not waiting on Step. */
+	let playing = $state(false);
 	let starting = false;
 	let credits = 0;
 	let waiting: (() => void) | null = null;
 
 	function gate(): void | Promise<void> {
-		if (unlimited) return;
+		if (playing) return;
 		if (credits > 0) {
 			credits--;
 			return;
@@ -131,7 +134,7 @@
 	}
 
 	function run() {
-		unlimited = true;
+		playing = true;
 		if (running) {
 			release();
 			return;
@@ -140,7 +143,7 @@
 	}
 
 	function step() {
-		unlimited = false;
+		playing = false;
 		if (running) {
 			if (!release()) credits++;
 			return;
@@ -163,6 +166,7 @@
 				kind: 'error',
 				text: `Das Programm ist zu lang für Dewys Speicher — ${memoryUsed} Anweisungen, Dewy fasst ${level.options.memory}.`,
 			};
+			playing = false;
 			return;
 		}
 
@@ -181,14 +185,15 @@
 		active = execute();
 	}
 
+	/** Pauses: the run finishes its current statement and parks at the gate. */
 	function stop() {
-		controller?.abort();
-		release();
+		playing = false;
 	}
 
 	async function reset() {
 		if (active) {
-			stop();
+			controller?.abort();
+			release();
 			await active;
 		}
 		if (!engine || !world) return;
@@ -219,7 +224,7 @@
 		});
 
 		running = false;
-		unlimited = false;
+		playing = false;
 		credits = 0;
 		waiting = null;
 		controller = null;
@@ -380,7 +385,7 @@
 
 			<div class="controls-cell">
 				<RunControls
-					{running}
+					running={playing}
 					steps={hud.steps}
 					energy={level.options.energy}
 					memory={level.options.memory}

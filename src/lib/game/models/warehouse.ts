@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { DIRECTION_DELTA } from '$lib/game/grid';
 import type { DecorationKind, Direction } from '$lib/game/level';
+import { kitMaterial, type KitMaterials } from '$lib/game/models/palette';
 
 /**
  * The warehouse dressing kit — the models behind `Level.decorations`.
@@ -17,7 +18,9 @@ import type { DecorationKind, Direction } from '$lib/game/level';
  * `World` can place one by setting `position` alone.
  *
  * Materials are built per instance rather than memoised, as in `crate.ts`: a
- * level holds a handful of these, and `clearGroup` disposes them with it.
+ * level holds a handful of these, and `clearGroup` disposes them with it. A
+ * caller dressing many pieces at once — the yard in `models/environment.ts` —
+ * passes one shared `kitMaterials()` instead, so they can be merged.
  */
 
 
@@ -25,13 +28,15 @@ import type { DecorationKind, Direction } from '$lib/game/level';
 // Palette
 // ============================================================
 
-/** The design system's five materials, minus the glass nothing here uses. */
-function materials() {
+/** The four of the kit's materials a decoration is built from. */
+type Materials = Pick<KitMaterials, 'shell' | 'accent' | 'dark' | 'wood'>;
+
+function materials(): Materials {
     return {
-        shell:  new THREE.MeshStandardMaterial({ color: 0xf2ece1, roughness: 0.45, metalness: 0.05 }),
-        accent: new THREE.MeshStandardMaterial({ color: 0xf07a3c, roughness: 0.40, metalness: 0.05 }),
-        dark:   new THREE.MeshStandardMaterial({ color: 0x3a3f47, roughness: 0.60, metalness: 0.25 }),
-        wood:   new THREE.MeshStandardMaterial({ color: 0xc79a63, roughness: 0.75, metalness: 0.00 }),
+        shell:  kitMaterial('shell'),
+        accent: kitMaterial('accent'),
+        dark:   kitMaterial('dark'),
+        wood:   kitMaterial('wood'),
     };
 }
 
@@ -76,15 +81,16 @@ export type DecorationOptions = {
 export function createDecoration(
     kind: DecorationKind,
     options: DecorationOptions = {},
+    m: Materials = materials(),
 ): THREE.Group {
     switch (kind) {
-        case 'pallet':     return buildPallet();
-        case 'shelf':      return buildShelf();
-        case 'pillar':     return buildPillar();
-        case 'guard_rail': return buildGuardRail(options.connections ?? ['east', 'west']);
-        case 'barrel':     return buildBarrel();
-        case 'cone':       return buildCone();
-        case 'tool_cart':  return buildToolCart();
+        case 'pallet':     return buildPallet(m);
+        case 'shelf':      return buildShelf(m);
+        case 'pillar':     return buildPillar(m);
+        case 'guard_rail': return buildGuardRail(m, options.connections ?? ['east', 'west']);
+        case 'barrel':     return buildBarrel(m);
+        case 'cone':       return buildCone(m);
+        case 'tool_cart':  return buildToolCart(m);
     }
 }
 
@@ -99,8 +105,7 @@ export function createDecoration(
  * Low on purpose. It covers six tiles, so anything tall enough to read as an
  * object from the side would hide a sixth of a small level behind it.
  */
-function buildPallet(): THREE.Group {
-    const m = materials();
+function buildPallet(m: Materials): THREE.Group {
     const g = new THREE.Group();
     const W = 2.86, D = 1.88, deck = 0.05, block = 0.12;
 
@@ -128,8 +133,7 @@ function buildPallet(): THREE.Group {
 // ============================================================
 
 /** Pallet racking: four uprights, three decked levels between beam pairs. */
-function buildShelf(): THREE.Group {
-    const m = materials();
+function buildShelf(m: Materials): THREE.Group {
     const g = new THREE.Group();
     const W = 1.88, D = 0.88, H = 1.5, post = 0.09;
 
@@ -156,8 +160,7 @@ function buildShelf(): THREE.Group {
 // ============================================================
 
 /** Structural column with an impact guard at robot height and a capital. */
-function buildPillar(): THREE.Group {
-    const m = materials();
+function buildPillar(m: Materials): THREE.Group {
     const g = new THREE.Group();
     const H = 1.5;
 
@@ -177,8 +180,7 @@ function buildPillar(): THREE.Group {
  * post with no gap, and a corner or a T falls out of the same rule instead of
  * needing its own piece. Two opposite arms and no neighbours is a lone span.
  */
-function buildGuardRail(connections: Direction[]): THREE.Group {
-    const m = materials();
+function buildGuardRail(m: Materials, connections: Direction[]): THREE.Group {
     const g = new THREE.Group();
     const H = 0.55;
 
@@ -206,8 +208,7 @@ function buildGuardRail(connections: Direction[]): THREE.Group {
 }
 
 /** Ribbed drum with a bung in the lid. */
-function buildBarrel(): THREE.Group {
-    const m = materials();
+function buildBarrel(m: Materials): THREE.Group {
     const g = new THREE.Group();
     const H = 0.62, R = 0.21;
 
@@ -239,8 +240,7 @@ function buildBarrel(): THREE.Group {
 }
 
 /** Traffic cone: square base, lathed body with a flat top, two collars. */
-function buildCone(): THREE.Group {
-    const m = materials();
+function buildCone(m: Materials): THREE.Group {
     const g = new THREE.Group();
     const H = 0.52, cut = 0.78, baseH = 0.045;
 
@@ -279,8 +279,7 @@ function buildCone(): THREE.Group {
 }
 
 /** Three-tier trolley on casters, push handle at the back. */
-function buildToolCart(): THREE.Group {
-    const m = materials();
+function buildToolCart(m: Materials): THREE.Group {
     const g = new THREE.Group();
     const W = 0.68, D = 0.46, H = 0.7, post = 0.055;
 

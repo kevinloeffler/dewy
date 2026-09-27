@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 
 /** Anything with a `dispose()` — geometries and materials, here. */
 type Disposable = { dispose(): void };
@@ -41,6 +42,44 @@ export function clearGroup(group: THREE.Object3D, keep?: ReadonlySet<Disposable>
         group.remove(child);
         disposeObject(child, keep);
     }
+}
+
+/**
+ * Collapse a static model into one mesh per material.
+ *
+ * For scenery that never moves and is never picked — hundreds of small boxes
+ * cost a draw call each, and the same geometry baked together costs one per
+ * colour. Each mesh's transform relative to `root` is baked into its
+ * vertices, the source geometries are disposed, and the materials carry over
+ * untouched, so share one material between pieces to get anything out of
+ * this. Every source geometry must be indexed, as three.js's built-in
+ * primitives are.
+ */
+export function mergeStatic(root: THREE.Object3D): THREE.Group {
+    root.updateMatrixWorld(true);
+    const toRoot = root.matrixWorld.clone().invert();
+    const byMaterial = new Map<THREE.Material, THREE.BufferGeometry[]>();
+    const sources = new Set<THREE.BufferGeometry>();
+
+    root.traverse((object) => {
+        const mesh = object as THREE.Mesh;
+        if (!mesh.isMesh || Array.isArray(mesh.material)) return;
+        sources.add(mesh.geometry);
+        const geometry = mesh.geometry.clone();
+        geometry.applyMatrix4(new THREE.Matrix4().multiplyMatrices(toRoot, mesh.matrixWorld));
+        const list = byMaterial.get(mesh.material) ?? [];
+        list.push(geometry);
+        byMaterial.set(mesh.material, list);
+    });
+
+    const merged = new THREE.Group();
+    for (const [material, geometries] of byMaterial) {
+        const geometry = mergeGeometries(geometries, false);
+        for (const part of geometries) part.dispose();
+        if (geometry) merged.add(new THREE.Mesh(geometry, material));
+    }
+    for (const geometry of sources) geometry.dispose();
+    return merged;
 }
 
 

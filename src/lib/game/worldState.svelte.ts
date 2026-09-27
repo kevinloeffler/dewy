@@ -24,7 +24,7 @@ export function createWorldState(init: Partial<WorldState> = {}): WorldState {
     const state = $state({
         zoom: 6,
         minZoom: 2,
-        maxZoom: 20,
+        maxZoom: 12,
         cameraPosition: 10,
         speed: 1,
         paused: false,

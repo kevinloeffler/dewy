@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { untrack } from 'svelte';
-	import { resize, setMeta, setOptions } from '$lib/game/editor/operations';
+	import { clampSize, MAX_SIZE, MIN_SIZE, resize, setMeta, setOptions } from '$lib/game/editor/operations';
 	import type { LevelDraft } from '$lib/game/editor/draft.svelte';
 	import type { LanguageStage } from '$lib/game/level';
 	import { decorationTiles } from '$lib/game/decorations';
@@ -35,11 +35,14 @@
 		height = level.height;
 	});
 
-	let sizeChanged = $derived(width !== level.width || height !== level.height);
+	// What `resize` will actually apply, so the preview matches the result.
+	let nextWidth = $derived(clampSize(width));
+	let nextHeight = $derived(clampSize(height));
+	let sizeChanged = $derived(nextWidth !== level.width || nextHeight !== level.height);
 
 	let wouldDrop = $derived.by(() => {
 		if (!sizeChanged) return 0;
-		const bounds = { ...level, width, height };
+		const bounds = { ...level, width: nextWidth, height: nextHeight };
 		const tiles = Object.keys(level.tiles).filter((key) => {
 			const [x, y] = key.split(',').map(Number);
 			return !inBounds(bounds, { x, y });
@@ -56,7 +59,7 @@
 	let memoryOn = $derived(level.options.memory !== null);
 
 	function applySize() {
-		draft.edit((current) => resize(current, width, height));
+		draft.edit((current) => resize(current, nextWidth, nextHeight));
 	}
 
 	// The modal edits a copy and hands it to the draft once, on "Übernehmen" —
@@ -110,13 +113,13 @@
 	<div class="field">
 		Rastergrösse
 		<div class="size">
-			<input type="number" min="1" max="40" bind:value={width} aria-label="Breite" />
+			<input type="number" min={MIN_SIZE} max={MAX_SIZE} bind:value={width} aria-label="Breite" />
 			<span class="times">×</span>
-			<input type="number" min="1" max="40" bind:value={height} aria-label="Höhe" />
+			<input type="number" min={MIN_SIZE} max={MAX_SIZE} bind:value={height} aria-label="Höhe" />
 		</div>
 		{#if sizeChanged}
 			<button class="btn btn-ghost small" type="button" onclick={applySize}>
-				Auf {width} × {height} ändern
+				Auf {nextWidth} × {nextHeight} ändern
 			</button>
 			{#if wouldDrop > 0}
 				<p class="warn">

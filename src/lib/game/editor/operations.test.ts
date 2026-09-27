@@ -18,6 +18,8 @@ import {
     removeGoal,
     removeItemAt,
     resize,
+    MAX_SIZE,
+    MIN_SIZE,
     rotateSelection,
     turnDecoration,
     setMeta,
@@ -440,6 +442,14 @@ describe('resize', () => {
         const level = setTile(base(), { x: 7, y: 7 }, { kind: 'wall' });
         expect(resize(level, 12, 12).tiles['7,7']).toEqual({ kind: 'wall' });
         expect(resize(level, 8, 8)).toBe(level);
+    });
+
+    it('clamps each side to MIN_SIZE..MAX_SIZE', () => {
+        const level = base();
+        const tiny = resize(level, 1, 2);
+        expect([tiny.width, tiny.height]).toEqual([MIN_SIZE, MIN_SIZE]);
+        const huge = resize(level, 40, 30);
+        expect([huge.width, huge.height]).toEqual([MAX_SIZE, MAX_SIZE]);
     });
 });
 

@@ -1,7 +1,9 @@
 import * as THREE from 'three';
-import type { CargoConveyorTile, ConveyorTile, Coord, DoorTile, SwitchTile, Tile } from '$lib/game/level';
-import { DIRECTION_YAW } from '$lib/game/grid';
+import type { CargoConveyorTile, ConveyorTile, Coord, Direction, DoorTile, SwitchTile, Tile } from '$lib/game/level';
+import { DIRECTION_DELTA, DIRECTION_YAW } from '$lib/game/grid';
 import { createDropOffBay } from '$lib/game/models/drop-off-bay';
+import { kitMaterial, type KitMaterialName } from '$lib/game/models/palette';
+import { LONE_WALL, type WallShape } from '$lib/game/partitions';
 
 /**
  * Placeholder visuals for every tile kind.
@@ -13,11 +15,28 @@ import { createDropOffBay } from '$lib/game/models/drop-off-bay';
  * Geometry and materials are memoised: a 20×20 level shares two floor
  * geometries rather than allocating four hundred.
  *
+ * Walls are the exception to "one tile, one model": each is drawn as a slim
+ * partition joining its neighbours, so the caller passes the `WallShape`
+ * `partitions.ts` worked out for it. They share the warehouse walls' own
+ * materials, which is what makes the room and its walls read as one building.
+ *
  * Animated sub-objects are named so `World` can find them:
  *   'doorLeaves' | 'switchLever' | 'switchLight' | 'platePad'
  */
 
 const TILE = 1;
+/** Indoor walls: as tall as a shelf, so they read as walls and not kerbs. */
+const PARTITION_HEIGHT = 1.5;
+const PARTITION_THICKNESS = 0.24;
+const PARTITION_CAP = 0.06;
+/**
+ * Headroom under a robot gap's bridge. The robot's head tops out near 0.88
+ * (0.93 at `ROBOT_SCALE` 0.95), so this leaves it visibly clear with room to
+ * spare, while the bridge above stays thick enough to read as wall.
+ */
+const GAP_CLEARANCE = 1.05;
+/** A door's leaves fill the wall's full height, under its cap. */
+const DOOR_HEIGHT = PARTITION_HEIGHT;
 const SLAB = 0.1;
 /** Gap between belt chevrons. `World` scrolls them; see `scrollBelts`. */
 const CHEVRON_SPACING = 0.28;
@@ -27,19 +46,20 @@ const SLAB_Y = -SLAB / 2;
 
 export const COLORS = {
     floorLight: 0xc4c4c4,
-    floorDark:  0xa6a6a6,
-    wall:       0x888888,
+    floorDark:  0xb6b6b6,
     void:       0x1b1d22,
     conveyor:   0x3a3d46,
     chevron:    0x8fa3b8,
     cargo:      0xf0a500,
-    door:       0xb05a3a,
+    door:       0xc96b46,
+    doorMark:   0xf5f5f5,
     plate:      0xd0c48a,
     switchBase: 0x4a4d58,
     lever:      0xe85d3a,
     switchOn:   0x3ddc6a,
     switchOff:  0xe8403a,
-    goal:       0x4caf82,
+    goal:       0x0b7a3e,
+    goalMark:   0xffffff,
 } as const;
 
 export class TileFactory {
@@ -48,20 +68,27 @@ export class TileFactory {
     /** Groups from `createDropOffBay`, which owns its own resources. */
     private owned: THREE.Object3D[] = [];
 
+    /** Warehouse-kit materials, memoised like `materials` and shared the same way. */
+    private kit = new Map<KitMaterialName, THREE.Material>();
+
     /**
      * Build the visual for one tile, or `null` for a pit's missing floor.
      * The returned object is positioned by the caller.
+     *
+     * `shape` only matters to a wall or a robot gap: the neighbours it joins.
+     * Left out — a brush preview — it draws as a lone span.
      */
-    create(tile: Tile, coord: Coord): THREE.Object3D | null {
+    create(tile: Tile, coord: Coord, shape: WallShape = LONE_WALL): THREE.Object3D | null {
         switch (tile.kind) {
             case 'floor':
                 return this.floor(coord);
             case 'pit':
                 return this.pit();
             case 'wall':
-                return this.box(TILE, 1, TILE, COLORS.wall, 0.5);
+                return this.partition(coord, shape, 0);
             case 'robot_gap':
-                return this.robotGap(coord);
+                // A bridge in the wall. Never filled: a gap is a hole.
+                return this.partition(coord, { arms: shape.arms, fill: false }, GAP_CLEARANCE);
             case 'conveyor':
                 return this.conveyor(tile, COLORS.chevron);
             case 'cargo_conveyor':
@@ -87,14 +114,20 @@ export class TileFactory {
      * levels. Tearing a level down must skip these — see `disposeObject`.
      */
     shared(): ReadonlySet<{ dispose(): void }> {
-        return new Set<{ dispose(): void }>([...this.geometries.values(), ...this.materials.values()]);
+        return new Set<{ dispose(): void }>([
+            ...this.geometries.values(),
+            ...this.materials.values(),
+            ...this.kit.values(),
+        ]);
     }
 
     dispose(): void {
         for (const geometry of this.geometries.values()) geometry.dispose();
         for (const material of this.materials.values()) material.dispose();
+        for (const material of this.kit.values()) material.dispose();
         this.geometries.clear();
         this.materials.clear();
+        this.kit.clear();
         this.owned = [];
     }
 
@@ -127,6 +160,54 @@ export class TileFactory {
         return material;
     }
 
+    private kitMat(name: KitMaterialName): THREE.Material {
+        let material = this.kit.get(name);
+        if (!material) {
+            material = kitMaterial(name);
+            this.kit.set(name, material);
+        }
+        return material;
+    }
+
+    /**
+     * One block of partition, `w` × `d` in plan, from `bottom` up to the
+     * partition's height, with a dark cap a hair wider — the warehouse walls'
+     * cap, at partition scale.
+     */
+    private wallPiece(parent: THREE.Object3D, w: number, d: number, x: number, z: number, bottom: number) {
+        const h = PARTITION_HEIGHT - bottom;
+        this.kitBox(parent, w, h, d, 'wall', x, bottom + h / 2, z);
+        this.wallCap(parent, w, d, x, z);
+    }
+
+    /** Just the cap — what runs on unbroken over a doorway. */
+    private wallCap(parent: THREE.Object3D, w: number, d: number, x: number, z: number) {
+        this.kitBox(parent, w + 0.03, PARTITION_CAP, d + 0.03, 'dark', x, PARTITION_HEIGHT + PARTITION_CAP / 2, z);
+    }
+
+    /**
+     * Dark uprights down both sides of a robot gap's opening, from the floor
+     * to its bridge — the same trim as the walls' tops. One per arm: each
+     * stands where the gap meets the wall beside it.
+     */
+    private gapJambs(parent: THREE.Object3D, shape: WallShape, bottom: number) {
+        const c = PARTITION_CAP;
+        const across = PARTITION_THICKNESS + 0.03;
+        for (const arm of shape.arms) {
+            const { x, y } = DIRECTION_DELTA[arm];
+            const offset = TILE / 2 - c / 2;
+            if (x !== 0) this.kitBox(parent, c, bottom, across, 'dark', x * offset, bottom / 2, 0);
+            else this.kitBox(parent, across, bottom, c, 'dark', 0, bottom / 2, y * offset);
+        }
+    }
+
+    private kitBox(parent: THREE.Object3D, w: number, h: number, d: number, material: KitMaterialName, x: number, y: number, z: number) {
+        const key = `box:${w},${h},${d}`;
+        const mesh = new THREE.Mesh(this.geo(key, () => new THREE.BoxGeometry(w, h, d)), this.kitMat(material));
+        mesh.position.set(x, y, z);
+        parent.add(mesh);
+    }
+
     private box(w: number, h: number, d: number, color: number, y: number, emissive = false) {
         const key = `box:${w},${h},${d}`;
         const mesh = new THREE.Mesh(this.geo(key, () => new THREE.BoxGeometry(w, h, d)), this.mat(color, emissive));
@@ -149,11 +230,34 @@ export class TileFactory {
         return this.box(TILE, 0.05, TILE, COLORS.void, -0.6);
     }
 
-    private robotGap(coord: Coord) {
+    /**
+     * A partition on a floor slab: a post at the centre, an arm to each edge
+     * in `shape.arms`, and the filler square towards the south-east when the
+     * wall is thick there. Arms of neighbouring tiles meet end to end at the
+     * shared edge, so a run is one unbroken wall.
+     */
+    private partition(coord: Coord, shape: WallShape, bottom: number) {
         const group = new THREE.Group();
         group.add(this.floor(coord));
-        // Wall with a robot-height arch cut under it: clearance below y = 0.45.
-        group.add(this.box(TILE, 0.55, TILE, COLORS.wall, 0.725));
+
+        const t = PARTITION_THICKNESS;
+        const has = (d: Direction) => shape.arms.includes(d);
+        // A straight run through the tile is one piece, not two arms and a
+        // post: every extra join along a wall's face shows as a seam.
+        const eastWest = has('east') && has('west');
+        const northSouth = has('north') && has('south');
+        if (eastWest) this.wallPiece(group, TILE, t, 0, 0, bottom);
+        if (northSouth) this.wallPiece(group, t, TILE, 0, 0, bottom);
+        if (!eastWest && !northSouth) this.wallPiece(group, t, t, 0, 0, bottom);
+        for (const arm of shape.arms) {
+            if ((eastWest && (arm === 'east' || arm === 'west'))
+                || (northSouth && (arm === 'north' || arm === 'south'))) continue;
+            const { x, y } = DIRECTION_DELTA[arm];
+            if (x !== 0) this.wallPiece(group, TILE / 2, t, x * TILE / 4, 0, bottom);
+            else this.wallPiece(group, t, TILE / 2, 0, y * TILE / 4, bottom);
+        }
+        if (shape.fill) this.wallPiece(group, TILE, TILE, TILE / 2, TILE / 2, bottom);
+        if (bottom > 0) this.gapJambs(group, shape, bottom);
         return group;
     }
 
@@ -195,6 +299,34 @@ export class TileFactory {
      * The leaves group is turned rather than the whole tile, so `World` can go
      * on sliding each leaf along its local x whichever way the door is hung.
      */
+    /**
+     * A white chevron on a door leaf, pointing `side` (-1 left, +1 right):
+     * out from the centre, the way the leaf slides when the door opens.
+     * One extruded "<" rather than two crossed bars, so its point is a clean
+     * mitre; standing `z` off the leaf's face.
+     */
+    private chevron(side: number, z: number): THREE.Object3D {
+        const geometry = this.geo(`chevron:${side}`, () => {
+            const depth = 0.16, half = 0.2, stroke = 0.09;
+            // Drawn pointing -x, then mirrored for a right-hand leaf.
+            const point = (x: number, y: number) => new THREE.Vector2(-side * x, y);
+            const shape = new THREE.Shape([
+                point(-depth / 2, 0),
+                point(depth / 2, half),
+                point(depth / 2 + stroke, half),
+                point(-depth / 2 + stroke, 0),
+                point(depth / 2 + stroke, -half),
+                point(depth / 2, -half),
+            ]);
+            const extruded = new THREE.ExtrudeGeometry(shape, { depth: 0.012, bevelEnabled: false });
+            extruded.translate(0, 0, -0.006);
+            return extruded;
+        });
+        const mesh = new THREE.Mesh(geometry, this.mat(COLORS.doorMark));
+        mesh.position.z = z;
+        return mesh;
+    }
+
     private door(tile: DoorTile, coord: Coord) {
         const group = new THREE.Group();
         group.add(this.floor(coord));
@@ -202,12 +334,23 @@ export class TileFactory {
         const leaves = new THREE.Group();
         leaves.name = 'doorLeaves';
         for (const side of [-1, 1]) {
-            const leaf = this.box(0.5, 1, 0.15, COLORS.door, 0.5);
+            const leaf = this.box(0.5, DOOR_HEIGHT, 0.15, COLORS.door, DOOR_HEIGHT / 2);
             leaf.position.x = side * 0.25;
+            // On both faces, since a door is seen from either side. A child
+            // of the leaf, so it slides with it — `World` moves the leaves.
+            for (const face of [-1, 1]) leaf.add(this.chevron(side, face * (0.15 / 2 + 0.006)));
             leaves.add(leaf);
         }
         leaves.rotation.y = DIRECTION_YAW[tile.facing];
         group.add(leaves);
+
+        // The wall's cap runs on over the doorway, so a closed door reads as
+        // part of one continuous wall. Open, the leaves slide into the
+        // neighbouring walls, which are thicker than they are.
+        const cap = new THREE.Group();
+        this.wallCap(cap, TILE, PARTITION_THICKNESS, 0, 0);
+        cap.rotation.y = DIRECTION_YAW[tile.facing];
+        group.add(cap);
         return group;
     }
 
@@ -260,6 +403,12 @@ export class TileFactory {
         const group = new THREE.Group();
         group.add(this.floor(coord));
         group.add(this.box(0.8, 0.02, 0.8, COLORS.goal, 0.02, true));
+        // A small white X on the pad — "the spot" the robot is headed for.
+        for (const angle of [Math.PI / 4, -Math.PI / 4]) {
+            const bar = this.box(0.3, 0.01, 0.06, COLORS.goalMark, 0.035);
+            bar.rotation.y = angle;
+            group.add(bar);
+        }
         return group;
     }
 }

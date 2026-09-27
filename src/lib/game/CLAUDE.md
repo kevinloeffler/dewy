@@ -13,3 +13,11 @@ The renderer, the editor and the engine all read it through there.
 
 `level.ts` is an immutable serializable type definition. This information is stored in the database.
 `level-state.ts` holds the runtime state of the game and is not persisted.
+
+`environment.ts` plans the world around a level — the two backdrop walls and
+what hangs on them, the yard behind them, and the street of facades that ends
+the world. It is pure and seeded from `level.id` (via `random.ts`), so a level
+always looks the same and two levels look different; only `id`, `width` and
+`height` feed it. `models/environment.ts` turns a plan into meshes, merged by
+material with `mergeStatic`. `World` keeps it in its own root, out of the
+designer's picking, and rebuilds it only when `environmentKey` changes.

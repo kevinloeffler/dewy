@@ -23,6 +23,9 @@ import { createCrate } from '$lib/game/models/crate'
 import { createKeycard } from '$lib/game/models/keycard'
 import { COLORS, TileFactory } from '$lib/game/models/tiles'
 import { createDecoration } from '$lib/game/models/warehouse'
+import { buildEnvironment } from '$lib/game/models/environment'
+import { environmentKey, planEnvironment } from './environment'
+import { wallShape } from './partitions'
 
 
 /**
@@ -32,15 +35,17 @@ import { createDecoration } from '$lib/game/models/warehouse'
  */
 const ROBOT_SCALE = 0.95
 
-/** The ground the world sits on, and the colour behind it. */
-const BASE_COLOR = 0xcae5c5
+/**
+ * Behind the facades' rooftops — the one place the world has no ground. The
+ * kit's warm paper tone, cooled a little so it reads as sky.
+ */
+const SKY_COLOR = 0xe4e8e6
 
 /**
- * How far the base extends from the level centre, in tiles. Large enough to
- * run past the frustum at `maxZoom` on any sane aspect ratio, and still well
- * inside the camera's clip planes.
+ * The void under the level. The lot covers everything around the level, so
+ * this only shows through a pit — the same near-black as the pit's plate.
  */
-const BASE_EXTENT = 500
+const VOID_COLOR = COLORS.void
 
 /**
  * Base height. Below the plate a pit tile drops to (y = -0.6), so pits still
@@ -119,6 +124,15 @@ type BeltVisual = {
     reversed: boolean
 }
 
+
+/**
+ * Render at the screen's real resolution — without this a HiDPI display gets
+ * a CSS-pixel image scaled up, and the scene looks soft. Capped at 2: a 3×
+ * phone would pay more than twice the fill cost for a difference nobody sees.
+ */
+function pixelRatio(): number {
+    return Math.min(window.devicePixelRatio || 1, 2)
+}
 
 /** What a ghost is cached against: rebuild it only when this changes. */
 function ghostKey(brush: Brush): string {
@@ -223,6 +237,14 @@ export class World implements EventPlayer {
     private actorRoot = new THREE.Group()
     /** Editor overlays. Outlives a level, so `disposeLevel` leaves it alone. */
     private editorRoot = new THREE.Group()
+    /**
+     * Walls, yard and street — see `environment.ts`. Kept out of `tileRoot`
+     * so the designer's raycast never lands on a facade, and kept across
+     * `loadLevel` while `environmentKey` is unchanged: the designer reloads
+     * the level on every stroke, and the scenery depends on none of it.
+     */
+    private environmentRoot = new THREE.Group()
+    private environmentKey = ''
     private highlight: THREE.LineSegments | null = null
     /** The brush preview under the pointer, and what it was built from. */
     private ghost: THREE.Object3D | null = null
@@ -232,7 +254,7 @@ export class World implements EventPlayer {
     private linkedOutlines: THREE.LineSegments[] = []
     private outlineGeometry: THREE.BufferGeometry | null = null
     private outlineMaterials = new Map<number, THREE.LineBasicMaterial>()
-    /** The ground plane. Outlives a level, like the lights. */
+    /** The void floor under the level. Outlives a level, like the lights. */
     private base: THREE.Mesh
     private raycaster = new THREE.Raycaster()
     private pointer = new THREE.Vector2()
@@ -259,13 +281,16 @@ export class World implements EventPlayer {
         this.lastZoom = view.zoom
 
         this.scene = new THREE.Scene()
-        this.scene.add(this.tileRoot, this.itemRoot, this.actorRoot, this.editorRoot)
+        this.scene.add(this.tileRoot, this.itemRoot, this.actorRoot, this.editorRoot, this.environmentRoot)
 
         this.camera = this.createCamera()
         this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true })
+        this.renderer.setPixelRatio(pixelRatio())
         this.renderer.setSize(canvas.clientWidth, canvas.clientHeight, false)
 
         this.observer = new ResizeObserver(() => {
+            // Re-read: dragging the window to another screen changes it.
+            this.renderer.setPixelRatio(pixelRatio())
             this.renderer.setSize(canvas.clientWidth, canvas.clientHeight, false)
             this.updateFrustum()
         })
@@ -297,7 +322,7 @@ export class World implements EventPlayer {
         this.level = level
 
         this.buildTiles(level)
-        this.buildWalls(level)
+        this.buildEnvironment(level)
         this.buildDecorations(level)
         this.buildItems(level)
         this.buildSensors(level)
@@ -422,6 +447,7 @@ export class World implements EventPlayer {
         this.outlineMaterials.clear()
         this.scene.remove(this.base)
         disposeObject(this.base)
+        clearGroup(this.environmentRoot)
         this.disposeLevel()
         this.tiles.dispose()
         this.renderer.dispose()
@@ -471,7 +497,10 @@ export class World implements EventPlayer {
                 const tile = tileAt(level, coord)
                 if (!tile) continue
 
-                const object = this.tiles.create(tile, coord)
+                const shape = tile.kind === 'wall' || tile.kind === 'robot_gap'
+                    ? wallShape(level, coord)
+                    : undefined
+                const object = this.tiles.create(tile, coord, shape)
                 if (!object) continue
                 object.position.x += x
                 object.position.z += y
@@ -519,21 +548,16 @@ export class World implements EventPlayer {
         }
     }
 
-    /** Backdrop only — not the level's `wall` tiles. */
-    private buildWalls(level: Level) {
-        const thickness = 0.15
-        const height = 4
-        const material = new THREE.MeshLambertMaterial({ color: 0x888888 })
-
-        // Along Z, extended to fill the corner behind the back wall.
-        const left = new THREE.Mesh(new THREE.BoxGeometry(thickness, height, level.height + thickness), material)
-        left.position.set(-0.5 - thickness / 2, height / 2 - 0.1, (level.height - 1 - thickness) / 2)
-        this.tileRoot.add(left)
-
-        // Along X.
-        const back = new THREE.Mesh(new THREE.BoxGeometry(level.width, height, thickness), material)
-        back.position.set((level.width - 1) / 2, height / 2 - 0.1, -0.5 - thickness / 2)
-        this.tileRoot.add(back)
+    /**
+     * The backdrop walls, the yard and the street around the level — not the
+     * level's `wall` tiles. Rebuilt only when what it is planned from changes.
+     */
+    private buildEnvironment(level: Level) {
+        const key = environmentKey(level)
+        if (key === this.environmentKey) return
+        clearGroup(this.environmentRoot)
+        this.environmentRoot.add(buildEnvironment(planEnvironment(level)))
+        this.environmentKey = key
     }
 
     /**
@@ -845,6 +869,10 @@ export class World implements EventPlayer {
         const centre = new THREE.Vector3((level.width - 1) / 2, 0, (level.height - 1) / 2)
         aimIsometricCamera(this.camera, centre, this.view.cameraPosition)
         this.base.position.set(centre.x, BASE_Y, centre.z)
+        // Only a tile wider than the hole the lot leaves — enough to catch a
+        // sightline down an edge pit, which runs on under the lot. Any bigger
+        // and it would show past the lot's far edges, where the sky belongs.
+        this.base.scale.set(level.width + 2, level.height + 2, 1)
     }
 
     /**
@@ -876,19 +904,19 @@ export class World implements EventPlayer {
     }
 
     /**
-     * The ground the level sits on: one big quad plus a matching clear
-     * colour, so the frame is filled at any zoom even if the quad ever runs
-     * out at an extreme aspect ratio.
+     * The floor of the void under the level, seen only down a pit: the lot
+     * from `environment.ts` covers everything else. Outlives a level, since
+     * it is framed rather than rebuilt.
      *
-     * Unlit on purpose — `MeshBasicMaterial` renders `BASE_COLOR` exactly,
+     * Unlit on purpose — `MeshBasicMaterial` renders `VOID_COLOR` exactly,
      * where a lit material would tint it with the scene's three lights.
      */
     private createBase(): THREE.Mesh {
-        this.scene.background = new THREE.Color(BASE_COLOR)
+        this.scene.background = new THREE.Color(SKY_COLOR)
 
         const base = new THREE.Mesh(
-            new THREE.PlaneGeometry(BASE_EXTENT * 2, BASE_EXTENT * 2),
-            new THREE.MeshBasicMaterial({ color: BASE_COLOR }),
+            new THREE.PlaneGeometry(1, 1),
+            new THREE.MeshBasicMaterial({ color: VOID_COLOR }),
         )
         base.rotation.x = -Math.PI / 2
         base.position.y = BASE_Y
