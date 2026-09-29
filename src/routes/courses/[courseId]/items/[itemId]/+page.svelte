@@ -100,6 +100,8 @@
 			level={data.context.level}
 			oncomplete={record}
 			solved={isComplete}
+			userId={data.userId}
+			savedCode={data.savedCode}
 			crumbs={[
 				{ label: context.course.title, href: `/courses/${courseId}` },
 				{ label: context.stage.title },

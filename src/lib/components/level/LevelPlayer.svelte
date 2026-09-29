@@ -15,8 +15,18 @@
 
 	interface Props {
 		level: Level;
-		/** Defaults to a key derived from the level id. */
-		storageKey?: string;
+		/**
+		 * Whose draft this is. Drafts live in `localStorage`, and a school
+		 * computer is shared: keyed by level alone, the next student to sign in
+		 * would open the previous one's program. Left out, the draft is anonymous.
+		 */
+		userId?: string | null;
+		/**
+		 * The program that last solved this level, from the server. Used when
+		 * this browser holds no draft — a student who changes computers gets
+		 * their solution back rather than the starter code.
+		 */
+		savedCode?: string | null;
 		/** Fires on every transition into a completed run. */
 		oncomplete?: (info: { code: string; steps: number }) => void;
 		/** Breadcrumb trail in front of the level name — course, then stage. */
@@ -41,7 +51,10 @@
 	// stepping to the next item — MUST wrap it in `{#key}`, or the student will
 	// navigate to a new item and keep playing the previous level.
 	const level = untrack(() => props.level);
-	const storageKey = untrack(() => props.storageKey) ?? `dewy:level:${level.id}:code`;
+	const storageKey = untrack(() =>
+		props.userId ? `dewy:${props.userId}:level:${level.id}:code` : `dewy:level:${level.id}:code`
+	);
+	const savedCode = untrack(() => props.savedCode);
 
 	let canvas: HTMLCanvasElement;
 	let world: World | undefined;
@@ -94,7 +107,13 @@
 	});
 
 	$effect(() => {
-		localStorage.setItem(storageKey, code);
+		// Storage can be full or blocked (private windows); the draft is a
+		// convenience, never a reason for the editor to throw.
+		try {
+			localStorage.setItem(storageKey, code);
+		} catch {
+			// Keep the draft in memory only.
+		}
 	});
 
 	// ========================================================
@@ -296,8 +315,14 @@
 	// ========================================================
 
 	function loadCode(): string {
-		if (!browser) return starterCode(level);
-		return localStorage.getItem(storageKey) ?? starterCode(level);
+		if (!browser) return savedCode ?? starterCode(level);
+		let draft: string | null = null;
+		try {
+			draft = localStorage.getItem(storageKey);
+		} catch {
+			// Storage blocked: fall through to what the server remembers.
+		}
+		return draft ?? savedCode ?? starterCode(level);
 	}
 
 	function starterCode(target: Level): string {

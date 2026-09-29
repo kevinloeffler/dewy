@@ -34,6 +34,20 @@ export async function markComplete(
 		});
 }
 
+/**
+ * The program that last solved this item, or `null` if it is unsolved (or was
+ * a theory item, which stores none). The level player falls back to it when the
+ * browser holds no draft, so a solution follows the student between computers.
+ */
+export async function loadSavedCode(userId: string, itemId: string): Promise<string | null> {
+	const row = await db
+		.select({ code: itemProgress.code })
+		.from(itemProgress)
+		.where(and(eq(itemProgress.userId, userId), eq(itemProgress.itemId, itemId)))
+		.get();
+	return row?.code ?? null;
+}
+
 /** The ids of the items this student has finished in one course. */
 export async function loadCompleted(userId: string, courseId: string): Promise<Set<string>> {
 	const rows = await db

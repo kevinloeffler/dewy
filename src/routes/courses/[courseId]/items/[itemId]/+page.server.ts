@@ -2,7 +2,7 @@ import { error, fail, redirect } from '@sveltejs/kit';
 import type { Actions, PageServerLoad } from './$types';
 import { canSeeCourse, findCourse, findItem } from '$lib/server/courses';
 import { anonymousProgress, courseProgress } from '$lib/progress';
-import { loadCompleted, markComplete } from '$lib/server/progress';
+import { loadCompleted, loadSavedCode, markComplete } from '$lib/server/progress';
 import { renderMarkdown } from '$lib/markdown';
 
 export const load: PageServerLoad = async (event) => {
@@ -36,6 +36,9 @@ export const load: PageServerLoad = async (event) => {
 		context,
 		progress,
 		signedIn: Boolean(user),
+		// Drafts are keyed by student, since a school computer is shared.
+		userId: user?.id ?? null,
+		savedCode: user && context.item.kind === 'level' ? await loadSavedCode(user.id, context.item.id) : null,
 		// Rendered server-side so the reader works without JS, and by the same
 		// function the authoring preview uses.
 		html: context.item.kind === 'theory' ? renderMarkdown(context.item.body) : null

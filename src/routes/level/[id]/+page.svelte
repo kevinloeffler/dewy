@@ -20,7 +20,7 @@
 	No `{#key}` needed — `[id]` changing here is a full navigation between two
 	standalone levels, and there is no sibling route sharing this component.
 -->
-<LevelPlayer level={data.level}>
+<LevelPlayer level={data.level} userId={data.userId}>
 	{#snippet actions()}
 		{#if fromDesigner}
 			<a class="btn btn-ghost" href="/designer/{data.level.id}">Zurück zum Designer</a>

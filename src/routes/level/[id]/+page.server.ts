@@ -10,12 +10,15 @@ import { getLevel } from '$lib/game/levels';
  * has to work on an install whose database is still empty. Everything else is
  * a level authored in `/designer`.
  */
-export const load: PageServerLoad = async ({ params }) => {
+export const load: PageServerLoad = async ({ params, locals }) => {
+	// Drafts are keyed by who is playing, since a school computer is shared.
+	const userId = locals.user?.id ?? null;
+
 	const builtIn = getLevel(params.id);
-	if (builtIn) return { level: builtIn };
+	if (builtIn) return { level: builtIn, userId };
 
 	const level = await findLevel(params.id);
 	if (!level) error(404, 'Dieses Level gibt es nicht.');
 
-	return { level };
+	return { level, userId };
 };
