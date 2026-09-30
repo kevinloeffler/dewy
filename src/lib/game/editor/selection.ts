@@ -161,6 +161,34 @@ export function selectAt(level: Level, coord: Coord): Selection | null {
     };
 }
 
+/**
+ * The mechanism at `coord` for a student's hover: a switch or plate with what
+ * it drives, or a sensor with the zone it watches. `null` for anything else.
+ *
+ * Not `selectAt`, because that answers from the level as authored: its crates
+ * and robot stand where the level starts them, not where a run has pushed them,
+ * and one parked on a switch would hide the switch. Controls and sensors never
+ * move, so asking only for them is right at any point in a run.
+ */
+export function linksAt(level: Level, coord: Coord): Selection | null {
+    if (!inBounds(level, coord)) return null;
+
+    // A sensor hangs above everything on its tile, so `selectAt` reaches it
+    // first — before any crate or robot it might be answering wrongly about.
+    let selection: Selection | null = null;
+    if (sensorAt(level, coord)) {
+        selection = selectAt(level, coord);
+    } else {
+        const tile = tileAt(level, coord);
+        if (tile?.kind === 'switch' || tile?.kind === 'pressure_plate') {
+            selection = control(level, coord, tile);
+        }
+    }
+
+    // A control wired to nothing has nothing to show.
+    return selection && selection.linked.length > 0 ? selection : null;
+}
+
 /** Every coord that belongs to the same thing as the tile at `seed`. */
 function connected(level: Level, seed: Coord, tile: Tile): Coord[] {
     if (isBelt(tile)) return sortCoords(belt(level, seed));

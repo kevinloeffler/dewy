@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { selectAt } from './selection';
+import { linksAt, selectAt } from './selection';
 import {
     deleteSelection,
     emptyLevel,
@@ -209,6 +209,40 @@ describe('selecting a switch or a plate', () => {
     });
 });
 
+
+describe('linksAt', () => {
+    const door = (doorId: string): Tile =>
+        ({ kind: 'door', doorId, initiallyOpen: false, facing: 'south' });
+
+    it('shows a switch with the door it opens, even with a crate parked on it', () => {
+        const level = placeItem(
+            paint(base(), {
+                '0,2': { kind: 'switch', targetId: 'door-1', initiallyOn: false },
+                '3,0': door('door-1'),
+            }),
+            { x: 0, y: 2 },
+            { kind: 'crate_grey' },
+        );
+
+        const links = linksAt(level, { x: 0, y: 2 });
+        expect(links?.coords).toEqual([{ x: 0, y: 2 }]);
+        expect(links?.linked).toEqual([{ x: 3, y: 0 }]);
+    });
+
+    it('shows nothing for the target itself, other tiles, or a control wired to nothing', () => {
+        const level = paint(base(), {
+            '0,2': { kind: 'pressure_plate', targetId: 'door-1' },
+            '3,0': door('door-1'),
+            '1,1': wall,
+            '5,5': { kind: 'switch', targetId: 'nothing', initiallyOn: false },
+        });
+
+        expect(linksAt(level, { x: 3, y: 0 })).toBe(null);
+        expect(linksAt(level, { x: 1, y: 1 })).toBe(null);
+        expect(linksAt(level, { x: 5, y: 5 })).toBe(null);
+        expect(linksAt(level, { x: 99, y: 0 })).toBe(null);
+    });
+});
 
 describe('deleteSelection', () => {
     it('clears a whole belt in one edit, leaving what stood on it', () => {

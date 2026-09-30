@@ -7,7 +7,9 @@
 	import { createRobotApi, type RobotApi } from '$lib/game/robot-api';
 	import { measureMemory, runScript, type RunResult } from '$lib/game/script';
 	import type { CrateColor } from '$lib/game/crate-color';
-	import type { GoalCondition, Level } from '$lib/game/level';
+	import type { Coord, GoalCondition, Level } from '$lib/game/level';
+	import { linksAt } from '$lib/game/editor/selection';
+	import { sameCoord } from '$lib/game/grid';
 	import { CodeMirrorEditor, Kbd, Topbar } from '$lib/components/index.js';
 	import RunControls from './RunControls.svelte';
 	import LevelInstructions from './LevelInstructions.svelte';
@@ -105,6 +107,23 @@
 
 		return () => instance.destroy();
 	});
+
+	/**
+	 * The tile under the pointer. Over a switch, plate or sensor, the world
+	 * outlines what it is wired to — the same outline the designer's select
+	 * tool draws — so a student can see which door a switch opens.
+	 */
+	let hovered: Coord | null = null;
+
+	function hover(event: PointerEvent | null) {
+		const coord = event ? (world?.pickTile(event.clientX, event.clientY) ?? null) : null;
+		const same = coord === null ? hovered === null : hovered !== null && sameCoord(coord, hovered);
+		if (same) return;
+
+		hovered = coord;
+		const links = coord ? linksAt(level, coord) : null;
+		world?.setSelection(links?.coords ?? [], links?.linked ?? []);
+	}
 
 	$effect(() => {
 		// Storage can be full or blocked (private windows); the draft is a
@@ -427,7 +446,11 @@
 
 		<section class="arena">
 			<div class="viewport">
-				<canvas bind:this={canvas}></canvas>
+				<canvas
+					bind:this={canvas}
+					onpointermove={hover}
+					onpointerleave={() => hover(null)}
+				></canvas>
 			</div>
 
 			<ul class="goals panel">
