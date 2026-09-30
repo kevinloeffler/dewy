@@ -291,6 +291,10 @@
 				activeLine = result.line;
 				notice = { kind: 'error', text: `Zeile ${result.line}: ${result.message}` };
 				break;
+			case 'finished':
+				// Ran out of program short of the goal: no message, just body language.
+				world?.shrug();
+				break;
 		}
 	}
 

@@ -431,7 +431,7 @@ export class GameEngine {
             if (settled.length > 0) steps.push(settled);
 
             const tripped = sensorForbidding(this.level, this.levelState, this.levelState.robot.position);
-            if (tripped) return this.fail(steps, crash('motion_sensor'));
+            if (tripped) return this.fail(steps, crash('motion_sensor'), tripped);
 
             if (this.latchGoals()) {
                 this.levelState.completed = true;
@@ -449,13 +449,15 @@ export class GameEngine {
         return { status: 'ok', reason: null, events: steps };
     }
 
-    private fail(steps: WorldEvent[][], reason: CrashReason): StepOutcome {
+    private fail(steps: WorldEvent[][], reason: CrashReason, sensorId?: string): StepOutcome {
         this.levelState.failed = true;
         this.levelState.failReason = reason.message;
         steps.push([{
             kind: 'crash',
             at: { ...this.levelState.robot.position },
             reason: reason.message,
+            reaction: reason.reaction,
+            ...(sensorId ? { sensorId } : {}),
         }]);
         return { status: 'crash', reason, events: steps };
     }

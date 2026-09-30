@@ -1,4 +1,5 @@
 import type { Coord, Direction } from './level';
+import type { Reaction } from './reactions';
 
 /**
  * What the engine tells the renderer happened.
@@ -47,7 +48,11 @@ export type WorldEvent =
      */
     | { kind: 'crateDelivered'; crateId: string }
     | { kind: 'bump';        at: Coord; toward: Coord }
-    | { kind: 'crash';       at: Coord; reason: string }
+    /**
+     * `sensorId` is set only for a motion-sensor crash — the one that saw
+     * Dewy, so the renderer can sound its alarm.
+     */
+    | { kind: 'crash';       at: Coord; reason: string; reaction: Reaction; sensorId?: string }
     | { kind: 'goalReached' };
 
 export type WorldEventKind = WorldEvent['kind'];

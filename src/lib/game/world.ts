@@ -19,7 +19,7 @@ import { pickGroundFrom, pickTileFrom } from './editor/picking'
 import type { Brush } from './editor/brush'
 import { decorationPlacement, sensorPlacement } from './editor/operations'
 import { sensorZone } from './sensors'
-import { CELEBRATE_DURATION, createRoboter, type Roboter } from '$lib/game/models/roboter'
+import { CELEBRATE_DURATION, createRoboter, REACTION_DURATIONS, type Roboter } from '$lib/game/models/roboter'
 import { createCrate } from '$lib/game/models/crate'
 import { createKeycard } from '$lib/game/models/keycard'
 import {
@@ -93,6 +93,8 @@ const GHOST_OPACITY = 0.55
 
 /** What a stopped belt's chevrons fade into: the slab they sit on. */
 const BELT_DARK = new THREE.Color(COLORS.conveyor)
+/** What an active sensor's zone flashes toward when it catches Dewy. */
+const SENSOR_ALARM = new THREE.Color(0xffe0d8)
 
 /** Seconds at speed 1. The queue applies the speed multiplier. */
 const DURATIONS: Record<WorldEventKind, number> = {
@@ -112,7 +114,8 @@ const DURATIONS: Record<WorldEventKind, number> = {
     sensor:      0.30,
     crateDelivered: 0.35,
     bump:        0.25,
-    crash:       0.90,
+    // Unused: a crash holds for its own reaction's length (REACTION_DURATIONS).
+    crash:       0,
     goalReached: CELEBRATE_DURATION,
 }
 
@@ -426,6 +429,15 @@ export class World implements EventPlayer {
     reset(state: LevelState) {
         this.queue.finishAll()
         this.applyState(state)
+    }
+
+    /**
+     * The program ran out with the level unsolved — a small shrug, not a
+     * crash. Played directly rather than queued: the run is over, so there
+     * is nothing left for it to wait behind.
+     */
+    shrug() {
+        this.roboter?.react('shrug')
     }
 
 
@@ -1222,8 +1234,21 @@ export class World implements EventPlayer {
                 })]
             }
 
-            case 'crash':
-                return [instant(() => robot.panic()), hold(seconds)]
+            case 'crash': {
+                // Self-timed like the celebration: the model plays the
+                // reaction, the queue just holds for as long as it runs.
+                const animations = [instant(() => robot.react(event.reaction)), hold(REACTION_DURATIONS[event.reaction])]
+                const sensorId = event.sensorId
+                if (sensorId) {
+                    // The sensor that saw Dewy sounds its alarm alongside.
+                    animations.push(tween({
+                        durationSeconds: REACTION_DURATIONS[event.reaction],
+                        onUpdate: (t) => this.setSensorAlarm(sensorId, Math.sin(t * Math.PI * 8) > 0 ? 1 : 0),
+                        onDone: () => this.setSensorAlarm(sensorId, 0),
+                    }))
+                }
+                return animations
+            }
 
             case 'goalReached':
                 // Self-timed like the crash. At speed 1 the hold covers it
@@ -1288,6 +1313,14 @@ export class World implements EventPlayer {
             material.color.copy(SENSOR_OFF).lerp(SENSOR_ON, amount)
         }
         this.sensorDevices.get(sensorId)?.setActive(amount)
+    }
+
+    /** Flash an active sensor's zone toward white — 1 lit, 0 its plain red. */
+    private setSensorAlarm(sensorId: string, flash: number) {
+        for (const zone of this.sensorZones.get(sensorId) ?? []) {
+            const material = (zone as THREE.Mesh).material as THREE.MeshBasicMaterial
+            material.color.copy(SENSOR_ON).lerp(SENSOR_ALARM, flash)
+        }
     }
 
     /** A delivered crate is inert — dim it so it reads as locked in. */

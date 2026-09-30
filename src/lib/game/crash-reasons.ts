@@ -1,3 +1,5 @@
+import type { Reaction } from './reactions';
+
 /**
  * Every way a run can end badly, in one place.
  *
@@ -35,6 +37,8 @@ export type CrashCode =
 export type CrashReason = {
     code: CrashCode;
     message: string;
+    /** How Dewy shows it — see `reactions.ts`. */
+    reaction: Reaction;
 };
 
 const MESSAGES: Record<CrashCode, string> = {
@@ -62,8 +66,37 @@ const MESSAGES: Record<CrashCode, string> = {
     out_of_energy: 'Dewy hat keine Batterie mehr. Verwende weniger Befehle um das Level zu lösen.',
     runaway:       'Dewy läuft und läuft — ist das eine Endlosschleife?',
 };
+/** Which reaction each crash plays — several codes share one, see `reactions.ts`. */
+export const CRASH_REACTIONS: Record<CrashCode, Reaction> = {
+    edge:            'collide',
+    wall:            'collide',
+    door_closed:     'collide',
+    switch_blocked:  'collide',
+    robot_gap:       'collide',
+    obstacle:        'collide',
+    crate_blocked:   'strain',
+    crate_delivered: 'strain',
+    pit:             'fall',
+    // The belt is not solid — Dewy just cannot use it, so it is a
+    // misunderstanding rather than a collision.
+    cargo_belt:      'confused',
+
+    nothing_to_pick:  'confused',
+    already_carrying: 'confused',
+    not_carrying:     'confused',
+
+    not_a_door:    'confused',
+    no_keycard:    'confused',
+    no_keyhole:    'confused',
+    not_a_switch:  'confused',
+
+    motion_sensor: 'caught',
+    out_of_energy: 'power_down',
+    runaway:       'overheat',
+};
+
 export function crash(code: CrashCode): CrashReason {
-    return { code, message: MESSAGES[code] };
+    return { code, message: MESSAGES[code], reaction: CRASH_REACTIONS[code] };
 }
 
 /**
@@ -74,5 +107,5 @@ export function crash(code: CrashCode): CrashReason {
  * what the pallet was. `name` comes from `DECORATION_NAMES`, article included.
  */
 export function obstacleCrash(name: string): CrashReason {
-    return { code: 'obstacle', message: `Da steht ${name} im Weg.` };
+    return { code: 'obstacle', message: `Da steht ${name} im Weg.`, reaction: CRASH_REACTIONS.obstacle };
 }

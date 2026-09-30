@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { disposeObject } from '$lib/game/three-utils';
+import type { Reaction } from '$lib/game/reactions';
 
 /**
  * Low-poly rounded box: an extruded rounded rectangle whose bevel does all
@@ -87,11 +88,6 @@ const HUB_RADIUS = 0.095;
  */
 const TRACK_Y = 0.15 + 0.012;
 
-/** How long the crash animation runs, in seconds. */
-export const PANIC_DURATION = 0.9;
-const PANIC_SHAKE = 0.055;  // peak positional shake, world units
-const PANIC_HZ    = 14;     // shake frequency
-
 /** How long one wave runs, in seconds: lift, three swings, lower. */
 export const WAVE_DURATION = 1.8;
 const WAVE_SWINGS = 3;
@@ -121,12 +117,51 @@ function easeInOut(t: number): number {
 }
 
 /**
+ * 0 → 1 → 0 across the window `from`..`to` of a gesture's progress, eased at
+ * both ends by `ramp` of the window. For the parts of a reaction that come
+ * and go inside it rather than spanning all of it.
+ */
+function window01(p: number, from: number, to: number, ramp = 0.25): number {
+	if (p <= from || p >= to) return 0;
+	const local = (p - from) / (to - from);
+	const r = Math.min(local / ramp, (1 - local) / ramp, 1);
+	return r * r * (3 - 2 * r);
+}
+
+/** 1 at rest, dipping to 0.1 for a blink centred on `at`. */
+function blink(p: number, at: number, width = 0.05): number {
+	return 1 - 0.9 * Math.max(0, 1 - Math.abs(p - at) / width);
+}
+
+/**
+ * How long each reaction runs, in seconds. World holds its queue for exactly
+ * this long at speed 1, so the error toast lands as the robot finishes.
+ */
+export const REACTION_DURATIONS: Record<Reaction, number> = {
+	collide:    1.3,
+	strain:     1.5,
+	fall:       1.4,
+	confused:   1.7,
+	caught:     1.4,
+	power_down: 2.2,
+	overheat:   2.2,
+	shrug:      1.2,
+};
+
+/**
+ * Reactions that end in a pose rather than back at rest: a robot that fell
+ * down a hole, got caught or ran flat should still look it until the student
+ * resets. `resetPose` is what lets go of them.
+ */
+const STICKY: ReadonlySet<Reaction> = new Set(['fall', 'caught', 'power_down']);
+
+/**
  * Live handle returned by createRoboter.
  * Add `group` to the scene; call `update` every frame.
  *
  * The model exposes *poses*, not tweens: `World` owns all timing and drives
  * `setPosition` / `setYaw` from its animation queue. Only the self-timed,
- * cosmetic motion (boom swing, crash shake) lives in here, and none of it
+ * cosmetic motion (boom swing, gestures, reactions) lives in here, and none of it
  * ever gates the queue.
  */
 export interface Roboter {
@@ -161,8 +196,12 @@ export interface Roboter {
 	 */
 	readonly carrySlot: THREE.Object3D;
 
-	/** Crash animation — shake and flash. Returns its duration in seconds. */
-	panic(): number;
+	/**
+	 * React to a failed run — see `reactions.ts` for what each one means.
+	 * Returns its duration in seconds. `fall`, `caught` and `power_down` hold
+	 * their final pose until `resetPose`; the rest end back at rest.
+	 */
+	react(reaction: Reaction): number;
 	/**
 	 * Wave hello with the arm on the model's -x side — the one nearer a viewer
 	 * looking from the front and a little to that side. Returns its duration
@@ -177,7 +216,7 @@ export interface Roboter {
 	 */
 	celebrate(): number;
 
-	/** Clear transient state (shake, eye colour, gestures). Used on reset. */
+	/** Clear transient state (reactions, eye colour, gestures). Used on reset. */
 	resetPose(): void;
 
 	/**
@@ -236,6 +275,12 @@ export function createRoboter(options: {
 	} = options;
 
 	const group = new THREE.Group();
+	// Everything visible hangs off `body`, not `group`: the group carries the
+	// placement World drives, the body carries the reactions' tip and slump,
+	// pivoted on a track edge rather than the model's centre.
+	const body = new THREE.Group();
+	body.name = 'body';
+	group.add(body);
 	// Loader animation state — shared across both arms and the carry chain.
 	let raised = armsRaised;
 	const boomPivots: THREE.Group[] = [];
@@ -290,7 +335,7 @@ export function createRoboter(options: {
 		}
 	}
 
-	group.add(wheelsGroup);
+	body.add(wheelsGroup);
 
 	// ─── Chassis ─────────────────────────────────────────────────────────────────
 	// Blocky hull, y: 0.25 → 0.61, with the accent stripe wrapping its waist.
@@ -305,10 +350,10 @@ export function createRoboter(options: {
 	meshStripe.position.y = 0.30;
 	chassis.add(meshStripe);
 
-	group.add(chassis);
+	body.add(chassis);
 
 	// ─── Head ────────────────────────────────────────────────────────────────────
-	// The group's origin sits at the chassis/head seam (y 0.61), so the panic
+	// The group's origin sits at the chassis/head seam (y 0.61), so a reaction's
 	// tilt reads as the head rocking on its mount rather than sliding sideways.
 	const head = new THREE.Group();
 	head.name = 'head';
@@ -326,14 +371,17 @@ export function createRoboter(options: {
 	const eyes = new THREE.Group();
 	eyes.name = 'eyes';
 	const geoEye = new THREE.SphereGeometry(0.05, 10, 6);
+	/** Scaled one by one to blink and squint — scaling the group would drag them down the visor. */
+	const eyeMeshes: THREE.Mesh[] = [];
 	for (const ex of [-0.09, 0.09]) {
 		const eye = new THREE.Mesh(geoEye, matEye);
 		eye.position.set(ex, 0.18, 0.195);
 		eyes.add(eye);
+		eyeMeshes.push(eye);
 	}
 	head.add(eyes);
 
-	group.add(head);
+	body.add(head);
 
 	// ─── Loader boom ─────────────────────────────────────────────────────────────
 	// Shoulder sits on the chassis flank, forward of centre and just inside the
@@ -403,7 +451,7 @@ export function createRoboter(options: {
 
 	const armR = buildArm( 1, 'armR');
 	const armL = buildArm(-1, 'armL');
-	group.add(armR, armL);
+	body.add(armR, armL);
 
 	// ─── Carry slot ──────────────────────────────────────────────────────────────
 	// A third, invisible boom on the centre line, its pivot on the same list as
@@ -416,24 +464,44 @@ export function createRoboter(options: {
 	carrySlot.name = 'carry';
 	carrySlot.position.z = BOOM_LENGTH;   // between the jaws
 	carryBoom.pivot.add(carrySlot);
-	group.add(carryBoom.root);
+	body.add(carryBoom.root);
+
+	// ─── Steam ───────────────────────────────────────────────────────────────────
+	// A few puffs above the head for `overheat`, hidden the rest of the time.
+	// One material shared by all of them, so fading is a single opacity write.
+	const matSteam = new THREE.MeshStandardMaterial({
+		color: 0xffffff, roughness: 1, metalness: 0, transparent: true, opacity: 0, depthWrite: false,
+	});
+	const geoPuff = new THREE.SphereGeometry(0.07, 8, 6);
+	const puffs: THREE.Mesh[] = [];
+	for (let i = 0; i < 4; i++) {
+		const puff = new THREE.Mesh(geoPuff, matSteam);
+		puff.visible = false;
+		body.add(puff);
+		puffs.push(puff);
+	}
 
 	group.scale.setScalar(scale);
 
 	// ─── Pose state ──────────────────────────────────────────────────────────────
-	// Base transform, kept separate from transient shake so the two never fight.
+	// Base transform, kept separate from the gesture offsets so the two never
+	// fight. Offsets are in model units; `applyTransform` scales them.
 	let baseX = 0;
 	let baseZ = 0;
 	let yaw   = 0;
-	let panicRemaining = 0;
 
-	// Gesture offsets, layered on the base transform like the shake.
-	let gesture: { kind: 'wave' | 'celebrate'; elapsed: number } | null = null;
-	let hop  = 0;
-	let spin = 0;
+	type GestureKind = 'wave' | 'celebrate' | Reaction;
+	let gesture: { kind: GestureKind; elapsed: number } | null = null;
+	let hop    = 0;
+	let spin   = 0;
+	let shakeX = 0;
+	let shakeZ = 0;
 
-	const eyeRestColor = new THREE.Color(eyeColor);
-	const eyePanicColor = new THREE.Color(0xff2a2a);
+	const eyeRestColor  = new THREE.Color(eyeColor);
+	const eyeAlarmColor = new THREE.Color(0xff2a2a);
+	const eyeAmberColor = new THREE.Color(0xffb020);
+	const eyeHotColor   = new THREE.Color(0xff7a1a);
+	const eyeDeadColor  = new THREE.Color(0x1d2933);  // the visor glass: an eye that is off
 
 	/** Drop both links straight onto the current target pose, no easing. */
 	const snapPose = () => {
@@ -441,8 +509,40 @@ export function createRoboter(options: {
 	};
 
 	const applyTransform = () => {
-		group.position.set(baseX, hop, baseZ);
+		group.position.set(baseX + shakeX * scale, hop * scale, baseZ + shakeZ * scale);
 		group.rotation.y = yaw + spin;
+	};
+
+	/**
+	 * Tip the body forward (positive `pitch`) or back about a line across the
+	 * tracks at `pivotZ` — the front edge to lean in, the rear edge to rear
+	 * up — so it rocks on its treads instead of sinking through the floor.
+	 */
+	const tilt = (pitch: number, pivotZ: number, sink = 0) => {
+		body.rotation.x = pitch;
+		body.position.set(0, pivotZ * Math.sin(pitch) - sink, pivotZ * (1 - Math.cos(pitch)));
+	};
+
+	const setEyes = (color: THREE.Color, intensity: number) => {
+		matEye.emissive.copy(color);
+		matEye.emissiveIntensity = intensity;
+	};
+
+	/** Squash (< 1) to blink or squint, stretch (> 1) to widen in alarm. */
+	const setEyeShape = (height: number, width = 1) => {
+		for (const eye of eyeMeshes) eye.scale.set(width, height, 1);
+	};
+
+	/**
+	 * Both arms together, mirrored: `lift` at the shoulder, `spread` tipping
+	 * each one outward. Skipped while carrying, like the celebration, so the
+	 * claws never leave the crate.
+	 */
+	const setArms = (lift: number, spread: number) => {
+		if (raised) return;
+		armL.rotation.x = armR.rotation.x = lift;
+		armL.rotation.z = spread;
+		armR.rotation.z = -spread;
 	};
 
 	/** Put everything a gesture touches back to rest. */
@@ -450,11 +550,18 @@ export function createRoboter(options: {
 		gesture = null;
 		hop = 0;
 		spin = 0;
+		shakeX = 0;
+		shakeZ = 0;
+		tilt(0, 0);
+		body.rotation.z = 0;
 		armL.rotation.set(0, 0, 0);
 		armR.rotation.set(0, 0, 0);
-		head.rotation.x = 0;
-		head.rotation.z = 0;
-		matEye.emissiveIntensity = 0.60;
+		head.rotation.set(0, 0, 0);
+		matEye.color.set(eyeColor);
+		setEyes(eyeRestColor, 0.60);
+		setEyeShape(1);
+		matSteam.opacity = 0;
+		for (const puff of puffs) puff.visible = false;
 		applyTransform();
 	};
 
@@ -475,7 +582,7 @@ export function createRoboter(options: {
 		const e = gestureEnvelope(p);
 
 		// Two hops, landing between them and at the end.
-		hop = Math.abs(Math.sin(p * Math.PI * 2)) * CELEBRATE_HOP * scale;
+		hop = Math.abs(Math.sin(p * Math.PI * 2)) * CELEBRATE_HOP;
 		// One full turn through the middle, so it starts and ends at rest.
 		spin = easeInOut((p - 0.2) / 0.6) * Math.PI * 2;
 		applyTransform();
@@ -483,14 +590,159 @@ export function createRoboter(options: {
 		if (!raised) {
 			// Both arms up and pumping, mirrored — z tips each one outward.
 			const pump = 0.12 * Math.sin(p * Math.PI * 6);
-			armL.rotation.x = armR.rotation.x = (GESTURE_LIFT + pump) * e;
-			armL.rotation.z = 0.35 * e;
-			armR.rotation.z = -0.35 * e;
+			setArms((GESTURE_LIFT + pump) * e, 0.35 * e);
 		}
-		// Look up a touch. Shallow for the same reason as the panic rock: the
-		// head sits flush on the chassis.
+		// Look up a touch. Shallow because the head sits flush on the
+		// chassis: a wider rock cracks a gap open at the seam.
 		head.rotation.x = -0.08 * e;
 		matEye.emissiveIntensity = 0.60 + 0.9 * e;
+	};
+
+	// ─── Reactions ───────────────────────────────────────────────────────────────
+	// Each pose is a pure function of progress `p` (0 → 1, held at 1 for a
+	// sticky reaction) and the seconds since it started, which drive anything
+	// that oscillates at a fixed rate regardless of the reaction's length.
+	// Only `strain` needs the frame delta, to spin the hubs.
+	type Pose = (p: number, seconds: number, dt: number) => void;
+
+	const REACTION_POSES: Record<Reaction, Pose> = {
+		collide(p, s) {
+			// Rear up onto the back of the tracks and drop back, twice, each
+			// bounce lower: |sin| lands on the floor between them.
+			const rear = Math.exp(-5 * p) * Math.abs(Math.sin(p * 10));
+			tilt(-0.5 * rear, -0.43);
+			// The arms fling up with the knock.
+			setArms(-0.6 * rear, 0.15 * rear);
+
+			// Then the dizzy wobble: the head circling on its mount.
+			const dizzy = window01(p, 0.2, 1, 0.3);
+			const phase = s * Math.PI * 2 * 1.6;
+			head.rotation.z = 0.12 * Math.sin(phase) * dizzy;
+			head.rotation.x = 0.06 * Math.cos(phase) * dizzy;
+
+			// A white flash on impact, squinting through the dizziness.
+			setEyes(eyeRestColor, 0.6 + 1.6 * Math.exp(-10 * p));
+			setEyeShape(1 - 0.6 * dizzy);
+		},
+
+		strain(p, s, dt) {
+			// Lean into the crate, lifting the rear, tracks spinning uselessly.
+			const effort = window01(p, 0, 0.72, 0.2);
+			tilt(0.12 * effort, 0.43);
+			for (const hub of hubs) hub.rotation.x += dt * 18 * effort;
+			shakeX = 0.012 * Math.sin(s * Math.PI * 2 * 22) * effort;
+			setArms(-0.3 * effort, 0);
+			setEyeShape(1 - 0.65 * effort);
+
+			// Give up: a sigh, head dropping.
+			const sigh = window01(p, 0.62, 1, 0.3);
+			head.rotation.x = 0.14 * sigh;
+			setEyes(eyeRestColor, 0.6 - 0.3 * sigh);
+			applyTransform();
+		},
+
+		fall(p, s) {
+			// A cartoon beat hanging over the hole, eyes wide and looking
+			// down, arms flailing — then gravity.
+			const hang = 0.3;
+			const alarm = Math.min(1, p / 0.08);
+			setEyeShape(1 + 0.35 * alarm, 1 + 0.2 * alarm);
+			setEyes(eyeRestColor, 0.6 + 0.8 * alarm);
+			head.rotation.x = 0.14 * alarm;
+			setArms((-1.2 + 0.3 * Math.sin(s * Math.PI * 2 * 5)) * alarm, 0.5 * alarm);
+
+			const t = Math.max(0, (p - hang) / (1 - hang));
+			// Deep enough to clear the pit's floor at the smallest scale World
+			// draws Dewy at, so it vanishes under the void instead of standing
+			// in it.
+			hop = -3.2 * t * t;
+			tilt(0.9 * t, 0);
+			applyTransform();
+		},
+
+		confused(p) {
+			const e = gestureEnvelope(p);
+			// Head cocked, looking one way and the other.
+			head.rotation.z = 0.1 * e;
+			head.rotation.y = 0.4 * Math.sin(p * Math.PI * 2 * 1.5) * e;
+			// Arms out, palms up: "what do you want me to do?"
+			setArms(-0.8 * e, 0.55 * e);
+			setEyes(eyeRestColor.clone().lerp(eyeAmberColor, e), 0.6 + 0.3 * e);
+			setEyeShape(blink(p, 0.3) * blink(p, 0.4));
+		},
+
+		caught(p, s) {
+			// A startled jump, then frozen with the arms straight up.
+			hop = p < 0.2 ? 0.1 * Math.sin((p / 0.2) * Math.PI) : 0;
+			const up = easeInOut(p / 0.15);
+			setArms(-2.3 * up, 0.12 * up);
+			head.rotation.x = -0.06 * up;
+
+			// Trembling, and the eyes strobing red like the alarm.
+			shakeX = 0.008 * Math.sin(s * Math.PI * 2 * 18) * up;
+			const strobe = Math.sin(s * Math.PI * 2 * 3) > 0 ? 1 : 0;
+			setEyes(eyeAlarmColor, 0.4 + 1.4 * strobe * up);
+			setEyeShape(1 + 0.3 * up, 1 + 0.15 * up);
+			applyTransform();
+		},
+
+		power_down(p, s) {
+			// Flicker, then out. The flicker is two beating sines, so it
+			// stutters rather than pulsing evenly.
+			const fade = 1 - easeInOut((p - 0.15) / 0.45);
+			const flicker = p < 0.6
+				? 0.5 + 0.5 * Math.sign(Math.sin(s * 37) + Math.sin(s * 23) + 0.6)
+				: 1;
+			setEyes(eyeRestColor, 0.6 * fade * flicker);
+			matEye.color.copy(eyeRestColor).lerp(eyeDeadColor, 1 - fade * flicker);
+			setEyeShape(1 - 0.5 * (1 - fade));
+
+			// Wind down: head sways once, then droops; arms sag; the body
+			// settles onto its tracks.
+			const sway = window01(p, 0.1, 0.55, 0.4);
+			head.rotation.z = 0.08 * Math.sin((p - 0.1) * Math.PI * 2 * 1.2) * sway;
+			const slump = easeInOut((p - 0.45) / 0.45);
+			head.rotation.x = 0.22 * slump;
+			setArms(0.08 * slump, -0.06 * slump);
+			tilt(0.04 * slump, 0.43, 0.02 * slump);
+		},
+
+		overheat(p, s) {
+			// Shaking harder and harder, head spinning on its mount, until it
+			// gives out with a last puff.
+			const build = p < 0.8 ? (p / 0.8) ** 2 : 1 - easeInOut((p - 0.8) / 0.2);
+			const phase = s * Math.PI * 2 * 20;
+			shakeX = 0.03 * Math.sin(phase) * build;
+			shakeZ = 0.02 * Math.cos(phase * 0.7) * build;
+			head.rotation.y = 0.5 * Math.sin(s * Math.PI * 2 * 3) * build;
+			head.rotation.z = 0.06 * Math.sin(phase * 0.5) * build;
+			setEyes(eyeRestColor.clone().lerp(eyeHotColor, Math.min(1, p * 1.5)), 0.6 + 1.2 * build);
+			setEyeShape(1 - 0.4 * Math.max(0, (p - 0.8) / 0.2));
+			applyTransform();
+
+			// Steam: puffs rising in turn, each growing as it fades.
+			const steam = window01(p, 0.15, 1, 0.15);
+			matSteam.opacity = 0.75 * steam;
+			puffs.forEach((puff, i) => {
+				const rise = (s * 1.3 + i / puffs.length) % 1;
+				puff.visible = steam > 0;
+				puff.position.set(
+					(i % 2 ? 0.12 : -0.12) + 0.08 * rise * (i % 2 ? 1 : -1),
+					0.95 + rise * 0.55,
+					-0.02,
+				);
+				puff.scale.setScalar(0.6 + rise * 1.2);
+			});
+		},
+
+		shrug(p) {
+			const e = window01(p, 0, 1, 0.35);
+			setArms(-0.9 * e, 0.45 * e);
+			head.rotation.z = -0.1 * e;
+			hop = -0.02 * e;
+			setEyeShape(blink(p, 0.55, 0.06));
+			applyTransform();
+		},
 	};
 
 	return {
@@ -511,10 +763,10 @@ export function createRoboter(options: {
 		pickUp(immediate = false) { raised = true;  if (immediate) snapPose(); },
 		lower(immediate = false)  { raised = false; if (immediate) snapPose(); },
 
-		panic() {
+		react(reaction: Reaction) {
 			clearGesture();
-			panicRemaining = PANIC_DURATION;
-			return PANIC_DURATION;
+			gesture = { kind: reaction, elapsed: 0 };
+			return REACTION_DURATIONS[reaction];
 		},
 
 		wave() {
@@ -531,10 +783,6 @@ export function createRoboter(options: {
 
 		resetPose() {
 			clearGesture();
-			panicRemaining = 0;
-			head.rotation.z = 0;
-			matEye.emissive.copy(eyeRestColor);
-			matEye.emissiveIntensity = 0.60;
 			raised = false;
 			snapPose();
 			applyTransform();
@@ -549,36 +797,26 @@ export function createRoboter(options: {
 				pivot.rotation.x += (target - pivot.rotation.x) * t;
 			}
 
-			if (gesture) {
-				gesture.elapsed += deltaSeconds;
-				const duration = gesture.kind === 'wave' ? WAVE_DURATION : CELEBRATE_DURATION;
-				const p = gesture.elapsed / duration;
+			if (!gesture) return;
+			gesture.elapsed += deltaSeconds;
+			const { kind, elapsed } = gesture;
+
+			if (kind === 'wave' || kind === 'celebrate') {
+				const p = elapsed / (kind === 'wave' ? WAVE_DURATION : CELEBRATE_DURATION);
 				if (p >= 1) clearGesture();
-				else if (gesture.kind === 'wave') poseWave(p);
+				else if (kind === 'wave') poseWave(p);
 				else poseCelebrate(p);
+				return;
 			}
 
-			if (panicRemaining <= 0) return;
-
-			panicRemaining = Math.max(0, panicRemaining - deltaSeconds);
-			const progress = panicRemaining / PANIC_DURATION;   // 1 → 0
-			const phase = (1 - progress) * PANIC_DURATION * PANIC_HZ * Math.PI * 2;
-			const amplitude = PANIC_SHAKE * progress;
-
-			group.position.x = baseX + Math.sin(phase) * amplitude;
-			group.position.z = baseZ + Math.cos(phase * 0.7) * amplitude * 0.6;
-			// Shallow on purpose: the head's underside sits flush on the chassis,
-			// so a wider rock would crack a gap open at the seam.
-			head.rotation.z = Math.sin(phase * 0.5) * 0.14 * progress;
-			matEye.emissive.copy(eyeRestColor).lerp(eyePanicColor, progress);
-			matEye.emissiveIntensity = 0.60 + Math.abs(Math.sin(phase * 0.5)) * progress;
-
-			if (panicRemaining === 0) {
-				head.rotation.z = 0;
-				matEye.emissive.copy(eyeRestColor);
-				matEye.emissiveIntensity = 0.60;
-				applyTransform();
+			const p = elapsed / REACTION_DURATIONS[kind];
+			if (p >= 1 && !STICKY.has(kind)) {
+				clearGesture();
+				return;
 			}
+			// A sticky reaction keeps posing at p = 1, so its alarm strobe
+			// and tremble carry on until the student resets.
+			REACTION_POSES[kind](Math.min(p, 1), elapsed, deltaSeconds);
 		},
 
 		dispose() { disposeObject(group); },

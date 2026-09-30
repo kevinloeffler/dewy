@@ -70,6 +70,7 @@ robot.forward();`;
 				<h1 class="page-title">Component Library</h1>
 				<p class="page-subtitle">Dewy · Soft Sage design system</p>
 			</div>
+			<a class="page-link" href="/ci/robot">Robot reactions →</a>
 		</div>
 	</div>
 
@@ -689,6 +690,17 @@ robot.forward();`;
 		font-size: 1.25rem;
 		font-weight: 800;
 		flex-shrink: 0;
+	}
+
+	.page-link {
+		margin-left: auto;
+		font-size: 0.8125rem;
+		color: var(--text-muted);
+		text-decoration: none;
+	}
+
+	.page-link:hover {
+		color: var(--text);
 	}
 
 	.page-title {
