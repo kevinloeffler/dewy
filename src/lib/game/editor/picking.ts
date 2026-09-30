@@ -52,13 +52,34 @@ export function pickTileFrom(
         if (coord && inBounds(level, coord)) return coord;
     }
 
+    const coord = groundUnder(raycaster);
+    return coord && inBounds(level, coord) ? coord : null;
+}
+
+/**
+ * The ground-plane tile under `ndc`, ignoring every mesh — and not clipped to
+ * the grid, so a drag past the edge still reports where the pointer went.
+ *
+ * What a drag measures its offset in. The mesh raycast `pickTileFrom` uses
+ * would keep landing on the very thing being dragged, and a shelf answers
+ * with its corner wherever it is grabbed, so the offset would jitter.
+ */
+export function pickGroundFrom(
+    raycaster: THREE.Raycaster,
+    camera: THREE.Camera,
+    ndc: THREE.Vector2,
+): Coord | null {
+    raycaster.setFromCamera(ndc, camera);
+    return groundUnder(raycaster);
+}
+
+function groundUnder(raycaster: THREE.Raycaster): Coord | null {
     const point = raycaster.ray.intersectPlane(GROUND, new THREE.Vector3());
     if (!point) return null;
 
     // `Math.round` hands back `-0` for anything in [-0.5, 0), which survives
     // into tile keys and comparisons as a needless second kind of zero.
-    const coord = { x: round(point.x), y: round(point.z) };
-    return inBounds(level, coord) ? coord : null;
+    return { x: round(point.x), y: round(point.z) };
 }
 
 function round(value: number): number {

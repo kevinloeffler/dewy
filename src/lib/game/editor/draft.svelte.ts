@@ -21,6 +21,8 @@ export function createLevelDraft(initial: Level) {
     let saved = $state.raw(initial);
     let past = $state.raw<Level[]>([]);
     let future = $state.raw<Level[]>([]);
+    /** The level a drag started from, while one is under way. See `begin`. */
+    let origin: Level | null = null;
 
     /**
      * Record a new level.
@@ -30,7 +32,9 @@ export function createLevelDraft(initial: Level) {
      * tile from filling the history with identical entries.
      */
     function apply(next: Level) {
-        if (next === level) return;
+        // Mid-gesture, `level` is only a preview; an edit made on top of it
+        // would be folded into the gesture's entry and lost on `cancel`.
+        if (next === level || origin !== null) return;
         past = [...past.slice(-(HISTORY_LIMIT - 1)), level];
         future = [];
         level = next;
@@ -58,7 +62,45 @@ export function createLevelDraft(initial: Level) {
             apply(operation(level));
         },
 
+        /**
+         * Start a gesture that is one history entry however many frames it
+         * shows — a drag of the select tool. Returns the level it started
+         * from, which every frame of the gesture should be computed against.
+         */
+        begin(): Level {
+            origin ??= level;
+            return origin;
+        },
+
+        /** Show `next` mid-gesture without recording it. */
+        preview(next: Level) {
+            if (origin === null) return;
+            level = next;
+        },
+
+        /** End the gesture as a single history entry — none if it moved nothing. */
+        commit() {
+            if (origin === null) return;
+            const start = origin;
+            origin = null;
+            if (level === start) return;
+            past = [...past.slice(-(HISTORY_LIMIT - 1)), start];
+            future = [];
+        },
+
+        /** Abandon the gesture and put the level back as it was. */
+        cancel() {
+            if (origin === null) return;
+            level = origin;
+            origin = null;
+        },
+
+        get busy() {
+            return origin !== null;
+        },
+
         undo() {
+            if (origin !== null) return;
             const previous = past.at(-1);
             if (previous === undefined) return;
             past = past.slice(0, -1);
@@ -67,6 +109,7 @@ export function createLevelDraft(initial: Level) {
         },
 
         redo() {
+            if (origin !== null) return;
             const next = future.at(0);
             if (next === undefined) return;
             future = future.slice(1);

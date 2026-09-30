@@ -15,7 +15,7 @@ import {
     type Animation,
 } from './animation'
 import { aimIsometricCamera, clearGroup, createIsometricCamera, disposeObject } from './three-utils'
-import { pickTileFrom } from './editor/picking'
+import { pickGroundFrom, pickTileFrom } from './editor/picking'
 import type { Brush } from './editor/brush'
 import { decorationPlacement, sensorPlacement } from './editor/operations'
 import { sensorZone } from './sensors'
@@ -707,17 +707,29 @@ export class World implements EventPlayer {
      * in `editor/picking.ts`, where it can be tested without a WebGL context.
      */
     pickTile(clientX: number, clientY: number): Coord | null {
-        if (!this.level) return null
+        if (!this.level || !this.setPointer(clientX, clientY)) return null
+        return pickTileFrom(this.raycaster, this.camera, this.tileRoot, this.pointer, this.level)
+    }
 
+    /**
+     * The ground tile under a mouse position, looking through everything
+     * standing on it and past the edge of the grid. What a drag measures by.
+     */
+    pickGround(clientX: number, clientY: number): Coord | null {
+        if (!this.level || !this.setPointer(clientX, clientY)) return null
+        return pickGroundFrom(this.raycaster, this.camera, this.pointer)
+    }
+
+    /** Pixels to NDC in `this.pointer`; false while the canvas has no size. */
+    private setPointer(clientX: number, clientY: number): boolean {
         const rect = this.canvas.getBoundingClientRect()
-        if (rect.width === 0 || rect.height === 0) return null
+        if (rect.width === 0 || rect.height === 0) return false
 
         this.pointer.set(
             ((clientX - rect.left) / rect.width) * 2 - 1,
             -((clientY - rect.top) / rect.height) * 2 + 1,
         )
-
-        return pickTileFrom(this.raycaster, this.camera, this.tileRoot, this.pointer, this.level)
+        return true
     }
 
     /** Outline one tile, or clear the outline with `null`. */

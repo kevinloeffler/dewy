@@ -18,7 +18,7 @@ import {
     decorationTiles,
     footprintOf,
 } from '$lib/game/decorations';
-import { coordKey, inBounds, parseTileKey, sameCoord, turn } from '$lib/game/grid';
+import { coordKey, inBounds, parseTileKey, sameCoord, tileAt, turn } from '$lib/game/grid';
 import { clampSensorSize, sensorAt } from '$lib/game/sensors';
 import type {
     BeltControl,
@@ -570,6 +570,123 @@ export function rotateSelection(level: Level, selection: Selection): Level {
 
         case 'item':
             return level;
+    }
+}
+
+function shift(coord: Coord, dx: number, dy: number): Coord {
+    return { x: coord.x + dx, y: coord.y + dy };
+}
+
+/**
+ * Slide what is selected by `(dx, dy)` tiles, or `null` where it does not fit.
+ *
+ * The select tool's drag calls this on every tile the pointer crosses, always
+ * from the level the drag *started* on — so the offset is exact, and passing
+ * over a crate on the way cannot disturb anything. A refusal is `null` rather
+ * than the unchanged level, so the canvas can tell "blocked here" from "back
+ * where it started" and leave the thing at its last good spot.
+ *
+ * Nothing is ever overwritten: a crate will not land on a crate, a shelf on
+ * a shelf, a wall run on somebody else's belt. Links are by id, so a switch
+ * still drives its door after either one moves — the one thing stored by
+ * position is a `deliver_specific` goal's bay, which follows its drop-off.
+ */
+export function moveSelection(
+    level: Level,
+    selection: Selection,
+    dx: number,
+    dy: number,
+): Level | null {
+    if (dx === 0 && dy === 0) return level;
+
+    const itemAt = (coord: Coord, exceptId?: string) =>
+        level.items.some((item) => item.id !== exceptId && sameCoord(item.position, coord));
+    const furnitureAt = (coord: Coord, exceptId?: string) =>
+        level.decorations.some(
+            (decoration) => decoration.id !== exceptId && decorationCovers(decoration, coord),
+        );
+    const robotAt = (coord: Coord) => sameCoord(level.robot.position, coord);
+
+    switch (selection.kind) {
+        case 'item': {
+            const id = selection.item.id;
+            const current = level.items.find((item) => item.id === id);
+            if (!current) return null;
+            const to = shift(current.position, dx, dy);
+            if (!inBounds(level, to) || itemAt(to, id) || furnitureAt(to) || robotAt(to)) return null;
+            return {
+                ...level,
+                items: level.items.map((item) => (item.id === id ? { ...item, position: to } : item)),
+            };
+        }
+
+        case 'decoration': {
+            const id = selection.decoration.id;
+            const current = level.decorations.find((decoration) => decoration.id === id);
+            if (!current) return null;
+            // No `clampToGrid`: a piece that slid back from the edge would stop
+            // following the pointer by the offset it was grabbed at.
+            const moved = { ...current, position: shift(current.position, dx, dy) };
+            if (!decorationFits(level, moved, id)) return null;
+            if (decorationTiles(moved).some((coord) => itemAt(coord) || robotAt(coord))) return null;
+            return {
+                ...level,
+                decorations: level.decorations.map((decoration) =>
+                    decoration.id === id ? moved : decoration,
+                ),
+            };
+        }
+
+        case 'sensor': {
+            const id = selection.sensor.sensorId;
+            const current = level.motionSensors.find((sensor) => sensor.sensorId === id);
+            if (!current) return null;
+            const to = shift(current.position, dx, dy);
+            const other = sensorAt(level, to);
+            if (!inBounds(level, to) || (other && other.sensorId !== id)) return null;
+            return {
+                ...level,
+                motionSensors: level.motionSensors.map((sensor) =>
+                    sensor.sensorId === id ? { ...sensor, position: to } : sensor,
+                ),
+            };
+        }
+
+        case 'robot': {
+            const to = shift(level.robot.position, dx, dy);
+            if (!inBounds(level, to) || itemAt(to) || furnitureAt(to)) return null;
+            return setRobot(level, to, level.robot.facing);
+        }
+
+        case 'tiles': {
+            const own = new Set(selection.coords.map(coordKey));
+            const moves = selection.coords.map((from) => ({ from, to: shift(from, dx, dy) }));
+
+            for (const { to } of moves) {
+                if (!inBounds(level, to) || furnitureAt(to)) return null;
+                if (!own.has(coordKey(to)) && tileAt(level, to)?.kind !== 'floor') return null;
+            }
+
+            // Two passes, so a run shifted along itself does not overwrite
+            // its own tiles before they have been picked up.
+            const tiles = { ...level.tiles };
+            const carried = moves.map(({ from, to }) => ({ from, to, tile: tiles[coordKey(from)] }));
+            for (const { from } of carried) delete tiles[coordKey(from)];
+            for (const { to, tile } of carried) {
+                if (tile) tiles[coordKey(to)] = tile;
+            }
+
+            const bays = carried.filter(({ tile }) => tile?.kind === 'drop_off');
+            const goals = bays.length === 0
+                ? level.goals
+                : level.goals.map((goal) => {
+                      if (goal.kind !== 'deliver_specific') return goal;
+                      const bay = bays.find(({ from }) => sameCoord(from, goal.dropOffPosition));
+                      return bay ? { ...goal, dropOffPosition: { ...bay.to } } : goal;
+                  });
+
+            return { ...level, tiles, goals };
+        }
     }
 }
 

@@ -91,6 +91,8 @@
 
 	let problems = $derived(validateLevel(draft.level));
 
+	let canvas: ReturnType<typeof DesignerCanvas>;
+
 	let saveForm: HTMLFormElement;
 	let saving = $state(false);
 	let saveError = $state<string | null>(null);
@@ -113,6 +115,13 @@
 		// A modal owns the keyboard: nothing here should reach the canvas behind
 		// it, and saving would skip text a modal has not handed to the draft yet.
 		if (document.querySelector('dialog[open]')) return;
+
+		// Mid-drag the level on screen is only a preview: saving, undoing or
+		// deleting it now would act on a state that is not an edit yet.
+		if (draft.busy) {
+			if (event.key === 'Escape') canvas.cancelDrag();
+			return;
+		}
 
 		if (meta && event.key.toLowerCase() === 's') {
 			event.preventDefault();
@@ -291,12 +300,15 @@
 
 		<main class="stage">
 			<DesignerCanvas
+				bind:this={canvas}
 				{draft}
 				{brush}
 				{selection}
 				onselect={(coord) => (seed = coord)}
 				onstroke={armBrush}
 				onrotate={rotate}
+				onmove={(coord) => (seed = coord)}
+				editable={canEdit}
 			/>
 			<OptionsSheet
 				level={draft.level}

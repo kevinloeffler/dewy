@@ -3,9 +3,9 @@
 	import { World } from '$lib/game/world';
 	import { createWorldState } from '$lib/game/worldState.svelte';
 	import { createLevelState } from '$lib/game/level-state';
-	import { applyBrush } from '$lib/game/editor/operations';
+	import { applyBrush, moveSelection } from '$lib/game/editor/operations';
 	import type { Brush } from '$lib/game/editor/brush';
-	import type { Selection } from '$lib/game/editor/selection';
+	import { selectAt, type Selection } from '$lib/game/editor/selection';
 	import type { LevelDraft } from '$lib/game/editor/draft.svelte';
 	import { sameCoord } from '$lib/game/grid';
 	import type { Coord } from '$lib/game/level';
@@ -24,9 +24,16 @@
 		onstroke: () => void;
 		/** A quarter turn, asked for with the middle mouse button. */
 		onrotate: () => void;
+		/**
+		 * A drag of the select tool has carried the grabbed tile to `coord`.
+		 * The page re-seeds its selection there, so the outline travels with it.
+		 */
+		onmove: (coord: Coord) => void;
+		/** False for a level borrowed through a share: selecting still works, dragging does not. */
+		editable: boolean;
 	}
 
-	let { draft, brush, selection, onselect, onstroke, onrotate }: Props = $props();
+	let { draft, brush, selection, onselect, onstroke, onrotate, onmove, editable }: Props = $props();
 
 	let canvas: HTMLCanvasElement;
 
@@ -49,6 +56,27 @@
 	let lastPainted: Coord | null = null;
 
 	const ERASER: Brush = { kind: 'erase' };
+
+	/**
+	 * A select-tool press on something that can move. Armed on pointerdown but
+	 * inert until the pointer reaches another ground tile, so a plain click
+	 * still only selects. `offset` is the last one the thing actually fitted at.
+	 */
+	let drag: {
+		pointerId: number;
+		/** The tile the click picked — shifted by `offset`, the page's new seed. */
+		grabbed: Coord;
+		/** The ground tile under the press, which the offset is measured from. */
+		start: Coord;
+		selection: Selection;
+		offset: { dx: number; dy: number };
+	} | null = null;
+	/** Mirrors "a drag has started moving", for the cursor. */
+	let dragging = $state(false);
+
+	let grabbable = $derived(
+		editable && brush.kind === 'select' && hovered !== null && selectAt(draft.level, hovered) !== null,
+	);
 
 	onMount(() => {
 		const instance = new World(canvas, view);
@@ -106,9 +134,19 @@
 
 		if (event.button !== 0 && event.button !== 2) return;
 
-		// Selecting is a click, not a stroke: there is nothing to drag.
+		// Selecting is a click, and the start of a drag if it landed on
+		// something — which only moves once the pointer leaves the tile.
 		if (brush.kind === 'select' && event.button === 0) {
-			onselect(world?.pickTile(event.clientX, event.clientY) ?? null);
+			const coord = world?.pickTile(event.clientX, event.clientY) ?? null;
+			onselect(coord);
+			if (!editable || !coord) return;
+
+			const picked = selectAt(draft.level, coord);
+			const start = world?.pickGround(event.clientX, event.clientY) ?? null;
+			if (!picked || !start) return;
+
+			drag = { pointerId: event.pointerId, grabbed: coord, start, selection: picked, offset: { dx: 0, dy: 0 } };
+			canvas.setPointerCapture(event.pointerId);
 			return;
 		}
 
@@ -121,9 +159,62 @@
 	function onpointermove(event: PointerEvent) {
 		hover(world?.pickTile(event.clientX, event.clientY) ?? null);
 		if (stroke) paint(event, stroke);
+		if (drag && drag.pointerId === event.pointerId) moveDrag(event, drag);
+	}
+
+	/**
+	 * Every frame is computed from the level the drag began on, so the offset
+	 * is exact and nothing crossed on the way is disturbed. Where the thing
+	 * does not fit, it simply stays at the last spot it did.
+	 */
+	function moveDrag(event: PointerEvent, active: NonNullable<typeof drag>) {
+		const at = world?.pickGround(event.clientX, event.clientY) ?? null;
+		if (!at) return;
+
+		const dx = at.x - active.start.x;
+		const dy = at.y - active.start.y;
+		if (dx === active.offset.dx && dy === active.offset.dy) return;
+
+		const origin = draft.begin();
+		dragging = true;
+
+		const next = moveSelection(origin, active.selection, dx, dy);
+		if (!next) return;
+
+		active.offset = { dx, dy };
+		draft.preview(next);
+		onmove({ x: active.grabbed.x + dx, y: active.grabbed.y + dy });
+	}
+
+	/**
+	 * Put a drag down. `keep` makes it one history entry; otherwise the level
+	 * and the selection go back to where the drag found them.
+	 */
+	function endDrag(keep: boolean) {
+		if (!drag) return;
+		const { grabbed, pointerId } = drag;
+		drag = null;
+		dragging = false;
+
+		if (keep) {
+			draft.commit();
+		} else if (draft.busy) {
+			draft.cancel();
+			onmove(grabbed);
+		}
+		if (canvas.hasPointerCapture(pointerId)) canvas.releasePointerCapture(pointerId);
+	}
+
+	/** Escape mid-drag: the page calls this rather than deselecting. */
+	export function cancelDrag() {
+		endDrag(false);
 	}
 
 	function endStroke(event: PointerEvent) {
+		if (drag) {
+			endDrag(event.type === 'pointerup');
+			return;
+		}
 		// A pointerup with no stroke behind it is a select click, which paints
 		// nothing and so has nothing to re-arm.
 		const painted = stroke !== null;
@@ -140,6 +231,8 @@
 <canvas
 	bind:this={canvas}
 	class:picking={brush.kind === 'select'}
+	class:grab={grabbable}
+	class:grabbing={dragging}
 	{onpointerdown}
 	{onpointermove}
 	onpointerup={endStroke}
@@ -161,5 +254,13 @@
 
 	canvas.picking {
 		cursor: pointer;
+	}
+
+	canvas.grab {
+		cursor: grab;
+	}
+
+	canvas.grabbing {
+		cursor: grabbing;
 	}
 </style>
