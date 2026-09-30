@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { untrack } from 'svelte';
-	import { goto } from '$app/navigation';
+	import { beforeNavigate, goto } from '$app/navigation';
 	import { enhance } from '$app/forms';
 	import { Button, Callout, Modal, Panel, Topbar } from '$lib/components/index.js';
 	import DesignerCanvas from '$lib/components/designer/DesignerCanvas.svelte';
@@ -96,7 +96,8 @@
 	let saveForm: HTMLFormElement;
 	let saving = $state(false);
 	let saveError = $state<string | null>(null);
-	let playAfterSave = false;
+	/** Where to go once the pending save lands — test-play, or a confirmed leave. */
+	let afterSave: string | null = null;
 
 	const shortcutBrushes = BRUSH_GROUPS.flatMap((group) => group.ids).slice(0, 9);
 
@@ -105,7 +106,38 @@
 	}
 
 	function testPlay() {
-		playAfterSave = true;
+		afterSave = `/level/${data.level.id}?from=designer`;
+		save();
+	}
+
+	// Where the teacher tried to go with unsaved work; non-null opens the prompt.
+	let pendingLeave = $state<string | null>(null);
+	// Set once the teacher has chosen to go anyway, so that navigation passes.
+	let leaving = false;
+
+	beforeNavigate((navigation) => {
+		// A share has nothing to lose: it can never be saved from here.
+		if (leaving || !canEdit || !draft.dirty) return;
+
+		// Closing the tab, reloading or an external link: only the browser's
+		// own prompt can hold those up, and `cancel()` is what summons it.
+		navigation.cancel();
+		if (navigation.willUnload || !navigation.to) return;
+
+		pendingLeave = navigation.to.url.pathname + navigation.to.url.search + navigation.to.url.hash;
+	});
+
+	async function leave(target: string) {
+		leaving = true;
+		pendingLeave = null;
+		await goto(target);
+		// Only reached if the navigation did not take us off this page.
+		leaving = false;
+	}
+
+	function saveAndLeave() {
+		afterSave = pendingLeave;
+		pendingLeave = null;
 		save();
 	}
 
@@ -255,14 +287,15 @@
 							// Mark the level that was *submitted*, so anything
 							// painted while the request was in flight stays dirty.
 							draft.markSaved(submitted);
-							if (playAfterSave) {
-								playAfterSave = false;
-								await goto(`/level/${data.level.id}?from=designer`);
+							if (afterSave) {
+								const target = afterSave;
+								afterSave = null;
+								await leave(target);
 							}
 							return;
 						}
 
-						playAfterSave = false;
+						afterSave = null;
 						saveError =
 							result.type === 'failure'
 								? String(result.data?.message ?? 'Speichern fehlgeschlagen.')
@@ -338,6 +371,23 @@
 		</aside>
 	</div>
 </div>
+
+<Modal
+	open={pendingLeave !== null}
+	title="Ungespeicherte Änderungen"
+	onclose={() => (pendingLeave = null)}
+>
+	<p class="share-note">
+		Dieses Level hat Änderungen, die noch nicht gespeichert sind. Wenn du die Seite jetzt verlässt,
+		gehen sie verloren.
+	</p>
+
+	{#snippet actions()}
+		<Button variant="ghost" onclick={() => (pendingLeave = null)}>Bleiben</Button>
+		<Button variant="ghost" onclick={() => pendingLeave && leave(pendingLeave)}>Verwerfen</Button>
+		<Button onclick={saveAndLeave}>Speichern und verlassen</Button>
+	{/snippet}
+</Modal>
 
 <Modal bind:open={sharing} title="„{draft.level.name}“ teilen">
 	<p class="share-note">
