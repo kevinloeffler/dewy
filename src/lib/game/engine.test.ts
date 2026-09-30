@@ -51,6 +51,17 @@ const belt = (direction: Direction, control: BeltControl | null = null): Tile =>
 const cargo = (direction: Direction, control: BeltControl | null = null): Tile =>
     ({ kind: 'cargo_conveyor', direction, control });
 
+/** A sensor `s` hanging over `tile` and watching that tile alone. */
+function watching(tile: Coord, active = true): MotionSensor {
+    return {
+        sensorId: 's',
+        position: { x: tile.x, y: tile.y },
+        width: 1,
+        depth: 1,
+        initiallyActive: active,
+    };
+}
+
 /** Event kinds per step — the shape assertions care about. */
 function shape(outcome: StepOutcome): string[][] {
     return outcome.events.map((step) => step.map((event) => event.kind));
@@ -722,12 +733,9 @@ describe('open', () => {
 
 
 describe('motion sensors', () => {
-    const sensor = (tiles: Coord[], active = true): MotionSensor =>
-        ({ sensorId: 's', forbiddenTiles: tiles, initiallyActive: active });
-
     it('fails the run on entering an active forbidden tile', () => {
         const engine = new GameEngine(makeLevel({
-            motionSensors: [sensor([{ x: 2, y: 1 }])],
+            motionSensors: [watching({ x: 2, y: 1 })],
         }));
         const outcome = engine.moveForward();
         expect(outcome.reason?.code).toBe('motion_sensor');
@@ -736,7 +744,7 @@ describe('motion sensors', () => {
 
     it('ignores an inactive sensor', () => {
         const engine = new GameEngine(makeLevel({
-            motionSensors: [sensor([{ x: 2, y: 1 }], false)],
+            motionSensors: [watching({ x: 2, y: 1 }, false)],
         }));
         expect(engine.moveForward().status).toBe('ok');
     });
@@ -744,7 +752,7 @@ describe('motion sensors', () => {
     it('lets a switch suppress the sensor', () => {
         const engine = new GameEngine(makeLevel({
             tiles: { '1,2': { kind: 'switch', targetId: 's', initiallyOn: false } },
-            motionSensors: [sensor([{ x: 2, y: 1 }])],
+            motionSensors: [watching({ x: 2, y: 1 })],
         }));
         engine.turnRight();
         engine.toggle();
@@ -756,7 +764,7 @@ describe('motion sensors', () => {
     it('suppresses the sensor covering the very plate being stepped on', () => {
         const engine = new GameEngine(makeLevel({
             tiles: { '2,1': { kind: 'pressure_plate', targetId: 's' } },
-            motionSensors: [sensor([{ x: 2, y: 1 }])],
+            motionSensors: [watching({ x: 2, y: 1 })],
         }));
         // Settling before the sensor check is what makes this survivable.
         expect(engine.moveForward().status).toBe('ok');
@@ -766,7 +774,7 @@ describe('motion sensors', () => {
     it('fires when a toggle re-arms a sensor under the robot', () => {
         const engine = new GameEngine(makeLevel({
             tiles: { '1,2': { kind: 'switch', targetId: 's', initiallyOn: true } },
-            motionSensors: [sensor([{ x: 1, y: 1 }])],
+            motionSensors: [watching({ x: 1, y: 1 })],
         }));
         expect(engine.state.motionSensors[0].active).toBe(false);   // suppressed
         engine.turnRight();
@@ -777,9 +785,91 @@ describe('motion sensors', () => {
         const engine = new GameEngine(makeLevel({
             robot: { position: { x: 1, y: 1 }, facing: 'east' },
             items: [{ kind: 'crate_grey', id: 'c', position: { x: 2, y: 1 } }],
-            motionSensors: [sensor([{ x: 3, y: 1 }])],
+            motionSensors: [watching({ x: 3, y: 1 })],
         }));
         expect(engine.moveForward().status).toBe('ok');
+    });
+});
+
+
+describe('motion sensor zones and devices', () => {
+    /** A 3×3 sensor at 2,2 on the open 5×5 floor, robot facing east from 0,1. */
+    const centred = (overrides: Partial<MotionSensor> = {}): MotionSensor => ({
+        sensorId: 's',
+        position: { x: 2, y: 2 },
+        width: 3,
+        depth: 3,
+        initiallyActive: true,
+        ...overrides,
+    });
+
+    it('watches the edge of its rectangle', () => {
+        const engine = new GameEngine(makeLevel({
+            robot: { position: { x: 0, y: 1 }, facing: 'east' },
+            motionSensors: [centred()],
+        }));
+        expect(engine.isDangerous()).toBe(true);   // 1,1 is the zone's corner
+        expect(engine.moveForward().reason?.code).toBe('motion_sensor');
+    });
+
+    it('ignores the tile just outside it', () => {
+        const engine = new GameEngine(makeLevel({
+            robot: { position: { x: 1, y: 0 }, facing: 'east' },
+            motionSensors: [centred()],
+        }));
+        expect(engine.isDangerous()).toBe(false);   // 2,0 is one row above the zone
+        expect(engine.moveForward().status).toBe('ok');
+    });
+
+    it('stretches along each axis on its own', () => {
+        const engine = new GameEngine(makeLevel({
+            robot: { position: { x: 3, y: 0 }, facing: 'south' },
+            motionSensors: [centred({ width: 1, depth: 5 })],
+        }));
+        // 1×5 reaches 2,0..2,4 but never sideways onto 3,1.
+        expect(engine.isDangerous()).toBe(false);
+        engine.turnRight();   // facing west, towards 2,0
+        expect(engine.isDangerous()).toBe(true);
+    });
+
+    it('watches the tile it hangs over', () => {
+        const engine = new GameEngine(makeLevel({
+            robot: { position: { x: 1, y: 2 }, facing: 'east' },
+            motionSensors: [centred({ width: 1, depth: 1 })],
+        }));
+        expect(engine.isBlocked()).toBe(false);
+        expect(engine.isDangerous()).toBe(true);
+        expect(engine.moveForward().reason?.code).toBe('motion_sensor');
+    });
+
+    it('lets the robot walk right under a switched-off sensor', () => {
+        const engine = new GameEngine(makeLevel({
+            robot: { position: { x: 1, y: 2 }, facing: 'east' },
+            motionSensors: [centred({ initiallyActive: false })],
+        }));
+        expect(engine.isDangerous()).toBe(false);
+        expect(engine.moveForward().status).toBe('ok');
+        expect(at(engine)).toEqual({ x: 2, y: 2 });
+    });
+
+    it('lets crates be pushed and carried beneath it', () => {
+        const pushing = new GameEngine(makeLevel({
+            robot: { position: { x: 0, y: 2 }, facing: 'east' },
+            items: [{ kind: 'crate_grey', id: 'c', position: { x: 1, y: 2 } }],
+            motionSensors: [centred({ initiallyActive: false })],
+        }));
+        expect(pushing.moveForward().status).toBe('ok');
+        expect(pushing.state.crates[0].position).toEqual({ x: 2, y: 2 });
+
+        const riding = new GameEngine(makeLevel({
+            robot: { position: { x: 0, y: 0 }, facing: 'south' },
+            tiles: { '0,2': belt('east'), '1,2': belt('east') },
+            items: [{ kind: 'crate_grey', id: 'c', position: { x: 0, y: 2 } }],
+            motionSensors: [centred()],
+        }));
+        // Crates are never watched, so an active zone does not stop the ride.
+        expect(riding.turnLeft().status).toBe('ok');
+        expect(riding.state.crates[0].position).toEqual({ x: 2, y: 2 });
     });
 });
 
@@ -1021,7 +1111,7 @@ describe('conveyors', () => {
     it('trips a motion sensor the ride only passes through', () => {
         const engine = new GameEngine(makeLevel({
             tiles: { '1,1': belt('east'), '2,1': belt('east'), '3,1': belt('east') },
-            motionSensors: [{ sensorId: 's', forbiddenTiles: [{ x: 3, y: 1 }], initiallyActive: true }],
+            motionSensors: [watching({ x: 3, y: 1 })],
         }));
         const outcome = engine.turnLeft();
 
@@ -1080,7 +1170,7 @@ describe('conveyors', () => {
     it('trips a motion sensor it carries the robot into', () => {
         const engine = new GameEngine(makeLevel({
             tiles: { '1,1': belt('east') },
-            motionSensors: [{ sensorId: 's', forbiddenTiles: [{ x: 2, y: 1 }], initiallyActive: true }],
+            motionSensors: [watching({ x: 2, y: 1 })],
         }));
         const outcome = engine.turnLeft();
 
@@ -1305,7 +1395,7 @@ describe('sensing', () => {
 
     it('is not blocked by a motion sensor — that is isDangerous', () => {
         const engine = new GameEngine(makeLevel({
-            motionSensors: [{ sensorId: 's', forbiddenTiles: [{ x: 2, y: 1 }], initiallyActive: true }],
+            motionSensors: [watching({ x: 2, y: 1 })],
         }));
         expect(engine.isBlocked()).toBe(false);
         expect(engine.isDangerous()).toBe(true);
@@ -1686,7 +1776,7 @@ describe('validateLevel', () => {
                 '4,2': { kind: 'pressure_plate', targetId: 'alarm' },
                 '4,4': { kind: 'goal' },
             },
-            motionSensors: [{ sensorId: 'alarm', forbiddenTiles: [], initiallyActive: true }],
+            motionSensors: [{ sensorId: 'alarm', position: { x: 0, y: 4 }, width: 1, depth: 1, initiallyActive: true }],
             goals: [{ kind: 'reach_goal' }],
         }));
         expect(problems).toEqual([]);

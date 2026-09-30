@@ -17,10 +17,19 @@ import {
 import { aimIsometricCamera, clearGroup, createIsometricCamera, disposeObject } from './three-utils'
 import { pickTileFrom } from './editor/picking'
 import type { Brush } from './editor/brush'
-import { decorationPlacement } from './editor/operations'
+import { decorationPlacement, sensorPlacement } from './editor/operations'
+import { sensorZone } from './sensors'
 import { CELEBRATE_DURATION, createRoboter, type Roboter } from '$lib/game/models/roboter'
 import { createCrate } from '$lib/game/models/crate'
 import { createKeycard } from '$lib/game/models/keycard'
+import {
+    createMotionSensor,
+    createSensorZoneTile,
+    SENSOR_OFF,
+    SENSOR_ON,
+    zoneEdges,
+    type MotionSensorModel,
+} from '$lib/game/models/motion-sensor'
 import { COLORS, TileFactory } from '$lib/game/models/tiles'
 import { createDecoration } from '$lib/game/models/warehouse'
 import { buildEnvironment } from '$lib/game/models/environment'
@@ -141,8 +150,38 @@ function ghostKey(brush: Brush): string {
         case 'item': return `item:${JSON.stringify(brush.item)}`
         // Not the facing: the robot's ghost is turned by its yaw, not rebuilt.
         case 'robot': return 'robot'
+        // The zone is part of the preview, so its size is part of the key.
+        case 'sensor': return `sensor:${brush.width}x${brush.depth}:${brush.initiallyActive}`
         default: return brush.kind
     }
+}
+
+/**
+ * The sensor brush's preview: the device, plus the zone it would watch if it
+ * stood on `at` — clipped to the grid by the same `sensorZone` the placed one
+ * is drawn with. Built relative to `at`, since `setGhost` moves it there.
+ */
+function sensorGhost(
+    level: Level,
+    brush: Extract<Brush, { kind: 'sensor' }>,
+    at: Coord,
+): THREE.Object3D {
+    const group = new THREE.Group()
+    group.add(createMotionSensor({ active: brush.initiallyActive }).group)
+    const zone = sensorZone(level, {
+        sensorId: '',
+        position: at,
+        width: brush.width,
+        depth: brush.depth,
+        initiallyActive: brush.initiallyActive,
+    })
+    const edges = zoneEdges(zone)
+    zone.forEach((coord, i) => {
+        const tile = createSensorZoneTile(brush.initiallyActive, edges[i])
+        tile.position.set(coord.x - at.x, 0.012, coord.y - at.y)
+        group.add(tile)
+    })
+    return group
 }
 
 /**
@@ -270,6 +309,7 @@ export class World implements EventPlayer {
     private switchLights = new Map<TileKey, THREE.MeshStandardMaterial>()
     private platePads = new Map<TileKey, THREE.Object3D>()
     private sensorZones = new Map<string, THREE.Object3D[]>()
+    private sensorDevices = new Map<string, MotionSensorModel>()
     /** One entry per conveyor tile, scrolled by `tick` and dimmed by `setBeltState`. */
     private belts: BeltVisual[] = []
 
@@ -595,7 +635,9 @@ export class World implements EventPlayer {
     }
 
     /**
-     * Tinted overlays marking each motion sensor's forbidden tiles.
+     * Each motion sensor: the camera hanging over its tile, and a glowing
+     * overlay on every tile it watches — one field with a lit rim, see
+     * `createSensorZoneTile`.
      *
      * Built here rather than in `TileFactory` because a sensor spans many
      * tiles and sits *on top of* whatever tile is underneath it, which the
@@ -604,19 +646,24 @@ export class World implements EventPlayer {
     private buildSensors(level: Level) {
         for (const sensor of level.motionSensors) {
             const zones: THREE.Object3D[] = []
-            for (const coord of sensor.forbiddenTiles) {
-                const material = new THREE.MeshBasicMaterial({
-                    color: 0xff3b30,
-                    transparent: true,
-                    opacity: 0.28,
-                    depthWrite: false,
-                })
-                const mesh = new THREE.Mesh(new THREE.BoxGeometry(0.94, 0.01, 0.94), material)
-                mesh.position.set(coord.x, 0.012, coord.y)
-                this.tileRoot.add(mesh)
-                zones.push(mesh)
-            }
+            const tiles = sensorZone(level, sensor)
+            const edges = zoneEdges(tiles)
+            tiles.forEach((coord, i) => {
+                const zone = createSensorZoneTile(sensor.initiallyActive, edges[i])
+                zone.position.set(coord.x, 0.012, coord.y)
+                this.tileRoot.add(zone)
+                zones.push(zone)
+            })
             this.sensorZones.set(sensor.sensorId, zones)
+
+            const device = createMotionSensor({ active: sensor.initiallyActive })
+            device.group.position.set(sensor.position.x, 0, sensor.position.y)
+            // Stamped like a tile, so a click on the camera itself — which
+            // hangs high enough to show a tile or two away from where it
+            // hangs — picks the tile below it. See `pickTileFrom`.
+            device.group.userData.coord = { ...sensor.position }
+            this.tileRoot.add(device.group)
+            this.sensorDevices.set(sensor.sensorId, device)
         }
     }
 
@@ -636,6 +683,7 @@ export class World implements EventPlayer {
         this.switchLights.clear()
         this.platePads.clear()
         this.sensorZones.clear()
+        this.sensorDevices.clear()
         this.belts = []
         this.level = null
         // Measured against the level that is going away — a rail ghost knows
@@ -696,6 +744,23 @@ export class World implements EventPlayer {
         const level = this.level
         if (!level || !brush || !coord || brush.kind === 'select' || brush.kind === 'erase') {
             this.clearGhost()
+            return
+        }
+
+        if (brush.kind === 'sensor') {
+            // Asked of the same function the click will use, like furniture:
+            // a tile that cannot take a sensor shows no ghost at all.
+            if (!sensorPlacement(level, coord, brush)) {
+                this.clearGhost()
+                return
+            }
+            // Keyed by tile as well: the zone is clipped to the grid, so the
+            // same brush previews differently next to a wall.
+            const ghost = this.ensureGhost(
+                `${ghostKey(brush)}:${coordKey(coord)}`,
+                () => sensorGhost(level, brush, coord),
+            )
+            if (ghost) ghost.position.set(coord.x, 0, coord.y)
             return
         }
 
@@ -1199,16 +1264,18 @@ export class World implements EventPlayer {
         }
     }
 
+    /**
+     * Fade a sensor between green (off) and red (on). The zone stays visible
+     * either way: an inactive zone is still where a switch could arm one, and
+     * the level has to show that before it happens.
+     */
     private setSensorActive(sensorId: string, active: boolean, t: number) {
-        const zones = this.sensorZones.get(sensorId)
-        if (!zones) return
-        const from = active ? 0 : 0.28
-        const to = active ? 0.28 : 0
-        for (const zone of zones) {
+        const amount = active ? t : 1 - t
+        for (const zone of this.sensorZones.get(sensorId) ?? []) {
             const material = (zone as THREE.Mesh).material as THREE.MeshBasicMaterial
-            material.opacity = lerp(from, to, t)
-            zone.visible = material.opacity > 0.01
+            material.color.copy(SENSOR_OFF).lerp(SENSOR_ON, amount)
         }
+        this.sensorDevices.get(sensorId)?.setActive(amount)
     }
 
     /** A delivered crate is inert — dim it so it reads as locked in. */

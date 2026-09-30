@@ -225,11 +225,23 @@ export type Decoration = {
 // Motion sensors
 // ============================================================
 
+/**
+ * A device hanging from the ceiling over one tile, watching the rectangle
+ * centred on it: every tile within `width` × `depth` — both always odd, so the
+ * device sits dead centre — its own tile included. It blocks nothing; while
+ * switched off its whole zone is ordinary floor. The zone is derived rather
+ * than stored: see `./sensors`.
+ */
 export type MotionSensor = {
     sensorId: string;
     /** What the author calls the sensor; absent shows it by its id. */
     name?: string;
-    forbiddenTiles: Coord[];
+    /** The tile the device hangs over. */
+    position: Coord;
+    /** Zone size along x, odd. */
+    width: number;
+    /** Zone size along y, odd. */
+    depth: number;
     /** Authored starting value. The live flag lives in `MotionSensorState.active`. */
     initiallyActive: boolean;
 };

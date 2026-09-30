@@ -19,6 +19,7 @@ import {
     footprintOf,
 } from '$lib/game/decorations';
 import { coordKey, inBounds, parseTileKey, sameCoord, turn } from '$lib/game/grid';
+import { clampSensorSize, sensorAt } from '$lib/game/sensors';
 import type {
     BeltControl,
     CargoConveyorTile,
@@ -31,6 +32,7 @@ import type {
     Item,
     Level,
     LevelOptions,
+    MotionSensor,
     Tile,
     TileKey,
 } from '$lib/game/level';
@@ -365,6 +367,86 @@ export function turnDecoration(level: Level, id: string, facing: Direction): Lev
 
 
 // ============================================================
+// Motion sensors
+// ============================================================
+
+export type SensorTemplate = Extract<Brush, { kind: 'sensor' }>;
+
+export function nextSensorId(level: Level): string {
+    const used = new Set(level.motionSensors.map((sensor) => sensor.sensorId));
+    let n = 1;
+    while (used.has(`sensor-${n}`)) n++;
+    return `sensor-${n}`;
+}
+
+/**
+ * The sensor a click on `coord` would place, or `null` where one cannot go.
+ *
+ * It hangs from the ceiling, so whatever is on the floor below — a wall, a
+ * belt, a crate, the robot's start — stays where it is. The one thing it
+ * cannot share a tile with is another sensor. Split out so the ghost preview
+ * asks the very question the click will answer, as `decorationPlacement` does.
+ */
+export function sensorPlacement(
+    level: Level,
+    coord: Coord,
+    template: SensorTemplate,
+): MotionSensor | null {
+    if (!inBounds(level, coord)) return null;
+    if (sensorAt(level, coord)) return null;
+
+    return {
+        sensorId: nextSensorId(level),
+        position: { x: coord.x, y: coord.y },
+        width: clampSensorSize(template.width),
+        depth: clampSensorSize(template.depth),
+        initiallyActive: template.initiallyActive,
+    };
+}
+
+export function placeSensor(level: Level, coord: Coord, template: SensorTemplate): Level {
+    const placed = sensorPlacement(level, coord, template);
+    if (!placed) return level;
+    return { ...level, motionSensors: [...level.motionSensors, placed] };
+}
+
+/**
+ * Take the sensor hanging over `coord` away. A switch or plate still pointing
+ * at it is left alone — `validateLevel` reports the dangling link, exactly as
+ * it does for a deleted door.
+ */
+export function removeSensorAt(level: Level, coord: Coord): Level {
+    const motionSensors = level.motionSensors.filter((sensor) => !sameCoord(sensor.position, coord));
+    if (motionSensors.length === level.motionSensors.length) return level;
+    return { ...level, motionSensors };
+}
+
+function removeSensor(level: Level, sensorId: string): Level {
+    const motionSensors = level.motionSensors.filter((sensor) => sensor.sensorId !== sensorId);
+    if (motionSensors.length === level.motionSensors.length) return level;
+    return { ...level, motionSensors };
+}
+
+/** Replace one sensor by id, or hand back the same level if nothing changed. */
+function updateSensor(level: Level, sensorId: string, next: MotionSensor): Level {
+    const current = level.motionSensors.find((sensor) => sensor.sensorId === sensorId);
+    if (
+        !current
+        || (current.width === next.width
+            && current.depth === next.depth
+            && current.initiallyActive === next.initiallyActive
+            && current.name === next.name)
+    ) {
+        return level;
+    }
+    return {
+        ...level,
+        motionSensors: level.motionSensors.map((sensor) => (sensor.sensorId === sensorId ? next : sensor)),
+    };
+}
+
+
+// ============================================================
 // Robot
 // ============================================================
 
@@ -387,15 +469,20 @@ export function applyBrush(level: Level, brush: Brush, coord: Coord): Level {
             return placeItem(level, coord, brush.item);
         case 'decoration':
             return placeDecoration(level, coord, brush.decoration, brush.facing);
+        case 'sensor':
+            return placeSensor(level, coord, brush);
         case 'robot':
             return setRobot(level, coord, brush.facing);
         case 'erase':
-            // Furniture is erased on its own: a shelf standing on a goal tile
-            // has to come off without taking the goal with it. Only once the
-            // tile is clear does the eraser reach the tile itself.
-            return level.decorations.some((decoration) => decorationCovers(decoration, coord))
-                ? removeDecorationAt(level, coord)
-                : removeItemAt(clearTile(level, coord), coord);
+            // Furniture and sensors are erased on their own: a shelf standing
+            // on a goal tile, or a sensor hanging over it, has to come off
+            // without taking the goal with it. Only once those are gone does
+            // the eraser reach the tile itself.
+            if (level.decorations.some((decoration) => decorationCovers(decoration, coord))) {
+                return removeDecorationAt(level, coord);
+            }
+            if (sensorAt(level, coord)) return removeSensorAt(level, coord);
+            return removeItemAt(clearTile(level, coord), coord);
         case 'select':
             // The select tool edits nothing; the canvas routes its clicks to
             // `selectAt` instead. Listed so the switch stays exhaustive.
@@ -428,6 +515,8 @@ export function deleteSelection(level: Level, selection: Selection): Level {
                 ? level
                 : { ...level, decorations };
         }
+        case 'sensor':
+            return removeSensor(level, selection.sensor.sensorId);
         case 'robot':
             return level;
     }
@@ -467,6 +556,17 @@ export function rotateSelection(level: Level, selection: Selection): Level {
 
         case 'robot':
             return setRobot(level, level.robot.position, turn(level.robot.facing, 'right'));
+
+        case 'sensor': {
+            // A sensor has no facing; a quarter turn of its zone is the two
+            // sides trading places, which is what the author sees happen.
+            const sensor = selection.sensor;
+            return updateSensor(level, sensor.sensorId, {
+                ...sensor,
+                width: sensor.depth,
+                depth: sensor.width,
+            });
+        }
 
         case 'item':
             return level;
@@ -540,6 +640,19 @@ export function setSelectionOption(
             return patch.decorationFacing === undefined
                 ? level
                 : turnDecoration(level, selection.decoration.id, patch.decorationFacing);
+
+        case 'sensor': {
+            const sensor = selection.sensor;
+            const { name: _, ...rest } = sensor;
+            const name = patch.sensorName === undefined ? sensor.name : patch.sensorName.trim();
+            return updateSensor(level, sensor.sensorId, {
+                ...rest,
+                ...(name ? { name } : {}),
+                width: clampSensorSize(patch.sensorWidth ?? sensor.width),
+                depth: clampSensorSize(patch.sensorDepth ?? sensor.depth),
+                initiallyActive: patch.sensorInitiallyActive ?? sensor.initiallyActive,
+            });
+        }
 
         case 'robot':
             return patch.facing === undefined
@@ -634,10 +747,9 @@ export function resize(level: Level, width: number, height: number): Level {
                 y: Math.min(level.robot.position.y, h - 1),
             },
         },
-        motionSensors: level.motionSensors.map((sensor) => ({
-            ...sensor,
-            forbiddenTiles: sensor.forbiddenTiles.filter((c) => within(c)),
-        })),
+        // A device off the grid goes; one still on it keeps its size, and the
+        // part of its zone past the new edge simply watches nothing.
+        motionSensors: level.motionSensors.filter((sensor) => within(sensor.position)),
         goals: level.goals.filter(
             (goal) => goal.kind !== 'deliver_specific' || within(goal.dropOffPosition),
         ),

@@ -110,6 +110,13 @@ function positiveInteger(value: unknown, path: string): number {
     return n;
 }
 
+/** A motion sensor's zone side: odd, so the device sits in the middle. */
+function oddSize(value: unknown, path: string): number {
+    const n = positiveInteger(value, path);
+    if (n % 2 === 0) throw new ParseError(path, 'must be odd');
+    return n;
+}
+
 /**
  * The one exception to the rule above, for a field added after levels were
  * already in the database.
@@ -309,10 +316,9 @@ function motionSensor(value: unknown, path: string): MotionSensor {
     return {
         sensorId: string(field(source, 'sensorId', path), `${path}.sensorId`),
         ...('name' in source ? { name: string(source.name, `${path}.name`) } : {}),
-        forbiddenTiles: array(
-            field(source, 'forbiddenTiles', path),
-            `${path}.forbiddenTiles`,
-        ).map((entry, i) => coord(entry, `${path}.forbiddenTiles[${i}]`)),
+        position: coord(field(source, 'position', path), `${path}.position`),
+        width: oddSize(field(source, 'width', path), `${path}.width`),
+        depth: oddSize(field(source, 'depth', path), `${path}.depth`),
         initiallyActive: boolean(
             field(source, 'initiallyActive', path),
             `${path}.initiallyActive`,

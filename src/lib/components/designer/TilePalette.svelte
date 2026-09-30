@@ -4,6 +4,7 @@
 	import ChevronDown from '@lucide/svelte/icons/chevron-down';
 	import ArrowBigRightDash from '@lucide/svelte/icons/arrow-big-right-dash';
 	import Bot from '@lucide/svelte/icons/bot';
+	import Cctv from '@lucide/svelte/icons/cctv';
 	import BrickWall from '@lucide/svelte/icons/brick-wall';
 	import ChevronsRight from '@lucide/svelte/icons/chevrons-right';
 	import Cuboid from '@lucide/svelte/icons/cuboid';
@@ -59,6 +60,7 @@
 		crate_grey: Package,
 		crate_colour: Package,
 		keycard: KeyRound,
+		motion_sensor: Cctv,
 		pallet: Layers,
 		shelf: LibraryBig,
 		pillar: Cuboid,

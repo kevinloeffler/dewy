@@ -126,7 +126,7 @@ describe('buildBrush', () => {
         let level = emptyLevel('t', 'T', 4, 4);
         level = {
             ...level,
-            motionSensors: [{ sensorId: 'sensor-1', name: 'Wache', forbiddenTiles: [], initiallyActive: true }],
+            motionSensors: [{ sensorId: 'sensor-1', name: 'Wache', position: { x: 0, y: 0 }, width: 1, depth: 1, initiallyActive: true }],
         };
         expect(linkLabel(level, 'sensor-1')).toBe('Wache');
         expect(linkLabel(level, 'belt-9')).toBe('belt-9');

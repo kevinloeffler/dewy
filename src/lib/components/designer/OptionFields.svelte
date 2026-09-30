@@ -7,6 +7,7 @@
 		type BrushOptions
 	} from '$lib/game/editor/brush';
 	import { linkLabel, type Direction, type Level } from '$lib/game/level';
+	import { SENSOR_SIZES } from '$lib/game/sensors';
 
 	interface Props {
 		level: Level;
@@ -16,9 +17,11 @@
 		options: BrushOptions;
 		/** One changed field. The caller decides whether that paints or edits. */
 		onchange: (patch: Partial<BrushOptions>) => void;
+		/** True when these controls edit a selected thing rather than the brush. */
+		editing?: boolean;
 	}
 
-	let { level, id, options, onchange }: Props = $props();
+	let { level, id, options, onchange, editing = false }: Props = $props();
 
 	const DIRECTIONS: Direction[] = ['north', 'east', 'south', 'west'];
 
@@ -35,7 +38,7 @@
 		{ value: 'reverse', label: 'Schalter dreht es um' }
 	] as const;
 
-	let keys = $derived(brushOptionKeys(id, options));
+	let keys = $derived(brushOptionKeys(id, options, editing));
 
 	// A keycard only ever opens doors; a switch or a plate may drive a belt or
 	// a motion sensor too, so the two fields offer different lists.
@@ -120,6 +123,42 @@
 				{/each}
 			</select>
 		</label>
+	{:else if key === 'sensorWidth' || key === 'sensorDepth'}
+		<label class="option">
+			{key === 'sensorWidth' ? 'Breite (x)' : 'Tiefe (y)'}
+			<select
+				value={options[key]}
+				onchange={(event) => onchange({ [key]: Number(event.currentTarget.value) })}
+			>
+				{#each SENSOR_SIZES as size (size)}
+					<option value={size}>{size} Felder</option>
+				{/each}
+			</select>
+		</label>
+		{#if key === 'sensorDepth'}
+			<p class="hint">Der Melder steht in der Mitte und bewacht die Felder rund um sich.</p>
+		{/if}
+	{:else if key === 'sensorInitiallyActive'}
+		<label class="option check">
+			<input
+				type="checkbox"
+				checked={options.sensorInitiallyActive}
+				onchange={(event) => onchange({ sensorInitiallyActive: event.currentTarget.checked })}
+			/>
+			Startet aktiv
+		</label>
+	{:else if key === 'sensorName'}
+		<!-- Committed on change, like the door and belt names below. -->
+		<label class="option">
+			Name
+			<input
+				type="text"
+				value={options.sensorName}
+				placeholder="z. B. Wache"
+				onchange={(event) => onchange({ sensorName: event.currentTarget.value.trim() })}
+			/>
+		</label>
+		<p class="hint">So erscheint der Melder bei Schaltern und Druckplatten.</p>
 	{:else if key === 'doorName' || key === 'beltName'}
 		<!-- Committed on change (blur or Enter), not per keystroke, so typing a
 		     name is one undo step rather than one per letter. The id behind it
@@ -155,7 +194,7 @@
 		{#if key === 'keycardDoorId' && doors.length === 0}
 			<p class="hint">Noch keine Türfelder — platziere zuerst eine Tür.</p>
 		{:else if key !== 'keycardDoorId' && targets.length === 0}
-			<p class="hint">Noch nichts zum Verknüpfen — platziere zuerst eine Tür oder ein steuerbares Band.</p>
+			<p class="hint">Noch nichts zum Verknüpfen — platziere zuerst eine Tür, ein steuerbares Band oder einen Bewegungsmelder.</p>
 		{/if}
 	{:else if key === 'beltEffect'}
 		<label class="option">

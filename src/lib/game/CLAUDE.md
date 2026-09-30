@@ -11,6 +11,10 @@ Three.js 3D models are stored in the `./models` directory.
 that turns a piece's stored corner and facing back into the tiles it covers.
 The renderer, the editor and the engine all read it through there.
 
+`sensors.ts` is the zone math for `Level.motionSensors` — a sensor is stored as
+the tile it hangs over plus an odd width and depth, and this is the one place that
+turns that into the tiles it watches. Engine, renderer and editor all read it.
+
 `level.ts` is an immutable serializable type definition. This information is stored in the database.
 `level-state.ts` holds the runtime state of the game and is not persisted.
 

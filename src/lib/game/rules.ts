@@ -9,6 +9,7 @@ import {
     footprintOf,
 } from './decorations';
 import { CRATE_COLOR_NAMES } from './crate-color';
+import { sensorCovers } from './sensors';
 
 /**
  * Pure predicates over `Level` + `LevelState`.
@@ -192,7 +193,7 @@ export function sensorForbidding(level: Level, state: LevelState, coord: Coord):
     for (const sensor of level.motionSensors) {
         const live = state.motionSensors.find((s) => s.sensorId === sensor.sensorId);
         if (!live?.active) continue;
-        if (sensor.forbiddenTiles.some((tile) => sameCoord(tile, coord))) return sensor.sensorId;
+        if (sensorCovers(sensor, coord)) return sensor.sensorId;
     }
     return null;
 }
@@ -320,6 +321,31 @@ export function validateLevel(level: Level): string[] {
 
     if (!tileAt(level, level.robot.position)) {
         problems.push('Der Roboter startet ausserhalb des Rasters');
+    }
+
+    // A sensor hangs from the ceiling, so what lies beneath it is its own
+    // business — a wall, a belt, a crate. Only the grid and the robot's start
+    // matter: a robot starting under an active sensor loses on its first move.
+    const sensorIds = new Set<string>();
+    const sensorCoords = new Set<string>();
+    for (const sensor of level.motionSensors) {
+        const key = coordKey(sensor.position);
+        const label = linkNames(level).get(sensor.sensorId) ?? sensor.sensorId;
+
+        if (sensorIds.has(sensor.sensorId)) {
+            problems.push(`doppelte Bewegungsmelder-ID „${sensor.sensorId}“`);
+        }
+        sensorIds.add(sensor.sensorId);
+        if (sensorCoords.has(key)) problems.push(`zwei Bewegungsmelder hängen über Feld ${key}`);
+        sensorCoords.add(key);
+
+        if (!tileAt(level, sensor.position)) {
+            problems.push(`Bewegungsmelder „${label}“ hängt bei ${key} ausserhalb des Rasters`);
+            continue;
+        }
+        if (sensor.initiallyActive && sensorCovers(sensor, level.robot.position)) {
+            problems.push(`Der Roboter startet im Feld des aktiven Bewegungsmelders „${label}“ — der erste Befehl löst ihn aus`);
+        }
     }
 
     // The engine never counts an empty goal list as won, so such a level can

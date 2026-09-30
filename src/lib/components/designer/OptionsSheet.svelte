@@ -6,6 +6,7 @@
 		decorationOptions,
 		defaultBrushOptions,
 		itemOptions,
+		sensorOptions,
 		tileOptions,
 		type BrushId,
 		type BrushOptions
@@ -78,6 +79,11 @@
 					id: selection.decoration.kind,
 					options: decorationOptions(selection.decoration, options)
 				};
+			case 'sensor':
+				return {
+					id: 'motion_sensor' as const,
+					options: sensorOptions(selection.sensor, options)
+				};
 			case 'robot':
 				return { id: 'robot' as const, options: { ...options, facing: selection.facing } };
 		}
@@ -91,7 +97,10 @@
 		<p class="selected-thing">
 			{selection.label}
 			{#if selection.linked.length > 0}
-				<span class="count">steuert {selection.linked.length}</span>
+				<span class="count">
+					{selection.kind === 'sensor' ? 'bewacht' : 'steuert'}
+					{selection.linked.length}
+				</span>
 			{:else if selection.coords.length > 1}
 				<span class="count">{selection.coords.length} Felder</span>
 			{/if}
@@ -99,7 +108,13 @@
 
 		<!-- The same controls the brushes use, writing to what is selected
 		     instead of to the next thing painted. -->
-		<OptionFields {level} id={selectedThing.id} options={selectedThing.options} onchange={onedit} />
+		<OptionFields
+			{level}
+			id={selectedThing.id}
+			options={selectedThing.options}
+			onchange={onedit}
+			editing
+		/>
 
 		{#if selection.kind === 'robot'}
 			<p class="hint">Jedes Level behält seinen Roboter — platziere ihn mit „Roboter-Start“ neu.</p>

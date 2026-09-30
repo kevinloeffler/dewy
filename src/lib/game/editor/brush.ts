@@ -7,6 +7,7 @@ import type {
     DecorationKind,
     Direction,
     Item,
+    MotionSensor,
     Tile,
 } from '$lib/game/level';
 
@@ -32,6 +33,11 @@ export type Brush =
      * land inside it.
      */
     | { kind: 'decoration'; decoration: DecorationKind; facing: Direction }
+    /**
+     * A motion sensor's device. A template like an item: `placeSensor` mints
+     * the id, and the click supplies the tile the device stands on.
+     */
+    | { kind: 'sensor'; width: number; depth: number; initiallyActive: boolean }
     | { kind: 'robot'; facing: Direction }
     /** Back to plain floor, and remove whatever item was standing on it. */
     | { kind: 'erase' }
@@ -58,6 +64,7 @@ export type BrushId =
     | 'wall' | 'pit' | 'robot_gap' | 'goal'
     | 'conveyor' | 'cargo_conveyor' | 'door' | 'pressure_plate' | 'switch' | 'drop_off'
     | 'crate_grey' | 'crate_colour' | 'keycard'
+    | 'motion_sensor'
     | DecorationKind
     | 'robot' | 'select' | 'erase';
 
@@ -115,6 +122,16 @@ export type BrushOptions = {
      * door must not swing the belt brush or the robot round with it.
      */
     doorFacing: Direction;
+    /** Zone size along x and y — always odd, see `clampSensorSize`. */
+    sensorWidth: number;
+    sensorDepth: number;
+    sensorInitiallyActive: boolean;
+    /**
+     * What the author calls a sensor. Only offered when editing a selected
+     * one: the brush mints a fresh sensor per click, and a name carried from
+     * one to the next would only make two sensors answer to it.
+     */
+    sensorName: string;
 };
 
 export function defaultBrushOptions(): BrushOptions {
@@ -136,6 +153,10 @@ export function defaultBrushOptions(): BrushOptions {
         beltInitiallyOn: true,
         decorationFacing: 'south',
         doorFacing: 'south',
+        sensorWidth: 3,
+        sensorDepth: 3,
+        sensorInitiallyActive: true,
+        sensorName: '',
     };
 }
 
@@ -150,7 +171,7 @@ export const BRUSH_GROUPS: { title: string; ids: BrushId[]; collapsed?: boolean 
     },
     {
         title: 'Hindernisse',
-        ids: ['pit', 'wall', 'robot_gap', 'door', 'switch', 'pressure_plate'],
+        ids: ['pit', 'wall', 'robot_gap', 'door', 'switch', 'pressure_plate', 'motion_sensor'],
     },
     {
         title: 'Deko',
@@ -181,6 +202,7 @@ export const BRUSH_LABELS: Record<BrushId, string> = {
     crate_grey: 'Graue Kiste',
     crate_colour: 'Farbige Kiste',
     keycard: 'Keycard',
+    motion_sensor: 'Bewegungsmelder',
     pallet: 'Palette (3×2)',
     shelf: 'Regal (2×1)',
     pillar: 'Säule',
@@ -197,9 +219,16 @@ export const BRUSH_LABELS: Record<BrushId, string> = {
  * Which option controls the palette shows, in the order it shows them.
  *
  * Takes the current options as well as the id because a belt's id and starting
- * value are only worth asking about once it has a drive to control.
+ * value are only worth asking about once it has a drive to control. `editing`
+ * is true when the controls write to a selected thing rather than the brush:
+ * a sensor's name is only offered then, since the brush mints a new sensor
+ * per click and a name carried along would land on every one of them.
  */
-export function brushOptionKeys(id: BrushId, options: BrushOptions): (keyof BrushOptions)[] {
+export function brushOptionKeys(
+    id: BrushId,
+    options: BrushOptions,
+    editing = false,
+): (keyof BrushOptions)[] {
     switch (id) {
         case 'conveyor':
         case 'cargo_conveyor':
@@ -220,6 +249,10 @@ export function brushOptionKeys(id: BrushId, options: BrushOptions): (keyof Brus
             return ['keycardDoorId'];
         case 'robot':
             return ['facing'];
+        case 'motion_sensor':
+            return editing
+                ? ['sensorName', 'sensorWidth', 'sensorDepth', 'sensorInitiallyActive']
+                : ['sensorWidth', 'sensorDepth', 'sensorInitiallyActive'];
         default:
             // A square, symmetrical piece has no visible facing to offer.
             return isDecorationId(id) && canTurn(id) ? ['decorationFacing'] : [];
@@ -338,6 +371,25 @@ export function decorationOptions(
     return { ...base, decorationFacing: decoration.facing };
 }
 
+/**
+ * `buildBrush` read backwards, for the select tool — see `tileOptions`.
+ *
+ * The name is included here and nowhere on the brush: it is what the option
+ * sheet offers for a selected sensor and not for the next one painted.
+ */
+export function sensorOptions(
+    sensor: MotionSensor,
+    base: BrushOptions = defaultBrushOptions(),
+): BrushOptions {
+    return {
+        ...base,
+        sensorWidth: sensor.width,
+        sensorDepth: sensor.depth,
+        sensorInitiallyActive: sensor.initiallyActive,
+        sensorName: sensor.name ?? '',
+    };
+}
+
 export function buildBrush(id: BrushId, options: BrushOptions): Brush {
     if (isDecorationId(id)) {
         return { kind: 'decoration', decoration: id, facing: options.decorationFacing };
@@ -404,6 +456,14 @@ export function buildBrush(id: BrushId, options: BrushOptions): Brush {
 
         case 'keycard':
             return { kind: 'item', item: { kind: 'keycard', doorId: options.keycardDoorId } };
+
+        case 'motion_sensor':
+            return {
+                kind: 'sensor',
+                width: options.sensorWidth,
+                depth: options.sensorDepth,
+                initiallyActive: options.sensorInitiallyActive,
+            };
 
         case 'robot':
             return { kind: 'robot', facing: options.facing };

@@ -137,7 +137,7 @@ several tiles wide.
 
 | Element | Description |
 |---------|-------------|
-| Motion sensor | Has a fixed set of forbidden tiles clearly marked on the map — robot entering any of them fails the level immediately. Only *active* sensors fire; crates are ignored |
+| Motion sensor | A camera hanging from the ceiling over one tile, watching the odd-sized W × D rectangle centred on it (e.g. 3 × 5), its own tile included — robot entering any of those tiles fails the level immediately. It blocks nothing: while switched off, the whole zone is ordinary floor. Only *active* sensors fire; crates are ignored. The zone is marked on the map: **red** while active, **green** while switched off |
 | Pressure plate | Active while a robot or crate stands on it — linked to a door, sensor, or belt |
 | Switch | Flipped via `toggle()` — linked to a door, motion sensor, or belt. The switch tile is solid: the robot faces it, never stands on it |
 | Drop-off bay | Goal tile for cargo — plain bays accept any crate, colour bays accept only the matching colour |

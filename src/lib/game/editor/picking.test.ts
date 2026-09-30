@@ -3,6 +3,7 @@ import * as THREE from 'three';
 import { GROUND, coordOf, pickTileFrom } from './picking';
 import { emptyLevel, setTile } from './operations';
 import { TileFactory } from '../models/tiles';
+import { createMotionSensor } from '../models/motion-sensor';
 import { aimIsometricCamera, createIsometricCamera } from '../three-utils';
 import { tileAt } from '../grid';
 import type { Coord, Level } from '../level';
@@ -106,6 +107,25 @@ describe('pickTileFrom', () => {
         const ndc = ndcOf(new THREE.Vector3(3, 0, 2), camera);
 
         expect(pick(root, camera, ndc, level)).toEqual({ x: 3, y: 2 });
+    });
+
+    it('picks the tile below a hanging sensor when you click the camera', () => {
+        const level = emptyLevel('x', 'X', 6, 6);
+        const root = buildTileRoot(level);
+        const camera = cameraFor(level);
+
+        // Stamped the way `World.buildSensors` stamps it.
+        const device = createMotionSensor().group;
+        device.position.set(2, 0, 2);
+        device.userData.coord = { x: 2, y: 2 };
+        root.add(device);
+        root.updateMatrixWorld(true);
+
+        // The camera head hangs well above the floor, so on screen it covers
+        // a different tile — which the ground plane alone would have picked.
+        const ndc = ndcOf(new THREE.Vector3(2, 1.65, 2), camera);
+        expect(planePick(camera, ndc)).not.toEqual({ x: 2, y: 2 });
+        expect(pick(root, camera, ndc, level)).toEqual({ x: 2, y: 2 });
     });
 
     it('ignores scenery that carries no coord, such as the backdrop walls', () => {

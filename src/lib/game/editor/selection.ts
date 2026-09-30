@@ -2,6 +2,7 @@ import { BRUSH_LABELS } from './brush';
 import { decorationAt, decorationTiles } from '$lib/game/decorations';
 import { ahead, coordKey, inBounds, parseTileKey, sameCoord, tileAt } from '$lib/game/grid';
 import { linkLabel } from '$lib/game/level';
+import { sensorAt, sensorZone } from '$lib/game/sensors';
 import type {
     CargoConveyorTile,
     ConveyorTile,
@@ -11,6 +12,7 @@ import type {
     FloorTile,
     Item,
     Level,
+    MotionSensor,
     PressurePlateTile,
     SwitchTile,
     Tile,
@@ -34,8 +36,9 @@ import type {
  * Every selection carries two lists of coordinates:
  *
  *  - `coords` — the thing itself. An edit or a delete acts on exactly these.
- *  - `linked` — tiles the thing *drives*, shown as context and never written
- *    to. Only a switch or a plate has any: the door or belt it operates.
+ *  - `linked` — tiles the thing *drives* or *watches*, shown as context and
+ *    never written to: the door, belt or sensor a switch or plate operates,
+ *    and the zone a sensor watches.
  *
  * The tile or item is carried along too, so the palette can offer the
  * settings it was authored with without going back to the level for them.
@@ -56,6 +59,8 @@ export type Selection =
           linked: Coord[];
           decoration: Decoration;
       }
+    /** A motion sensor: the tile it hangs over, with the rest of its zone as `linked`. */
+    | { kind: 'sensor'; label: string; coords: Coord[]; linked: Coord[]; sensor: MotionSensor }
     /** The robot's start. Selectable so it can be found, but never deletable. */
     | { kind: 'robot'; label: string; coords: Coord[]; linked: Coord[]; facing: Direction };
 
@@ -82,6 +87,26 @@ function isBelt(tile: Tile | null): tile is BeltTile {
  */
 export function selectAt(level: Level, coord: Coord): Selection | null {
     if (!inBounds(level, coord)) return null;
+
+    // A sensor hangs above everything else on its tile, so it is what a
+    // click there lands on first. To reach the crate or belt beneath it,
+    // move the sensor or erase it.
+    const sensor = sensorAt(level, coord);
+    if (sensor) {
+        return {
+            kind: 'sensor',
+            label: sensor.name
+                ? `${BRUSH_LABELS.motion_sensor} „${sensor.name}“`
+                : BRUSH_LABELS.motion_sensor,
+            coords: [{ ...sensor.position }],
+            // The zone includes the device's own tile, which `coords` already
+            // outlines — listing it twice would draw it twice.
+            linked: sortCoords(
+                sensorZone(level, sensor).filter((c) => !sameCoord(c, sensor.position)),
+            ),
+            sensor,
+        };
+    }
 
     const item = level.items.find((candidate) => sameCoord(candidate.position, coord));
     if (item) {
@@ -154,8 +179,7 @@ function connected(level: Level, seed: Coord, tile: Tile): Coord[] {
  * and a switch has exactly one target, so the switch is the end that names the
  * pair — and the end where showing the whole mechanism is unambiguous.
  *
- * A target that names a motion sensor adds no coords: a sensor is not a tile,
- * and the zone it watches is plain floor that deleting must not touch.
+ * A target that names a motion sensor brings the zone it watches. They are only `linked`, so deleting the switch leaves them be.
  */
 function control(level: Level, seed: Coord, tile: SwitchTile | PressurePlateTile): Selection {
     const targetId = tile.targetId;
@@ -165,6 +189,8 @@ function control(level: Level, seed: Coord, tile: SwitchTile | PressurePlateTile
         (t) => (t.kind === 'door' && t.doorId === targetId)
             || (isBelt(t) && t.control?.beltId === targetId),
     );
+    const sensor = level.motionSensors.find((candidate) => candidate.sensorId === targetId);
+    if (sensor) driven.push(...sensorZone(level, sensor));
 
     const label = BRUSH_LABELS[tile.kind];
     return {

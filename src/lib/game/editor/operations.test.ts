@@ -139,7 +139,7 @@ describe('doors and bays', () => {
         expect(nextBeltId(level)).toBe('belt-2');
         // Doors, belts and sensors share one namespace, sorted.
         expect(targetIds({ ...level, motionSensors: [
-            { sensorId: 'alarm', forbiddenTiles: [], initiallyActive: true },
+            { sensorId: 'alarm', position: { x: 0, y: 0 }, width: 1, depth: 1, initiallyActive: true },
         ] })).toEqual(['alarm', 'belt-1', 'door-1']);
     });
 
