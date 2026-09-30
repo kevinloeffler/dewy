@@ -19,6 +19,7 @@ import { reindex, transfer } from '$lib/ordering';
 import { Forbidden, type Actor } from '$lib/server/users';
 import { isStaff, roleOf } from '$lib/roles';
 import type { Level } from '$lib/game/level';
+import introBody from './starter/einfuehrung.md?raw';
 
 /**
  * A level a stage borrows rather than owns. It hangs off
@@ -365,13 +366,41 @@ export async function findCourse(courseId: string): Promise<CourseOutline | null
 	};
 }
 
+/**
+ * Every new course starts with an "Einführung" chapter holding one theory block
+ * that introduces Dewy and the platform. It is ordinary content: the teacher can
+ * edit or delete it like anything they wrote themselves. `duplicateCourse` does
+ * not come through here, so a copy carries whatever the original has instead.
+ */
+const INTRO_STAGE_TITLE = 'Einführung';
+const INTRO_THEORY_TITLE = 'Willkommen bei Dewy';
+
 export async function createCourse(title: string, ownerId?: string): Promise<string> {
 	const id = crypto.randomUUID();
-	await db.insert(course).values({
-		id,
-		title: title.trim() || 'Kurs ohne Titel',
-		ownerId: ownerId ?? null
+
+	// See the module note: this callback must stay synchronous.
+	db.transaction((tx) => {
+		tx.insert(course)
+			.values({ id, title: title.trim() || 'Kurs ohne Titel', ownerId: ownerId ?? null })
+			.run();
+
+		const stageId = crypto.randomUUID();
+		tx.insert(stage)
+			.values({ id: stageId, courseId: id, title: INTRO_STAGE_TITLE, position: 0 })
+			.run();
+
+		tx.insert(stageItem)
+			.values({
+				id: crypto.randomUUID(),
+				stageId,
+				kind: 'theory',
+				title: INTRO_THEORY_TITLE,
+				body: introBody,
+				position: 0
+			})
+			.run();
 	});
+
 	return id;
 }
 
