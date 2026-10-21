@@ -1,12 +1,17 @@
 import type { Reaction } from './reactions';
 
 /**
- * Every way a run can end badly, in one place.
+ * Every way an action can go wrong, in one place.
  *
  * The same text has to reach three destinations — `WorldEvent.crash.reason`,
  * `LevelState.failReason` and the `RobotCrash` exception — so it is written
  * once here. The `code` is what tests assert on and what a future translation
  * layer keys off; the message is what the student reads.
+ *
+ * Not every code ends the run. Running into the world is **fatal**; a command
+ * that finds nothing to act on — `open()` with no door ahead, `pick()` on an
+ * empty tile — is a **fumble**: Dewy looks confused, the command still costs
+ * its energy, and the program carries on. `FUMBLES` is that list.
  */
 export type CrashCode =
     // moving
@@ -41,6 +46,8 @@ export type CrashReason = {
     message: string;
     /** How Dewy shows it — see `reactions.ts`. */
     reaction: Reaction;
+    /** Ends the run. False for a fumble, which the program carries on past. */
+    fatal: boolean;
 };
 
 const MESSAGES: Record<CrashCode, string> = {
@@ -101,8 +108,23 @@ export const CRASH_REACTIONS: Record<CrashCode, Reaction> = {
     runaway:       'overheat',
 };
 
+/**
+ * The commands that had nothing to act on — every one of them a no-op that
+ * leaves the world untouched, which is what makes carrying on safe. A `drop()`
+ * into a wall is *not* here: that is the crate hitting something.
+ */
+const FUMBLES: ReadonlySet<CrashCode> = new Set<CrashCode>([
+    'nothing_to_pick',
+    'already_carrying',
+    'not_carrying',
+    'not_a_door',
+    'no_keycard',
+    'no_keyhole',
+    'not_a_switch',
+]);
+
 export function crash(code: CrashCode): CrashReason {
-    return { code, message: MESSAGES[code], reaction: CRASH_REACTIONS[code] };
+    return { code, message: MESSAGES[code], reaction: CRASH_REACTIONS[code], fatal: !FUMBLES.has(code) };
 }
 
 /**
@@ -113,5 +135,5 @@ export function crash(code: CrashCode): CrashReason {
  * what the pallet was. `name` comes from `DECORATION_NAMES`, article included.
  */
 export function obstacleCrash(name: string): CrashReason {
-    return { code: 'obstacle', message: `Da steht ${name} im Weg.`, reaction: CRASH_REACTIONS.obstacle };
+    return { code: 'obstacle', message: `Da steht ${name} im Weg.`, reaction: CRASH_REACTIONS.obstacle, fatal: true };
 }

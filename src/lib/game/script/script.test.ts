@@ -270,6 +270,16 @@ drop();
         expect(result).toMatchObject({ reason: { code: 'pit' } });
     });
 
+    it('runs on past a fumbled command', async () => {
+        const engine = new GameEngine(tutorial01);
+        const result = await runScript('open();\nmoveForward();', {
+            api: createRobotApi(engine, nullPlayer),
+        });
+
+        expect(result).toEqual({ status: 'finished' });
+        expect(engine.state.steps).toBe(2);
+    });
+
     it('runs out of energy when a loop wanders forever', async () => {
         const engine = new GameEngine(tutorial01, { energy: 20 });
         const result = await runScript('while (true) { turnLeft(); }', {

@@ -47,7 +47,7 @@ Dewy arbeitet in einer grossen Lagerhalle. Sie besteht aus **Feldern**, wie ein 
 
 ## Wenn etwas schiefgeht
 
-Fährt Dewy gegen eine Wand, in ein Loch oder versucht er etwas, das nicht geht, dann **stürzt er ab**.
+Fährt Dewy gegen eine Wand oder in ein Loch, dann **stürzt er ab** und das Programm hält an. Versucht er etwas, das nicht geht — eine Tür öffnen, wo keine ist —, schaut er nur verwirrt und macht weiter. Die Meldung zeigt dir, in welcher Zeile das war.
 Ein Absturz ist kein Weltuntergang, sondern ein Hinweis. Lies die Meldung, schau dir die Zeile mit dem Fehler an, passe deinen Code an und probiere es nochmals. Genau so arbeiten auch echte Programmiererinnen und Programmierer.
 
 ## So funktioniert die Plattform

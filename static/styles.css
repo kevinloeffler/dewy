@@ -26,6 +26,7 @@
   --accent:           #6b9e7a;
   --accent-soft:      #cfe3c8;
   --danger:           #d97757;
+  --warning:          #c08a2e;
   --success:          #6b9e7a;
 
   /* Radius */
@@ -86,6 +87,7 @@
   --accent:           #ffb86b;
   --accent-soft:      #3d3360;
   --danger:           #ff5d73;
+  --warning:          #d4922c;
   --success:          #7ee787;
 
   --radius:           12px;
@@ -138,6 +140,7 @@
   --accent:           #3a6df0;
   --accent-soft:      #e8eefc;
   --danger:           #d14343;
+  --warning:          #b8791c;
   --success:          #3a6df0;
 
   --radius:           8px;

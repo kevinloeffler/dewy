@@ -115,8 +115,9 @@ const DURATIONS: Record<WorldEventKind, number> = {
     crateDelivered: 0.35,
     crateUndelivered: 0,
     bump:        0.25,
-    // Unused: a crash holds for its own reaction's length (REACTION_DURATIONS).
+    // Unused: a crash or fumble holds for its own reaction's length (REACTION_DURATIONS).
     crash:       0,
+    fumble:      0,
     goalReached: CELEBRATE_DURATION,
 }
 
@@ -1251,6 +1252,11 @@ export class World implements EventPlayer {
                 }
                 return animations
             }
+
+            case 'fumble':
+                // Same body language as a crash, but the reaction is not
+                // sticky: Dewy settles back to idle and the run carries on.
+                return [instant(() => robot.react(event.reaction)), hold(REACTION_DURATIONS[event.reaction])]
 
             case 'goalReached':
                 // Self-timed like the crash. At speed 1 the hold covers it

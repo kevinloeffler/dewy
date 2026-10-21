@@ -134,7 +134,9 @@
 		<h2 class="section-title">Aktionen</h2>
 		<p class="section-lead">
 			Jede Aktion kostet eine Einheit Batterie und wirkt auf das Feld <strong>vor</strong> dem Roboter.
-			Geht eine Aktion nicht, stürzt der Roboter ab und das Programm hält an.
+			Fährt der Roboter gegen etwas oder in ein Loch, stürzt er ab und das Programm hält an.
+			Findet eine Aktion nichts, worauf sie wirken kann — <code>open()</code> ohne Tür —, schaut er
+			verwirrt, die Aktion kostet trotzdem Batterie, und das Programm läuft weiter.
 		</p>
 		<Panel>
 			<ul class="commands">

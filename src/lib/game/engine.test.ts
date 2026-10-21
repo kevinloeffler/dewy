@@ -468,7 +468,7 @@ describe('pick', () => {
         expect(engine.state.robot.carrying).toBe('c');
     });
 
-    it('crashes picking a second crate', () => {
+    it('fumbles picking a second crate', () => {
         const engine = new GameEngine(makeLevel({
             items: [
                 { kind: 'crate_grey', id: 'a', position: { x: 2, y: 1 } },
@@ -477,12 +477,12 @@ describe('pick', () => {
         }));
         engine.pick();
         engine.turnRight();
-        expect(engine.pick().reason?.code).toBe('already_carrying');
+        expect(engine.pick().fumble?.code).toBe('already_carrying');
     });
 
-    it('crashes on an empty tile', () => {
+    it('fumbles on an empty tile', () => {
         const engine = new GameEngine(makeLevel());
-        expect(engine.pick().reason?.code).toBe('nothing_to_pick');
+        expect(engine.pick().fumble?.code).toBe('nothing_to_pick');
     });
 
     it('prefers the crate when a tile holds both', () => {
@@ -521,8 +521,8 @@ describe('drop', () => {
         return engine;
     }
 
-    it('crashes when the hands are empty', () => {
-        expect(new GameEngine(makeLevel()).drop().reason?.code).toBe('not_carrying');
+    it('fumbles when the hands are empty', () => {
+        expect(new GameEngine(makeLevel()).drop().fumble?.code).toBe('not_carrying');
     });
 
     it('places the crate on the tile ahead', () => {
@@ -725,8 +725,8 @@ describe('doors, switches and plates', () => {
         expect(engine.state.doors[0].open).toBe(true);
     });
 
-    it('crashes toggling something that is not a switch', () => {
-        expect(new GameEngine(makeLevel()).toggle().reason?.code).toBe('not_a_switch');
+    it('fumbles toggling something that is not a switch', () => {
+        expect(new GameEngine(makeLevel()).toggle().fumble?.code).toBe('not_a_switch');
     });
 
     it('lets the robot toggle while carrying a crate', () => {
@@ -775,16 +775,16 @@ describe('open', () => {
         expect(engine.moveForward().status).toBe('ok');
     });
 
-    it('crashes without the keycard', () => {
-        expect(withDoor().open().reason?.code).toBe('no_keycard');
+    it('fumbles without the keycard', () => {
+        expect(withDoor().open().fumble?.code).toBe('no_keycard');
     });
 
     it('says the door has no keyhole when no keycard exists for it', () => {
-        expect(withDoor({ anyKeycard: false }).open().reason?.code).toBe('no_keyhole');
+        expect(withDoor({ anyKeycard: false }).open().fumble?.code).toBe('no_keyhole');
     });
 
-    it('crashes when the tile ahead is not a door', () => {
-        expect(new GameEngine(makeLevel()).open().reason?.code).toBe('not_a_door');
+    it('fumbles when the tile ahead is not a door', () => {
+        expect(new GameEngine(makeLevel()).open().fumble?.code).toBe('not_a_door');
     });
 
     it('spends the keycard on a door a plate is already holding open', () => {
@@ -1649,6 +1649,34 @@ describe('lifecycle', () => {
         expect(at(engine)).toEqual({ x: 2, y: 1 });   // no post-win crash into the wall
     });
 
+    it('carries on after a fumble', () => {
+        const engine = new GameEngine(makeLevel());
+        const outcome = engine.pick();
+
+        expect(outcome.status).toBe('ok');
+        expect(outcome.reason).toBeNull();
+        expect(shape(outcome)).toEqual([['fumble']]);
+        expect(engine.state.failed).toBe(false);
+        expect(engine.moveForward().status).toBe('ok');
+    });
+
+    it('charges a fumble its energy', () => {
+        const engine = new GameEngine(makeLevel(), { energy: 1 });
+        engine.open();
+        expect(engine.state.steps).toBe(1);
+        expect(engine.turnLeft().reason?.code).toBe('out_of_energy');
+    });
+
+    it('still crashes dropping a crate into a wall', () => {
+        const engine = new GameEngine(makeLevel({
+            tiles: { '3,1': { kind: 'wall' } },
+            items: [{ kind: 'crate_grey', id: 'c', position: { x: 2, y: 1 } }],
+        }));
+        engine.pick();
+        engine.moveForward();
+        expect(engine.drop().status).toBe('crash');
+    });
+
     it('runs out of energy once the authored battery is spent', () => {
         const engine = new GameEngine(makeLevel(), { energy: 3 });
         engine.turnLeft(); engine.turnLeft(); engine.turnLeft();
@@ -1779,6 +1807,17 @@ describe('robot-api', () => {
             expect((error as RobotCrash).message).toBe(engine.state.failReason);
             expect((error as RobotCrash).reason.code).toBe('wall');
         });
+    });
+
+    it('reports a fumble without throwing', async () => {
+        const fumbles: string[] = [];
+        const engine = new GameEngine(makeLevel());
+        const robot = createRobotApi(engine, nullPlayer, {
+            onFumble: (reason) => fumbles.push(reason.code),
+        });
+
+        await expect(robot.toggle()).resolves.toBeUndefined();
+        expect(fumbles).toEqual(['not_a_switch']);
     });
 
     it('throws LevelComplete once every goal is satisfied', async () => {

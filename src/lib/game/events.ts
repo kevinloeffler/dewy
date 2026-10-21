@@ -55,6 +55,11 @@ export type WorldEvent =
      * Dewy, so the renderer can sound its alarm.
      */
     | { kind: 'crash';       at: Coord; reason: string; reaction: Reaction; sensorId?: string }
+    /**
+     * A command with nothing to act on. Dewy plays the reaction and goes
+     * back to idle — the run is not over, unlike `crash`.
+     */
+    | { kind: 'fumble';      at: Coord; reason: string; reaction: Reaction }
     | { kind: 'goalReached' };
 
 export type WorldEventKind = WorldEvent['kind'];

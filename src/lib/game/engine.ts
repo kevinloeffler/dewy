@@ -46,6 +46,11 @@ export type StepOutcome = {
     status: 'ok' | 'crash' | 'complete';
     reason: CrashReason | null;
     /**
+     * Set when the action fumbled — had nothing to act on — but the run
+     * goes on. `status` then says how the world tick after it ended.
+     */
+    fumble?: CrashReason;
+    /**
      * A list of *steps*. Events inside one step animate together; the steps
      * themselves play in order. One action can produce several: move, then
      * the plate under the robot opening a door, then a sensor firing.
@@ -451,6 +456,8 @@ export class GameEngine {
     }
 
     private fail(steps: WorldEvent[][], reason: CrashReason, sensorId?: string): StepOutcome {
+        if (!reason.fatal) return this.fumble(steps, reason);
+
         this.levelState.failed = true;
         this.levelState.failReason = reason.message;
         steps.push([{
@@ -461,6 +468,21 @@ export class GameEngine {
             ...(sensorId ? { sensorId } : {}),
         }]);
         return { status: 'crash', reason, events: steps };
+    }
+
+    /**
+     * A command with nothing to act on: Dewy is confused, the step is spent,
+     * and the run carries on. Still a tick of the world — standing on a belt,
+     * a fumble rides it like a turn would.
+     */
+    private fumble(steps: WorldEvent[][], reason: CrashReason): StepOutcome {
+        steps.push([{
+            kind: 'fumble',
+            at: { ...this.levelState.robot.position },
+            reason: reason.message,
+            reaction: reason.reaction,
+        }]);
+        return { ...this.finish(steps), fumble: reason };
     }
 
     /**

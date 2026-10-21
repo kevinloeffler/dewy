@@ -4,7 +4,8 @@
 
 - Flat XY tile grid, isometric 3D presentation (purely visual)
 - Static, fully visible world — tiles never change state
-- Hard crash on all invalid actions — robot panics, execution halts, offending line turns red
+- Running into the world is a hard crash — robot panics, execution halts, offending line turns red
+- A command with nothing to act on is a fumble — robot looks confused, the command costs its energy, execution carries on (see *Fumbles*)
 - Line-by-line execution with a visible line indicator
 
 ---
@@ -166,11 +167,28 @@ A keycard is different — `open()` unlocks a door permanently, whatever its con
 - Stepping into a pit
 - Pushing a crate into a wall, pit, robot gap, decoration, or another crate
 - Entering a motion sensor's forbidden zone
-- Calling `open()` without the required keycard
-- Calling `pick()` on an empty tile
-- Calling `pick()` when already carrying a crate
-- Calling `drop()` when not carrying a crate
+- Dropping a crate where it cannot go — the crate hits something
 - Energy runs out — the program used more commands than the battery holds
+
+---
+
+## Fumbles
+
+A command that finds nothing to act on does nothing, and the run carries on.
+Dewy plays the confused reaction, the message appears as a warning naming the
+line, and the command still costs one energy — so a battery is what keeps
+"spam the command and hope" from paying off.
+
+- Calling `pick()` on a tile with no crate or keycard
+- Calling `pick()` on a crate when already carrying one
+- Calling `drop()` when not carrying a crate
+- Calling `open()` with no door ahead, or without the required keycard
+- Calling `toggle()` with no switch ahead
+
+The line is drawn at the world: a fumble never moves or changes anything, which
+is what makes carrying on safe. Anything that collides, falls or gets caught
+is still a crash. There are no sensors for doors, switches or keycards, so a
+crash here would punish something the student had no way to check for.
 
 ---
 

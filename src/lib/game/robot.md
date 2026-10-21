@@ -60,7 +60,7 @@ Interact with the item on the tile ahead:
 - **Crate** → picked up into hand, robot now carries it
 - **Keycard** → silently pocketed into inventory
 
-**Crashes if:**
+**Fumbles if:**
 - Tile ahead has no crate or keycard
 - Tile ahead has a crate and robot is already carrying a crate
 
@@ -75,8 +75,10 @@ crate and a keycard gives up the crate first.
 Place the carried crate onto the tile ahead.  
 If the tile ahead is a matching drop-off bay the level goal is updated.
 
-**Crashes if:**
+**Fumbles if:**
 - Robot is not carrying a crate
+
+**Crashes if:**
 - Tile ahead cannot hold a crate: another crate, a wall, a closed door, a pit,
   a switch, a robot gap, or the world edge (a crate gap is fine)
 
@@ -89,7 +91,7 @@ placed there, so it can be picked back up and taken somewhere else.
 Unlock the door on the tile ahead using the matching keycard from inventory.  
 The keycard is consumed on use.
 
-**Crashes if:**
+**Fumbles if:**
 - Tile ahead is not a door
 - Inventory does not contain the matching keycard
 
@@ -99,7 +101,7 @@ The keycard is consumed on use.
 Flip the switch on the tile ahead on or off.  
 Affects the switch's linked door, motion sensor, or conveyor belt.
 
-**Crashes if:**
+**Fumbles if:**
 - Tile ahead is not a switch
 
 ---
@@ -185,11 +187,17 @@ safe to walk through, and reports `false`.
 
 ## Crash Model
 
-All invalid actions crash the robot immediately:
+Running into the world — a wall, a pit, a sensor's zone, a crate that cannot
+go anywhere — crashes the robot immediately:
 - Execution halts at the offending line
 - The line indicator turns red
 - A friendly error message explains what went wrong
 - The robot plays a panic animation
+
+A command with nothing to act on **fumbles** instead:
+- The robot plays the confused reaction, then carries on
+- Nothing in the world changes, but the command still costs one energy
+- A warning names the line and explains what went wrong
 
 ---
 

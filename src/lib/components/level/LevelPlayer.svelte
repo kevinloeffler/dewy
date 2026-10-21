@@ -76,8 +76,12 @@
 	let running = $state(false);
 	let outcome = $state<RunResult | null>(null);
 
-	/** The one place anything goes wrong out loud — the toast over the editor. */
-	let notice = $state<{ kind: 'error'; text: string } | null>(null);
+	/**
+	 * The one place anything goes wrong out loud — the toast over the editor.
+	 * A `warning` is a fumble the run carried on past; it names its line,
+	 * since the line marker has moved on by the time anyone reads it.
+	 */
+	let notice = $state<{ kind: 'error' | 'warning'; text: string } | null>(null);
 	/** The sheet a solved run opens. Closing it leaves the solved world in view. */
 	let celebrating = $state(false);
 	// Only what the UI still reads: the world itself shows the robot's pose.
@@ -101,7 +105,16 @@
 
 		world = instance;
 		engine = game;
-		robot = synced(createRobotApi(game, instance));
+		robot = synced(
+			createRobotApi(game, instance, {
+				onFumble: (reason) => {
+					notice = {
+						kind: 'warning',
+						text: activeLine === null ? reason.message : `Zeile ${activeLine}: ${reason.message}`,
+					};
+				},
+			})
+		);
 
 		// The engine has already settled its derived state, so snapping the
 		// scene from it is enough — no need to animate `initialize()`.
@@ -433,7 +446,7 @@
 
 				<div class="notice" role="status" aria-live="polite">
 					{#if notice}
-						<p class="toast">{notice.text}</p>
+						<p class="toast" class:is-warning={notice.kind === 'warning'}>{notice.text}</p>
 					{/if}
 				</div>
 			</div>
@@ -610,6 +623,10 @@
 		font-size: 0.875rem;
 		font-weight: 500;
 		line-height: 1.35;
+	}
+
+	.toast.is-warning {
+		--toast: var(--warning);
 	}
 
 	/*

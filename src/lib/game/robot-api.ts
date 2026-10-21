@@ -17,7 +17,7 @@ import type { CrashReason } from './crash-reasons';
  */
 
 /**
- * Thrown when an action is illegal. Execution must stop at the offending
+ * Thrown when an action is fatal. Execution must stop at the offending
  * line, and an exception is the only mechanism that does that for free —
  * a returned status would need the interpreter to check after every single
  * call, and one missed check silently continues a crashed run.
@@ -59,9 +59,20 @@ export interface RobotSensors {
 
 export type RobotApi = RobotActions & RobotSensors;
 
-export function createRobotApi(engine: GameEngine, player: EventPlayer): RobotApi {
+export type RobotApiOptions = {
+    /**
+     * A command fumbled — had nothing to act on — and the run carries on.
+     * Called before its reaction plays, so the explanation shows up while
+     * Dewy is still looking confused.
+     */
+    onFumble?: (reason: CrashReason) => void;
+};
+
+export function createRobotApi(engine: GameEngine, player: EventPlayer, options: RobotApiOptions = {}): RobotApi {
 
     async function run(outcome: StepOutcome): Promise<void> {
+        if (outcome.fumble) options.onFumble?.(outcome.fumble);
+
         // Play every step before reporting the outcome, so the student sees
         // the bump before the panic. `RunCancelled` from the player must
         // propagate untouched — a Stop button is not a crash.
