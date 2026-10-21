@@ -8,6 +8,7 @@
 	import { measureMemory, runScript, type RunResult } from '$lib/game/script';
 	import type { CrateColor } from '$lib/game/crate-color';
 	import type { Coord, GoalCondition, Level } from '$lib/game/level';
+	import { effectiveGoals } from '$lib/game/goals';
 	import { linksAt } from '$lib/game/editor/selection';
 	import { sameCoord } from '$lib/game/grid';
 	import { CodeMirrorEditor, Kbd, Topbar } from '$lib/components/index.js';
@@ -53,6 +54,8 @@
 	// stepping to the next item — MUST wrap it in `{#key}`, or the student will
 	// navigate to a new item and keep playing the previous level.
 	const level = untrack(() => props.level);
+	/** What the run is judged against — the same list the engine builds. */
+	const goals = effectiveGoals(level);
 	const storageKey = untrack(() =>
 		props.userId ? `dewy:${props.userId}:level:${level.id}:code` : `dewy:level:${level.id}:code`
 	);
@@ -79,8 +82,8 @@
 	let celebrating = $state(false);
 	// Only what the UI still reads: the world itself shows the robot's pose.
 	let hud = $state({
-		/** One flag per `level.goals`, in order. */
-		goals: level.goals.map(() => false),
+		/** One flag per entry of `goals`, in order. */
+		goals: goals.map(() => false),
 		steps: 0,
 	});
 
@@ -371,8 +374,12 @@
 				return 'Erreiche das Ziel';
 			case 'deliver_all':
 				return 'Liefere alle Kisten aus';
-			case 'deliver_specific':
-				return `Liefere die ${CRATE_COLOR_LABEL[goal.color]} Kiste aus`;
+			case 'deliver_bays': {
+				const bay = goal.color ? `${CRATE_COLOR_LABEL[goal.color]} ` : '';
+				return goal.count === 1
+					? `Beliefere eine ${bay}Abgabestelle`
+					: `Beliefere ${goal.count} ${bay}Abgabestellen`;
+			}
 		}
 	}
 </script>
@@ -458,7 +465,7 @@
 			</div>
 
 			<ul class="goals panel">
-				{#each level.goals as goal, index (index)}
+				{#each goals as goal, index (index)}
 					<li class="goal" class:is-done={hud.goals[index]}>
 						<span class="goal-mark" aria-hidden="true"></span>
 						{goalLabel(goal)}

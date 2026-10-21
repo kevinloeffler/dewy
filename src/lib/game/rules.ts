@@ -8,8 +8,9 @@ import {
     decorationTiles,
     footprintOf,
 } from './decorations';
-import { CRATE_COLOR_NAMES } from './crate-color';
+import { CRATE_COLOR_NAMES, type CrateColor } from './crate-color';
 import { sensorCovers } from './sensors';
+import { bayGoals, effectiveGoals } from './goals';
 
 /**
  * Pure predicates over `Level` + `LevelState`.
@@ -350,7 +351,7 @@ export function validateLevel(level: Level): string[] {
 
     // The engine never counts an empty goal list as won, so such a level can
     // be played but never finished.
-    if (level.goals.length === 0) {
+    if (effectiveGoals(level).length === 0) {
         problems.push('Das Level hat keine Ziele und lässt sich nicht abschliessen');
     }
 
@@ -358,20 +359,30 @@ export function validateLevel(level: Level): string[] {
         if (goal.kind === 'reach_goal' && !hasGoalTile) {
             problems.push('Ziel „reach_goal“, aber das Level hat kein Zielfeld');
         }
-        if (goal.kind === 'deliver_specific') {
-            if (goal.color === 'grey') {
-                problems.push('Ziel „deliver_specific“ will eine graue Kiste — graue Kisten sind Werkzeuge und werden nicht ausgeliefert');
-            }
-            const tile = tileAt(level, goal.dropOffPosition);
-            if (tile?.kind !== 'drop_off') {
-                problems.push(`Ziel „deliver_specific“ zeigt auf ${coordKey(goal.dropOffPosition)} — dort ist keine Abgabestelle`);
-            } else if (tile.color !== null && tile.color !== goal.color) {
-                problems.push(`Ziel „deliver_specific“ will ${CRATE_COLOR_NAMES[goal.color]}, aber die Abgabestelle bei ${coordKey(goal.dropOffPosition)} ist ${CRATE_COLOR_NAMES[tile.color]}`);
-            }
-            if (!level.items.some((item) => isCrate(item) && item.kind === 'crate_colour' && item.color === goal.color)) {
-                problems.push(`Ziel „deliver_specific“ will eine Kiste in ${CRATE_COLOR_NAMES[goal.color]}, aber im Level gibt es keine`);
-            }
+    }
+
+    // Enough crates for the bays. A colour bay needs its own colour; a plain
+    // bay takes any coloured crate, but only one not already spoken for.
+    const crates = new Map<CrateColor, number>();
+    for (const item of level.items) {
+        if (isCrate(item) && item.kind === 'crate_colour') {
+            crates.set(item.color, (crates.get(item.color) ?? 0) + 1);
         }
+    }
+    let spare = 0;
+    for (const count of crates.values()) spare += count;
+    const bays = bayGoals(level);
+    for (const bay of bays) {
+        if (bay.color === null) continue;
+        const have = crates.get(bay.color) ?? 0;
+        if (have < bay.count) {
+            problems.push(`${bay.count} Abgabestelle(n) in ${CRATE_COLOR_NAMES[bay.color]} sollen beliefert werden, aber im Level gibt es nur ${have} Kiste(n) in ${CRATE_COLOR_NAMES[bay.color]}`);
+        }
+        spare -= Math.min(have, bay.count);
+    }
+    const plain = bays.find((bay) => bay.color === null);
+    if (plain && plain.count > spare) {
+        problems.push(`${plain.count} neutrale Abgabestelle(n) sollen beliefert werden, aber nur ${spare} farbige Kiste(n) sind dafür übrig`);
     }
 
     return problems;

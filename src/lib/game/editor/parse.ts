@@ -110,6 +110,12 @@ function positiveInteger(value: unknown, path: string): number {
     return n;
 }
 
+function nonNegativeInteger(value: unknown, path: string): number {
+    const n = integer(value, path);
+    if (n < 0) throw new ParseError(path, 'must be at least 0');
+    return n;
+}
+
 /** A motion sensor's zone side: odd, so the device sits in the middle. */
 function oddSize(value: unknown, path: string): number {
     const n = positiveInteger(value, path);
@@ -361,14 +367,11 @@ function goal(value: unknown, path: string): GoalCondition {
         case 'reach_goal':
         case 'deliver_all':
             return { kind };
-        case 'deliver_specific':
+        case 'deliver_bays':
             return {
                 kind,
-                color: crateColor(field(source, 'color', path), `${path}.color`),
-                dropOffPosition: coord(
-                    field(source, 'dropOffPosition', path),
-                    `${path}.dropOffPosition`,
-                ),
+                color: nullable(field(source, 'color', path), `${path}.color`, crateColor),
+                count: nonNegativeInteger(field(source, 'count', path), `${path}.count`),
             };
         default:
             throw new ParseError(`${path}.kind`, `is not a goal kind ("${kind}")`);

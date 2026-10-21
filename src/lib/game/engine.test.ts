@@ -321,7 +321,7 @@ describe('pushing', () => {
         expect(engine.state.crates[0].delivered).toBe(true);
         // The flourish is its own step — a push and a deliver in one step
         // would put two tweens on the same mesh.
-        expect(shape(outcome)).toEqual([['move', 'push'], ['crateDelivered']]);
+        expect(shape(outcome)).toEqual([['move', 'push'], ['crateDelivered'], ['goalReached']]);
     });
 });
 
@@ -471,13 +471,13 @@ describe('drop', () => {
 
     it('delivers onto a matching colour bay', () => {
         const engine = holding({ '2,1': { kind: 'drop_off', color: 'red' } });
-        expect(shape(engine.drop())).toEqual([['deliver']]);
+        expect(shape(engine.drop())).toEqual([['deliver'], ['goalReached']]);
         expect(engine.state.crates[0].delivered).toBe(true);
     });
 
     it('delivers a colour crate onto a plain bay', () => {
         const engine = holding({ '2,1': { kind: 'drop_off', color: null } });
-        expect(shape(engine.drop())).toEqual([['deliver']]);
+        expect(shape(engine.drop())).toEqual([['deliver'], ['goalReached']]);
         expect(engine.state.crates[0].delivered).toBe(true);
     });
 
@@ -1111,7 +1111,7 @@ describe('conveyors', () => {
         }));
         const outcome = engine.turnLeft();
 
-        expect(shape(outcome)).toEqual([['turn'], ['conveyCrate'], ['crateDelivered']]);
+        expect(shape(outcome)).toEqual([['turn'], ['conveyCrate'], ['crateDelivered'], ['goalReached']]);
         expect(engine.state.crates[0].delivered).toBe(true);
     });
 
@@ -1511,15 +1511,37 @@ describe('goals', () => {
         const engine = new GameEngine(makeLevel({
             tiles: { '2,1': { kind: 'goal' }, '4,1': { kind: 'drop_off', color: 'red' } },
             items: [{ kind: 'crate_colour', id: 'c', color: 'red', position: { x: 3, y: 1 } }],
-            goals: [
-                { kind: 'reach_goal' },
-                { kind: 'deliver_specific', color: 'red', dropOffPosition: { x: 4, y: 1 } },
-            ],
+            // The red bay's goal is implicit.
+            goals: [{ kind: 'reach_goal' }],
         }));
+        expect(engine.state.goals.map((goal) => goal.condition.kind)).toEqual(['reach_goal', 'deliver_bays']);
         expect(engine.moveForward().status).toBe('ok');   // on the goal tile
         const outcome = engine.moveForward();             // push the crate into the bay
         expect(outcome.status).toBe('complete');
         expect(shape(outcome)).toEqual([['move', 'push'], ['crateDelivered'], ['goalReached']]);
+    });
+
+    it('completes once the lowered number of bays of a colour is filled', () => {
+        const engine = new GameEngine(makeLevel({
+            robot: { position: { x: 2, y: 1 }, facing: 'east' },
+            tiles: { '4,1': { kind: 'drop_off', color: 'red' }, '4,4': { kind: 'drop_off', color: 'red' } },
+            items: [
+                { kind: 'crate_colour', id: 'a', color: 'red', position: { x: 3, y: 1 } },
+                { kind: 'crate_colour', id: 'b', color: 'red', position: { x: 0, y: 4 } },
+            ],
+            goals: [{ kind: 'deliver_bays', color: 'red', count: 1 }],
+        }));
+        expect(engine.moveForward().status).toBe('complete');
+    });
+
+    it('fills a plain bay with a crate of any colour', () => {
+        const engine = new GameEngine(makeLevel({
+            robot: { position: { x: 2, y: 1 }, facing: 'east' },
+            tiles: { '4,1': { kind: 'drop_off', color: null } },
+            items: [{ kind: 'crate_colour', id: 'c', color: 'blue', position: { x: 3, y: 1 } }],
+            goals: [],
+        }));
+        expect(engine.moveForward().status).toBe('complete');
     });
 
     it('never completes a level with no goals', () => {
@@ -1714,12 +1736,32 @@ describe('robot-api', () => {
 // ============================================================
 
 describe('validateLevel', () => {
-    it('flags a deliver_specific pointing at no bay', () => {
+    it('flags bays with too few crates of their colour', () => {
         const problems = validateLevel(makeLevel({
+            tiles: { '3,3': { kind: 'drop_off', color: 'red' }, '4,3': { kind: 'drop_off', color: 'red' } },
             items: [{ kind: 'crate_colour', id: 'c', color: 'red', position: { x: 2, y: 1 } }],
-            goals: [{ kind: 'deliver_specific', color: 'red', dropOffPosition: { x: 3, y: 3 } }],
         }));
-        expect(problems.join(' ')).toContain('keine Abgabestelle');
+        expect(problems.join(' ')).toContain('nur 1 Kiste(n) in Rot');
+    });
+
+    it('does not count a crate for a plain bay when its colour bay needs it', () => {
+        const level = makeLevel({
+            tiles: { '3,3': { kind: 'drop_off', color: 'red' }, '4,3': { kind: 'drop_off', color: null } },
+            items: [{ kind: 'crate_colour', id: 'c', color: 'red', position: { x: 2, y: 1 } }],
+        });
+        expect(validateLevel(level).join(' ')).toContain('neutrale');
+        // Lowering the plain bays to 0 makes it solvable.
+        const lowered = { ...level, goals: [{ kind: 'deliver_bays', color: null, count: 0 } as const] };
+        expect(validateLevel(lowered).join(' ')).not.toContain('Abgabestelle');
+    });
+
+    it('counts a level whose only goals are its bays as having goals', () => {
+        const problems = validateLevel(makeLevel({
+            tiles: { '3,3': { kind: 'drop_off', color: 'red' } },
+            items: [{ kind: 'crate_colour', id: 'c', color: 'red', position: { x: 2, y: 1 } }],
+            goals: [],
+        }));
+        expect(problems.join(' ')).not.toContain('keine Ziele');
     });
 
     it('flags reach_goal with no goal tile', () => {

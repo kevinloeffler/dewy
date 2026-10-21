@@ -101,18 +101,13 @@ describe('moveSelection', () => {
         expect(moveSelection(level, pick(level, { x: 2, y: 4 }), 0, 2)).toBeNull();
     });
 
-    it('carries a deliver_specific goal along with its drop-off', () => {
+    it('leaves bay goals alone when a drop-off moves', () => {
         let level = setTile(base(), { x: 5, y: 5 }, { kind: 'drop_off', color: 'red' });
-        level = {
-            ...level,
-            goals: [{ kind: 'deliver_specific', color: 'red', dropOffPosition: { x: 5, y: 5 } }],
-        };
+        level = { ...level, goals: [{ kind: 'deliver_bays', color: 'red', count: 0 }] };
 
         const moved = moveSelection(level, pick(level, { x: 5, y: 5 }), -2, 1)!;
         expect(moved.tiles['3,6']).toEqual({ kind: 'drop_off', color: 'red' });
-        expect(moved.goals).toEqual([
-            { kind: 'deliver_specific', color: 'red', dropOffPosition: { x: 3, y: 6 } },
-        ]);
+        expect(moved.goals).toEqual(level.goals);
     });
 });
 

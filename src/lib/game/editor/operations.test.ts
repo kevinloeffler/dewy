@@ -6,7 +6,6 @@ import {
     beltIds,
     clearTile,
     doorIds,
-    dropOffBays,
     emptyLevel,
     nextBeltId,
     nextDoorId,
@@ -24,11 +23,13 @@ import {
     turnDecoration,
     setMeta,
     setOptions,
+    setBayGoal,
     setRobot,
     setTile,
     targetIds,
 } from './operations';
 import { buildBrush, defaultBrushOptions, type BrushOptions } from './brush';
+import { bayGoals, effectiveGoals } from '$lib/game/goals';
 import { decorationAt } from '../decorations';
 import { selectAt } from './selection';
 import { tileAt } from '../grid';
@@ -163,14 +164,43 @@ describe('doors and bays', () => {
         expect(setTile(renamed, { x: 1, y: 1 }, renamed.tiles['1,1']!)).toBe(renamed);
     });
 
-    it('lists drop-off bays in reading order', () => {
+    it('lists one bay goal per colour, plain bays last, all required by default', () => {
         let level = setTile(base(), { x: 3, y: 2 }, { kind: 'drop_off', color: null });
         level = setTile(level, { x: 1, y: 0 }, { kind: 'drop_off', color: 'red' });
+        level = setTile(level, { x: 2, y: 0 }, { kind: 'drop_off', color: 'red' });
 
-        expect(dropOffBays(level)).toEqual([
-            { coord: { x: 1, y: 0 }, color: 'red' },
-            { coord: { x: 3, y: 2 }, color: null },
+        expect(bayGoals(level)).toEqual([
+            { color: 'red', total: 2, count: 2 },
+            { color: null, total: 1, count: 1 },
         ]);
+    });
+
+    it('stores a lowered bay goal and clears it again at the full count', () => {
+        let level = setTile(base(), { x: 1, y: 0 }, { kind: 'drop_off', color: 'red' });
+        level = setTile(level, { x: 2, y: 0 }, { kind: 'drop_off', color: 'red' });
+
+        const lowered = setBayGoal(level, 'red', 1);
+        expect(lowered.goals).toEqual([{ kind: 'deliver_bays', color: 'red', count: 1 }]);
+        expect(effectiveGoals(lowered)).toEqual([{ kind: 'deliver_bays', color: 'red', count: 1 }]);
+
+        const off = setBayGoal(lowered, 'red', 0);
+        expect(off.goals).toEqual([{ kind: 'deliver_bays', color: 'red', count: 0 }]);
+        expect(effectiveGoals(off)).toEqual([]);
+
+        expect(setBayGoal(off, 'red', 2).goals).toEqual([]);
+        expect(setBayGoal(off, 'red', 9).goals).toEqual([]);
+    });
+
+    it('raises a bay goal left at all when another bay is placed', () => {
+        let level = setTile(base(), { x: 1, y: 0 }, { kind: 'drop_off', color: 'red' });
+        level = setTile(level, { x: 2, y: 0 }, { kind: 'drop_off', color: 'red' });
+        expect(effectiveGoals(level)).toEqual([{ kind: 'deliver_bays', color: 'red', count: 2 }]);
+    });
+
+    it('clamps an override to the bays that are left', () => {
+        let level = setTile(base(), { x: 1, y: 0 }, { kind: 'drop_off', color: 'red' });
+        level = { ...level, goals: [{ kind: 'deliver_bays', color: 'red', count: 3 }] };
+        expect(bayGoals(level)).toEqual([{ color: 'red', total: 1, count: 1 }]);
     });
 });
 
@@ -424,10 +454,6 @@ describe('resize', () => {
         level = placeDecoration(level, { x: 1, y: 1 }, 'cone', 'south');
         // Straddles the new edge, so it goes with the tiles it stood on.
         level = placeDecoration(level, { x: 4, y: 1 }, 'shelf', 'south');
-        level = addGoal(level, {
-            kind: 'deliver_specific', color: 'red', dropOffPosition: { x: 6, y: 6 },
-        });
-
         const small = resize(level, 4, 4);
 
         expect(small.width).toBe(4);
@@ -435,7 +461,6 @@ describe('resize', () => {
         expect(small.items.map((item) => item.position)).toEqual([{ x: 0, y: 1 }]);
         expect(small.robot.position).toEqual({ x: 3, y: 3 });
         expect(small.decorations.map((piece) => piece.kind)).toEqual(['cone']);
-        expect(small.goals).toEqual([]);
     });
 
     it('keeps everything when growing, and is a no-op at the same size', () => {
@@ -483,19 +508,14 @@ describe('meta, options and goals', () => {
         expect(setOptions(level, { memory: 8 })).toBe(level);
     });
 
-    it('refuses a duplicate level-wide goal but allows distinct bays', () => {
+    it('refuses a duplicate level-wide goal', () => {
         let level = addGoal(base(), { kind: 'reach_goal' });
         expect(addGoal(level, { kind: 'reach_goal' })).toBe(level);
 
-        level = addGoal(level, {
-            kind: 'deliver_specific', color: 'red', dropOffPosition: { x: 1, y: 1 },
-        });
-        level = addGoal(level, {
-            kind: 'deliver_specific', color: 'red', dropOffPosition: { x: 2, y: 2 },
-        });
-        expect(level.goals).toHaveLength(3);
+        level = addGoal(level, { kind: 'deliver_all' });
+        expect(level.goals).toHaveLength(2);
 
-        expect(removeGoal(level, 0).goals).toHaveLength(2);
+        expect(removeGoal(level, 0).goals).toHaveLength(1);
         expect(removeGoal(level, 9)).toBe(level);
     });
 });

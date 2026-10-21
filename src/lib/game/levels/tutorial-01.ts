@@ -52,8 +52,6 @@ export const tutorial01: Level = {
     motionSensors: [],
     robot: { position: { x: 1, y: 4 }, facing: 'north' },
     options: { energy: 15, memory: null, showInventory: false, languageStage: 1 },
-    goals: [
-        { kind: 'reach_goal' },
-        { kind: 'deliver_specific', color: 'red', dropOffPosition: { x: 4, y: 4 } },
-    ],
+    // The red bay's delivery goal is implicit — every bay must be filled.
+    goals: [{ kind: 'reach_goal' }],
 };

@@ -790,15 +790,16 @@ export class GameEngine {
                     .filter((crate) => crate.kind === 'crate_colour')
                     .every((crate) => crate.delivered);
 
-            case 'deliver_specific': {
-                const { color, dropOffPosition } = goal.condition;
-                return state.crates.some(
-                    (crate) =>
-                        crate.kind === 'crate_colour' &&
-                        crate.color === color &&
-                        crate.delivered &&
-                        sameCoord(crate.position, dropOffPosition),
-                );
+            case 'deliver_bays': {
+                // `delivered` already means "on a bay that takes it", so only
+                // the bay's colour is left to check.
+                const { color, count } = goal.condition;
+                const filled = state.crates.filter((crate) => {
+                    if (!crate.delivered) return false;
+                    const tile = tileAt(this.level, crate.position);
+                    return tile?.kind === 'drop_off' && tile.color === color;
+                });
+                return filled.length >= count;
             }
         }
     }

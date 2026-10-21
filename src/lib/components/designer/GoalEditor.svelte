@@ -1,6 +1,7 @@
 <script lang="ts">
-	import { CRATE_COLOR_NAMES, DELIVERY_COLORS, type CrateColor } from '$lib/game/crate-color';
-	import { addGoal, dropOffBays, removeGoal } from '$lib/game/editor/operations';
+	import { CRATE_COLORS, CRATE_COLOR_NAMES } from '$lib/game/crate-color';
+	import { addGoal, removeGoal, setBayGoal } from '$lib/game/editor/operations';
+	import { bayGoals, type BayGoal } from '$lib/game/goals';
 	import type { LevelDraft } from '$lib/game/editor/draft.svelte';
 	import type { GoalCondition } from '$lib/game/level';
 
@@ -12,15 +13,13 @@
 
 
 	let level = $derived(draft.level);
-	let bays = $derived(dropOffBays(level));
+	let bays = $derived(bayGoals(level));
+	/** Level-wide goals only; per-colour bay goals have their own rows below. */
+	let stored = $derived(
+		level.goals.flatMap((goal, index) => (goal.kind === 'deliver_bays' ? [] : [{ goal, index }])),
+	);
 
-	let color = $state<CrateColor>('red');
-	let bayIndex = $state(0);
-
-	// A bay can be deleted out from under the picker.
-	$effect(() => {
-		if (bayIndex >= bays.length) bayIndex = 0;
-	});
+	const hex = (value: number) => `#${value.toString(16).padStart(6, '0')}`;
 
 	function describe(goal: GoalCondition): string {
 		switch (goal.kind) {
@@ -28,8 +27,8 @@
 				return 'Erreiche das Zielfeld';
 			case 'deliver_all':
 				return 'Liefere jede farbige Kiste aus';
-			case 'deliver_specific':
-				return `Liefere eine Kiste in ${CRATE_COLOR_NAMES[goal.color]} an (${goal.dropOffPosition.x}, ${goal.dropOffPosition.y})`;
+			case 'deliver_bays':
+				return 'Abgabestellen beliefern';
 		}
 	}
 
@@ -37,19 +36,15 @@
 		draft.edit((current) => addGoal(current, goal));
 	}
 
-	function addSpecific() {
-		const bay = bays[bayIndex];
-		if (!bay) return;
-		add({ kind: 'deliver_specific', color, dropOffPosition: bay.coord });
+	function step(bay: BayGoal, delta: number) {
+		draft.edit((current) => setBayGoal(current, bay.color, bay.count + delta));
 	}
 </script>
 
 <div class="goals">
-	{#if level.goals.length === 0}
-		<p class="hint">Noch keine Ziele — das Level lässt sich nicht abschliessen.</p>
-	{:else}
+	{#if stored.length > 0}
 		<ul>
-			{#each level.goals as goal, index (index)}
+			{#each stored as { goal, index } (index)}
 				<li>
 					<span>{describe(goal)}</span>
 					<button
@@ -74,31 +69,50 @@
 		</button>
 	</div>
 
-	<div class="specific">
-		<select bind:value={color}>
-			{#each DELIVERY_COLORS as name (name)}
-				<option value={name}>{CRATE_COLOR_NAMES[name]}</option>
-			{/each}
-		</select>
-		<select bind:value={bayIndex} disabled={bays.length === 0}>
-			{#each bays as bay, index (index)}
-				<option value={index}>
-					Abgabe ({bay.coord.x}, {bay.coord.y}){bay.color ? ` · ${CRATE_COLOR_NAMES[bay.color]}` : ''}
-				</option>
-			{/each}
-		</select>
-		<button
-			class="btn btn-ghost small"
-			type="button"
-			disabled={bays.length === 0}
-			onclick={addSpecific}
-		>
-			+ Ausliefern
-		</button>
-	</div>
-
 	{#if bays.length === 0}
 		<p class="hint">Platziere eine Abgabestelle, um ein Lieferziel hinzuzufügen.</p>
+	{:else}
+		<div class="bays">
+			<span class="label">Abgabestellen beliefern</span>
+			<ul>
+				{#each bays as bay (bay.color ?? 'plain')}
+					{@const name = bay.color ? CRATE_COLOR_NAMES[bay.color] : 'Jede Farbe'}
+					<li class:off={bay.count === 0}>
+						<span class="bay">
+							<span
+								class="swatch"
+								class:plain={bay.color === null}
+								style:background={bay.color ? hex(CRATE_COLORS[bay.color]) : undefined}
+							></span>
+							{name}
+						</span>
+						<span class="stepper">
+							<button
+								type="button"
+								aria-label="{name}: eine Abgabestelle weniger"
+								disabled={bay.count === 0}
+								onclick={() => step(bay, -1)}
+							>
+								−
+							</button>
+							<span class="count" aria-live="polite">{bay.count} / {bay.total}</span>
+							<button
+								type="button"
+								aria-label="{name}: eine Abgabestelle mehr"
+								disabled={bay.count === bay.total}
+								onclick={() => step(bay, 1)}
+							>
+								+
+							</button>
+						</span>
+					</li>
+				{/each}
+			</ul>
+		</div>
+	{/if}
+
+	{#if stored.length === 0 && bays.every((bay) => bay.count === 0)}
+		<p class="hint">Noch keine Ziele — das Level lässt sich nicht abschliessen.</p>
 	{/if}
 </div>
 
@@ -144,24 +158,73 @@
 		color: var(--danger);
 	}
 
-	.add,
-	.specific {
+	.add {
 		display: flex;
 		gap: 6px;
 		flex-wrap: wrap;
 	}
 
-	.specific select {
-		flex: 1;
-		min-width: 0;
-		font: inherit;
-		font-family: var(--font-ui);
+	.bays {
+		display: flex;
+		flex-direction: column;
+		gap: 6px;
+	}
+
+	.label {
 		font-size: 12px;
+		color: var(--text-faint);
+	}
+
+	li.off .bay {
+		color: var(--text-faint);
+	}
+
+	.bay {
+		display: flex;
+		align-items: center;
+		gap: 6px;
+	}
+
+	.swatch {
+		width: 10px;
+		height: 10px;
+		border-radius: 2px;
+		flex-shrink: 0;
+	}
+
+	.swatch.plain {
+		border: 1px solid var(--text-faint);
+	}
+
+	.stepper {
+		display: flex;
+		align-items: center;
+		gap: 4px;
+	}
+
+	.stepper button {
+		width: 22px;
+		height: 22px;
+		font: inherit;
+		font-size: 14px;
+		line-height: 1;
 		color: var(--text);
 		background: var(--bg);
 		border: 1px solid var(--panel-border);
 		border-radius: calc(var(--radius) - 8px);
-		padding: 5px 6px;
+		cursor: pointer;
+		padding: 0;
+	}
+
+	.stepper button:disabled {
+		color: var(--text-faint);
+		cursor: default;
+	}
+
+	.count {
+		min-width: 40px;
+		text-align: center;
+		font-variant-numeric: tabular-nums;
 	}
 
 	.small {

@@ -1,6 +1,7 @@
 import { isCrate, isKeycard } from './level';
 import type { Coord, Direction, Crate, Keycard, GoalCondition, Level, Tile, TileKey } from './level';
 import { parseTileKey } from './grid';
+import { effectiveGoals } from './goals';
 
 
 // ============================================================
@@ -238,7 +239,7 @@ export function createLevelState(level: Level): LevelState {
             sensorId: sensor.sensorId,
             active: sensor.initiallyActive,
         })),
-        goals: level.goals.map((condition) => ({ condition, satisfied: false })),
+        goals: effectiveGoals(level).map((condition) => ({ condition, satisfied: false })),
         steps: 0,
         failed: false,
         failReason: null,

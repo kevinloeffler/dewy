@@ -20,6 +20,7 @@ import {
 } from '$lib/game/decorations';
 import { coordKey, inBounds, parseTileKey, sameCoord, tileAt, turn } from '$lib/game/grid';
 import { clampSensorSize, sensorAt } from '$lib/game/sensors';
+import { bayGoals } from '$lib/game/goals';
 import type {
     BeltControl,
     CargoConveyorTile,
@@ -205,17 +206,6 @@ export function targetIds(level: Level): string[] {
         ...level.motionSensors.map((sensor) => sensor.sensorId),
     ]);
     return [...ids].sort();
-}
-
-/** Coordinates of every drop-off bay, for the `deliver_specific` bay picker. */
-export function dropOffBays(level: Level): { coord: Coord; color: CrateColor | null }[] {
-    const bays: { coord: Coord; color: CrateColor | null }[] = [];
-    for (const [key, tile] of Object.entries(level.tiles)) {
-        if (tile?.kind === 'drop_off') {
-            bays.push({ coord: parseTileKey(key as TileKey), color: tile.color });
-        }
-    }
-    return bays.sort((a, b) => a.coord.y - b.coord.y || a.coord.x - b.coord.x);
 }
 
 
@@ -588,8 +578,8 @@ function shift(coord: Coord, dx: number, dy: number): Coord {
  *
  * Nothing is ever overwritten: a crate will not land on a crate, a shelf on
  * a shelf, a wall run on somebody else's belt. Links are by id, so a switch
- * still drives its door after either one moves — the one thing stored by
- * position is a `deliver_specific` goal's bay, which follows its drop-off.
+ * still drives its door after either one moves, and delivery goals count bays
+ * by colour, so nothing in the level is stored by position.
  */
 export function moveSelection(
     level: Level,
@@ -676,16 +666,7 @@ export function moveSelection(
                 if (tile) tiles[coordKey(to)] = tile;
             }
 
-            const bays = carried.filter(({ tile }) => tile?.kind === 'drop_off');
-            const goals = bays.length === 0
-                ? level.goals
-                : level.goals.map((goal) => {
-                      if (goal.kind !== 'deliver_specific') return goal;
-                      const bay = bays.find(({ from }) => sameCoord(from, goal.dropOffPosition));
-                      return bay ? { ...goal, dropOffPosition: { ...bay.to } } : goal;
-                  });
-
-            return { ...level, tiles, goals };
+            return { ...level, tiles };
         }
     }
 }
@@ -867,24 +848,30 @@ export function resize(level: Level, width: number, height: number): Level {
         // A device off the grid goes; one still on it keeps its size, and the
         // part of its zone past the new edge simply watches nothing.
         motionSensors: level.motionSensors.filter((sensor) => within(sensor.position)),
-        goals: level.goals.filter(
-            (goal) => goal.kind !== 'deliver_specific' || within(goal.dropOffPosition),
-        ),
     };
-}
-
-function sameGoal(a: GoalCondition, b: GoalCondition): boolean {
-    if (a.kind !== b.kind) return false;
-    if (a.kind === 'deliver_specific' && b.kind === 'deliver_specific') {
-        return a.color === b.color && sameCoord(a.dropOffPosition, b.dropOffPosition);
-    }
-    return true;
 }
 
 /** `reach_goal` and `deliver_all` are level-wide, so adding a second is a no-op. */
 export function addGoal(level: Level, goal: GoalCondition): Level {
-    if (level.goals.some((existing) => sameGoal(existing, goal))) return level;
+    if (level.goals.some((existing) => existing.kind === goal.kind)) return level;
     return { ...level, goals: [...level.goals, goal] };
+}
+
+/**
+ * How many bays of `color` must hold a crate. Asking for all of them clears
+ * the override rather than storing the number, so the goal goes back to
+ * tracking the bay count as bays are added — see `./goals`.
+ */
+export function setBayGoal(level: Level, color: CrateColor | null, count: number): Level {
+    const total = bayGoals(level).find((bay) => bay.color === color)?.total ?? 0;
+    const others = level.goals.filter(
+        (goal) => goal.kind !== 'deliver_bays' || goal.color !== color,
+    );
+    const clamped = Math.max(0, Math.min(count, total));
+    const goals: GoalCondition[] = clamped >= total
+        ? others
+        : [...others, { kind: 'deliver_bays', color, count: clamped }];
+    return { ...level, goals };
 }
 
 export function removeGoal(level: Level, index: number): Level {

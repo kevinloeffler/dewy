@@ -293,16 +293,24 @@ export type DeliverAllCondition = {
     kind: 'deliver_all';
 };
 
-export type DeliverSpecificCondition = {
-    kind: 'deliver_specific';
-    color: CrateColor;
-    dropOffPosition: Coord;
+/**
+ * How many bays of one colour must hold a crate they accept. `color` is null
+ * for plain bays, which take a crate of any colour.
+ *
+ * Stored only as an *override*: a level fills every bay of every colour by
+ * default, and `effectiveGoals` in `./goals` resolves the rest. A `count` of
+ * 0 drops the goal for that colour.
+ */
+export type DeliverBaysCondition = {
+    kind: 'deliver_bays';
+    color: CrateColor | null;
+    count: number;
 };
 
 export type GoalCondition =
     | ReachGoalCondition
     | DeliverAllCondition
-    | DeliverSpecificCondition;
+    | DeliverBaysCondition;
 
 
 // ============================================================
