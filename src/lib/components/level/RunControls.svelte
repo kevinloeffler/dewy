@@ -206,19 +206,24 @@
 			{@render speedIcon()}
 		</label>
 
-		<span class="gauge" title="Batterie — ein Befehl kostet eins">
-			{steps}/{energy ?? '∞'}
-			{@render batteryIcon()}
-		</span>
+		<!-- An unlimited resource is no constraint to track, so it gets no gauge. -->
+		{#if energy !== null}
+			<span class="gauge" title="Batterie — ein Befehl kostet eins">
+				{steps}/{energy}
+				{@render batteryIcon()}
+			</span>
+		{/if}
 
-		<span
-			class="gauge"
-			class:is-over={blocked}
-			title="Speicher — Anweisungen, die der Roboter fasst"
-		>
-			{memoryUsed ?? '—'}/{memory ?? '∞'}
-			{@render memoryIcon()}
-		</span>
+		{#if memory !== null}
+			<span
+				class="gauge"
+				class:is-over={blocked}
+				title="Speicher — Anweisungen, die der Roboter fasst"
+			>
+				{memoryUsed ?? '—'}/{memory}
+				{@render memoryIcon()}
+			</span>
+		{/if}
 	</div>
 </div>
 
