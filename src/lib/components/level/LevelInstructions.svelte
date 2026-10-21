@@ -57,6 +57,15 @@
 		padding: 8px 12px 8px 20px;
 	}
 
+	/* A caption, not prose: small caps-style so it never reads as the text's first line. */
+	.hud-label {
+		font-size: 0.6875rem;
+		font-weight: 700;
+		letter-spacing: 0.6px;
+		text-transform: uppercase;
+		color: var(--text-muted);
+	}
+
 	.toggle {
 		font: inherit;
 		font-size: 0.8125rem;
