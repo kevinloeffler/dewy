@@ -221,7 +221,6 @@ export class GameEngine {
 
         const crate = crateAt(this.levelState, target);
         if (crate) {
-            if (crate.delivered) return this.fail([], crash('crate_delivered'));
             if (robot.carrying) return this.fail([], crash('already_carrying'));
 
             crate.carried = true;
@@ -367,9 +366,6 @@ export class GameEngine {
 
         const crate = crateAt(this.levelState, target);
         if (crate) {
-            if (crate.delivered) {
-                return { kind: 'blocked', target, reason: crash('crate_delivered') };
-            }
             // No chain-pushing: a crate behind a crate is itself a blocker.
             const behind = ahead(target, facing);
             const crateBlocker = crateBlockedBy(this.level, this.levelState, behind);
@@ -521,14 +517,17 @@ export class GameEngine {
                 changed = true;
             }
 
-            // Delivery by *pushing* a crate onto a bay. Hand-drops latch in
-            // `drop()` so they animate as one arc instead of two flourishes.
+            // A crate is delivered exactly while it rests on a bay that takes
+            // it, so pushing or picking it back off undoes the delivery. The
+            // level ends the moment the last goal holds, which is what makes
+            // the final delivery stick. Hand-drops set the flag in `drop()`
+            // so they animate as one arc instead of two flourishes.
             for (const crate of state.crates) {
-                if (crate.carried || crate.delivered) continue;
                 const tile = tileAt(this.level, crate.position);
-                if (tile?.kind !== 'drop_off' || !bayAccepts(tile, crate)) continue;
-                crate.delivered = true;
-                events.push({ kind: 'crateDelivered', crateId: crate.id });
+                const onBay = !crate.carried && tile?.kind === 'drop_off' && bayAccepts(tile, crate);
+                if (onBay === crate.delivered) continue;
+                crate.delivered = onBay;
+                events.push({ kind: onBay ? 'crateDelivered' : 'crateUndelivered', crateId: crate.id });
                 changed = true;
             }
 
@@ -648,9 +647,8 @@ export class GameEngine {
         }
 
         for (const crate of state.crates) {
-            // A carried crate rides in the robot's hands; a delivered one is
-            // inert and the belt runs underneath it.
-            if (crate.carried || crate.delivered) continue;
+            // A carried crate rides in the robot's hands.
+            if (crate.carried) continue;
             const belt = beltDirection(this.level, state, crate.position, 'crate');
             if (!belt) continue;
             trail(crateKey(crate.id), crate.position);
@@ -763,16 +761,18 @@ export class GameEngine {
     // ========================================================
 
     /**
-     * Latch every newly satisfied goal and report whether all of them are.
+     * Re-check every goal and report whether all of them hold.
      *
-     * Latching is load-bearing, not a nicety: tutorial-01 wants the robot on
-     * the goal tile *and* the red crate in the bay, and it cannot be in two
-     * places at once.
+     * `reach_goal` latches, and that is load-bearing: tutorial-01 wants the
+     * robot on the goal tile *and* the red crate in the bay, and it cannot be
+     * in two places at once. Delivery goals do not — a crate pushed back off
+     * its bay is no longer delivered, so its goal is open again.
      */
     private latchGoals(): boolean {
         const goals = this.levelState.goals;
         for (const goal of goals) {
-            if (!goal.satisfied && this.isSatisfied(goal)) goal.satisfied = true;
+            if (goal.condition.kind === 'reach_goal' && goal.satisfied) continue;
+            goal.satisfied = this.isSatisfied(goal);
         }
         return goals.length > 0 && goals.every((goal) => goal.satisfied);
     }

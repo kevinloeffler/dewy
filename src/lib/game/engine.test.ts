@@ -281,15 +281,33 @@ describe('pushing', () => {
         expect(follow.moveForward().reason?.code).toBe('cargo_belt');
     });
 
-    it('will not push a crate that has already been delivered', () => {
+    it('pushes a delivered crate back off its bay, undoing the delivery', () => {
         const engine = new GameEngine(makeLevel({
             robot: { position: { x: 2, y: 1 }, facing: 'east' },
-            tiles: { '3,1': { kind: 'drop_off', color: 'red' } },
+            tiles: { '3,1': { kind: 'drop_off', color: 'red' }, '1,1': { kind: 'goal' } },
             items: [{ kind: 'crate_colour', id: 'c', color: 'red', position: { x: 3, y: 1 } }],
+            goals: [{ kind: 'deliver_all' }, { kind: 'reach_goal' }],
         }));
         // Settled at t=0: the crate is already sitting in its bay.
         expect(engine.state.crates[0].delivered).toBe(true);
-        expect(engine.moveForward().reason?.code).toBe('crate_delivered');
+        expect(engine.state.goals[0].satisfied).toBe(true);
+
+        const outcome = engine.moveForward();
+        expect(outcome.status).toBe('ok');
+        expect(shape(outcome)).toEqual([['move', 'push'], ['crateUndelivered']]);
+        expect(engine.state.crates[0].delivered).toBe(false);
+        expect(engine.state.goals[0].satisfied).toBe(false);
+    });
+
+    it('picks a delivered crate back up, undoing the delivery', () => {
+        const engine = new GameEngine(makeLevel({
+            tiles: { '2,1': { kind: 'drop_off', color: 'red' }, '4,4': { kind: 'goal' } },
+            items: [{ kind: 'crate_colour', id: 'c', color: 'red', position: { x: 2, y: 1 } }],
+            goals: [{ kind: 'deliver_all' }, { kind: 'reach_goal' }],
+        }));
+        expect(shape(engine.pick())).toEqual([['pick'], ['crateUndelivered']]);
+        expect(engine.state.crates[0].delivered).toBe(false);
+        expect(engine.state.goals[0].satisfied).toBe(false);
     });
 
     it('delivers a crate pushed onto a matching bay', () => {

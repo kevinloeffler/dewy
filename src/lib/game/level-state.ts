@@ -113,7 +113,10 @@ export type RobotState = {
 // Goal state
 // ============================================================
 
-/** `satisfied` latches: once true it never goes back to false. */
+/**
+ * `satisfied` latches for `reach_goal` only. Delivery goals follow the crates,
+ * so pushing a crate back off its bay reopens them.
+ */
 export type GoalConditionState = {
     condition: GoalCondition;
     satisfied: boolean;

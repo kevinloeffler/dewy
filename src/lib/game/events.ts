@@ -47,6 +47,8 @@ export type WorldEvent =
      * which never held it.
      */
     | { kind: 'crateDelivered'; crateId: string }
+    /** A delivered crate pushed or picked back off its bay. */
+    | { kind: 'crateUndelivered'; crateId: string }
     | { kind: 'bump';        at: Coord; toward: Coord }
     /**
      * `sensorId` is set only for a motion-sensor crash — the one that saw

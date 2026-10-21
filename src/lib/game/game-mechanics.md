@@ -117,7 +117,7 @@ several tiles wide.
 - **Grey crate** — pushable and pickable, no delivery goal, used to activate pressure plates and block paths. A grey crate is never "delivered", not even on a plain bay — it stays reusable
 - **Colour crate** — pushable and pickable, must be delivered to the matching drop-off bay
 - A crate reaches a bay either by `drop()` or by being **pushed** onto it — both count as a delivery
-- A delivered crate is inert: it still blocks the tile, but it can no longer be pushed or picked up
+- A crate counts as delivered only while it rests on its bay: pushing or picking it back off undoes the delivery and reopens the goal. The level completes the moment the last goal holds, so the final delivery always sticks
 - Pushing is implicit — walking into a crate moves it one tile in the robot's facing direction
 - A crate pushed into a wall, pit, or another crate crashes the robot
 - Crates cannot chain-push other crates — a crate behind a crate is effectively a wall

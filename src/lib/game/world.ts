@@ -113,6 +113,7 @@ const DURATIONS: Record<WorldEventKind, number> = {
     plate:       0.15,
     sensor:      0.30,
     crateDelivered: 0.35,
+    crateUndelivered: 0,
     bump:        0.25,
     // Unused: a crash holds for its own reaction's length (REACTION_DURATIONS).
     crash:       0,
@@ -416,9 +417,7 @@ export class World implements EventPlayer {
         for (const plate of state.plates) this.setPlatePressed(coordKey(plate.position), plate.pressed, 1)
         for (const belt of state.belts) this.setBeltState(belt.beltId, belt.running, belt.reversed, 1)
         for (const sensor of state.motionSensors) this.setSensorActive(sensor.sensorId, sensor.active, 1)
-        for (const crate of state.crates) {
-            if (crate.delivered) this.markDelivered(crate.id)
-        }
+        for (const crate of state.crates) this.markDelivered(crate.id, crate.delivered)
     }
 
     /**
@@ -1212,10 +1211,13 @@ export class World implements EventPlayer {
                     onUpdate: (t) => { mesh.position.y = base + Math.sin(t * Math.PI) * 0.12 },
                     onDone: () => {
                         mesh.position.y = base
-                        this.markDelivered(event.crateId)
+                        this.markDelivered(event.crateId, true)
                     },
                 })]
             }
+
+            case 'crateUndelivered':
+                return [instant(() => this.markDelivered(event.crateId, false))]
 
             case 'bump': {
                 const at = vec(event.at)
@@ -1323,15 +1325,16 @@ export class World implements EventPlayer {
         }
     }
 
-    /** A delivered crate is inert — dim it so it reads as locked in. */
-    private markDelivered(crateId: string) {
+    /** Tint a delivered crate so it reads as in place; untint it once it leaves the bay. */
+    private markDelivered(crateId: string, delivered: boolean) {
         const mesh = this.crateMeshes.get(crateId)
         mesh?.traverse((child) => {
             const material = (child as THREE.Mesh).material
             if (material && !Array.isArray(material) && 'emissive' in material) {
                 const standard = material as THREE.MeshStandardMaterial
-                standard.emissive.setHex(0x224422)
-                standard.emissiveIntensity = 0.45
+                // Crate materials start with no emissive at all.
+                standard.emissive.setHex(delivered ? 0x224422 : 0x000000)
+                standard.emissiveIntensity = delivered ? 0.45 : 1
             }
         })
     }

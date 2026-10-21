@@ -18,7 +18,6 @@ export type CrashCode =
     | 'switch_blocked'
     | 'robot_gap'
     | 'crate_blocked'
-    | 'crate_delivered'
     | 'obstacle'
     // carrying
     | 'nothing_to_pick'
@@ -50,7 +49,6 @@ const MESSAGES: Record<CrashCode, string> = {
     switch_blocked:  'Da ist ein Schalter im Weg — betätige ihn, lauf nicht hinein.',
     robot_gap:       'Durch diese Lücke passt nur Dewy allein.',
     crate_blocked:   'Die Kiste kann nirgendwohin.',
-    crate_delivered: 'Diese Kiste ist schon abgeliefert.',
     obstacle:        'Da steht etwas im Weg.',
 
     nothing_to_pick:  'Hier gibt es nichts zum Aufheben.',
@@ -75,7 +73,6 @@ export const CRASH_REACTIONS: Record<CrashCode, Reaction> = {
     robot_gap:       'collide',
     obstacle:        'collide',
     crate_blocked:   'strain',
-    crate_delivered: 'strain',
     pit:             'fall',
     // The belt is not solid — Dewy just cannot use it, so it is a
     // misunderstanding rather than a collision.

@@ -34,9 +34,11 @@ If a pushable crate is ahead and the tile behind it is free, the crate is pushed
 **Crashes if:**
 - Tile ahead is a wall, closed door, world edge, or pit
 - Tile ahead is a switch, or a cargo belt (crates only)
-- Tile ahead has a crate with no free tile behind it, or a crate already delivered
+- Tile ahead has a crate with no free tile behind it
 
 Pushing a crate onto a matching drop-off bay **delivers** it, exactly as `drop()` would.
+Pushing a delivered crate off its bay again undoes the delivery — unless it was
+the last goal, in which case the level is already complete.
 
 ---
 
@@ -60,7 +62,8 @@ Interact with the item on the tile ahead:
 **Crashes if:**
 - Tile ahead has no crate or keycard
 - Tile ahead has a crate and robot is already carrying a crate
-- Tile ahead has a crate that has already been delivered
+
+Picking a delivered crate back up undoes its delivery.
 
 A keycard is pocketed even while carrying a crate, and a tile holding both a
 crate and a keycard gives up the crate first.
