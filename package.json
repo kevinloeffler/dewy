@@ -16,7 +16,6 @@
 		"db:generate": "drizzle-kit generate",
 		"db:migrate": "drizzle-kit migrate",
 		"db:baseline": "node scripts/migrate.js --baseline",
-		"db:migrate-options": "node scripts/migrate-level-options.js",
 		"db:studio": "drizzle-kit studio",
 		"auth:schema": "better-auth generate --config src/lib/server/auth.ts --output src/lib/server/db/auth.schema.ts --yes"
 	},

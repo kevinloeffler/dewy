@@ -54,6 +54,8 @@ npm run auth:schema  # regenerate auth schema from better-auth config
 
 **Migrations:** `drizzle/` holds the migration history, starting at `0000_init`. The production container runs `scripts/migrate.js` before the server starts, so **every schema change must be committed as a migration** (`npm run db:generate`) — a change applied only with `db:push` never reaches a deployed database. A database created by `db:push` has the tables but no history; `npm run db:baseline` records `0000_init` as applied once, and `migrate.js` refuses such a database otherwise. `drizzle-orm` is a runtime dependency (not dev) because that script runs in the image.
 
+**Data migrations:** a change to the *shape of stored data* — above all the level JSON in `level.data`, which `parseLevel` reads strictly and refuses when stale — goes in `scripts/data-migrations/NNNN_name.js`, exporting `up(db)` (the raw better-sqlite3 client). `migrate.js` runs pending ones after the schema migrations, in filename order, each in one transaction with its row in `__data_migrations`, so each runs exactly once and need not be idempotent; a throw stops the container. Never edit one that has shipped — add the next number.
+
 **Environment variables** (see `.env.example`):
 - `DATABASE_URL` — path to SQLite file
 - `ORIGIN` — used as better-auth `baseURL`
