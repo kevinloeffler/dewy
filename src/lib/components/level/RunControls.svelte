@@ -36,6 +36,12 @@
 	}: Props = $props();
 
 	const SPEEDS = [0.5, 1, 2, 4];
+
+	/**
+	 * What is left in the battery. Clamped because the command that runs it
+	 * dry is counted before it is refused, so `steps` can end one past `energy`.
+	 */
+	const remaining = $derived(energy === null ? null : Math.max(0, energy - steps));
 </script>
 
 <!--
@@ -209,7 +215,7 @@
 		<!-- An unlimited resource is no constraint to track, so it gets no gauge. -->
 		{#if energy !== null}
 			<span class="gauge" title="Batterie — ein Befehl kostet eins">
-				{steps}/{energy}
+				{remaining}/{energy}
 				{@render batteryIcon()}
 			</span>
 		{/if}
