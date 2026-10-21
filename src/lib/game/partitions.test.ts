@@ -4,13 +4,14 @@ import { coordKey } from './grid';
 import type { Direction, Level, Tile } from './level';
 import { wallShape } from './partitions';
 
-/** A level from a picture: `#` wall, `g` robot gap, `-`/`|` door, `.` floor. */
+/** A level from a picture: `#` wall, `g` robot gap, `k` crate gap, `-`/`|` door, `.` floor. */
 function draw(...rows: string[]): Level {
     const level = emptyLevel('test', 'Test', rows[0].length, rows.length);
     rows.forEach((row, y) => [...row].forEach((c, x) => {
         const tile: Tile | null =
             c === '#' ? { kind: 'wall' }
             : c === 'g' ? { kind: 'robot_gap' }
+            : c === 'k' ? { kind: 'crate_gap' }
             // Leaves span across the facing: a south-facing door is an
             // east–west doorway.
             : c === '-' ? { kind: 'door', doorId: 'd', facing: 'south' } as Tile
@@ -64,6 +65,13 @@ describe('wallShape', () => {
         const level = draw('.....', '.#g#.', '.....');
         expect(arms(level, 1, 1)).toContain('east');
         expect(arms(level, 2, 1)).toEqual(sorted('east', 'west'));
+    });
+
+    it('bridges over a crate gap, and a crate gap beside a robot gap', () => {
+        const level = draw('......', '.#kg#.', '......');
+        expect(arms(level, 1, 1)).toContain('east');
+        expect(arms(level, 2, 1)).toEqual(sorted('east', 'west'));
+        expect(arms(level, 3, 1)).toEqual(sorted('east', 'west'));
     });
 
     it('reaches the warehouse walls on the north and west edges, without a comb', () => {

@@ -34,7 +34,7 @@ import { COLORS, TileFactory } from '$lib/game/models/tiles'
 import { createDecoration } from '$lib/game/models/warehouse'
 import { buildEnvironment } from '$lib/game/models/environment'
 import { environmentKey, planEnvironment } from './environment'
-import { wallShape } from './partitions'
+import { isGap, wallShape } from './partitions'
 
 
 /**
@@ -548,7 +548,7 @@ export class World implements EventPlayer {
                 const tile = tileAt(level, coord)
                 if (!tile) continue
 
-                const shape = tile.kind === 'wall' || tile.kind === 'robot_gap'
+                const shape = tile.kind === 'wall' || isGap(tile)
                     ? wallShape(level, coord)
                     : undefined
                 const object = this.tiles.create(tile, coord, shape)

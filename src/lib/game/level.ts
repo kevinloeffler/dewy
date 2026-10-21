@@ -21,7 +21,10 @@ export type TileKey = `${number},${number}`;
 export type FloorTile    = { kind: 'floor' };
 export type PitTile      = { kind: 'pit' };
 export type WallTile     = { kind: 'wall' };
+/** A Dewy-shaped hole in a wall: the robot fits through, a crate does not. */
 export type RobotGapTile = { kind: 'robot_gap' };
+/** A crate-shaped hole in a wall: too low for the robot, just right for a crate. */
+export type CrateGapTile = { kind: 'crate_gap' };
 
 /**
  * Makes a belt drivable by a switch or a pressure plate.
@@ -106,6 +109,7 @@ export type Tile =
     | PitTile
     | WallTile
     | RobotGapTile
+    | CrateGapTile
     | ConveyorTile
     | CargoConveyorTile
     | DoorTile

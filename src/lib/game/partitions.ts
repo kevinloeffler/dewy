@@ -35,14 +35,19 @@ function doorAxis(facing: Direction): Direction[] {
 
 /**
  * Whether a partition reaching `direction` should join `neighbour`. Walls
- * and robot gaps always do; a door only along the line of its leaves, so a
+ * and gaps always do; a door only along the line of its leaves, so a
  * wall meets it at its frame and never runs across the doorway.
  */
 function joins(neighbour: Tile | null, direction: Direction): boolean {
     if (!neighbour) return false;
-    if (neighbour.kind === 'wall' || neighbour.kind === 'robot_gap') return true;
+    if (neighbour.kind === 'wall' || isGap(neighbour)) return true;
     if (neighbour.kind === 'door') return doorAxis(neighbour.facing).includes(direction);
     return false;
+}
+
+/** Either gap: a stretch of wall with a hole through it, drawn on the wall's line. */
+export function isGap(tile: Tile | null): boolean {
+    return tile?.kind === 'robot_gap' || tile?.kind === 'crate_gap';
 }
 
 export function wallShape(level: Level, coord: Coord): WallShape {

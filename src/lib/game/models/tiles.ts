@@ -30,11 +30,113 @@ const PARTITION_HEIGHT = 1.5;
 const PARTITION_THICKNESS = 0.24;
 const PARTITION_CAP = 0.06;
 /**
- * Headroom under a robot gap's bridge. The robot's head tops out near 0.88
- * (0.93 at `ROBOT_SCALE` 0.95), so this leaves it visibly clear with room to
- * spare, while the bridge above stays thick enough to read as wall.
+ * The openings cut through a gap, as steps up the right-hand side from the
+ * floor: each `half` is the opening's half-width until height `top`. The
+ * left side mirrors it.
+ *
+ * A robot gap is Dewy's outline from the front at `ROBOT_SCALE` 0.95, a few
+ * centimetres proud all round: tracks (±0.42, up to 0.30), chassis (±0.30,
+ * up to 0.58) and head (±0.23, up to 0.93). A crate gap is the 0.5 crate's
+ * square — far lower than Dewy's head, which is the whole point of it.
  */
-const GAP_CLEARANCE = 1.05;
+type GapStep = { half: number; top: number };
+type GapKind = 'robot_gap' | 'crate_gap';
+const GAP_OUTLINES: Record<GapKind, GapStep[]> = {
+    robot_gap: [
+        { half: 0.44, top: 0.34 },
+        { half: 0.35, top: 0.64 },
+        { half: 0.28, top: 1.0 },
+    ],
+    crate_gap: [
+        { half: 0.3, top: 0.6 },
+    ],
+};
+/** How far the trim round a gap's opening stands out from its edge. */
+const GAP_TRIM = 0.035;
+/** Corner rounding of a gap's opening — Dewy's own chamfers, near enough. */
+const GAP_RADIUS = 0.05;
+
+/**
+ * The edge of a gap's opening, from its left foot on the floor up, over and
+ * down to its right foot, pushed `grow` outward all round.
+ */
+function openingEdge(outline: GapStep[], grow: number): THREE.Vector2[] {
+    const right: THREE.Vector2[] = [];
+    let bottom = 0;
+    for (const { half, top } of outline) {
+        right.push(
+            new THREE.Vector2(half + grow, bottom === 0 ? 0 : bottom + grow),
+            new THREE.Vector2(half + grow, top + grow),
+        );
+        bottom = top;
+    }
+    const left = right.map((point) => new THREE.Vector2(-point.x, point.y));
+    return [...left, ...right.reverse()];
+}
+
+/**
+ * A closed outline through `points`, each corner rounded by `radius(i)` —
+ * clamped so neighbouring corners never overlap. Zero leaves it sharp.
+ */
+function roundedShape(points: THREE.Vector2[], radius: (index: number) => number): THREE.Shape {
+    const shape = new THREE.Shape();
+    const n = points.length;
+    points.forEach((point, i) => {
+        const prev = points[(i + n - 1) % n];
+        const next = points[(i + 1) % n];
+        const toPrev = point.distanceTo(prev);
+        const toNext = point.distanceTo(next);
+        const r = Math.min(radius(i), toPrev / 2, toNext / 2);
+        const from = point.clone().lerp(prev, r / toPrev);
+        if (i === 0) shape.moveTo(from.x, from.y);
+        else shape.lineTo(from.x, from.y);
+        if (r > 0) {
+            const to = point.clone().lerp(next, r / toNext);
+            shape.quadraticCurveTo(point.x, point.y, to.x, to.y);
+        }
+    });
+    shape.closePath();
+    return shape;
+}
+
+/** Rounds every corner of an opening edge but its two feet on the floor. */
+const edgeRadius = (edge: THREE.Vector2[], r: number) => (i: number) =>
+    i === 0 || i === edge.length - 1 ? 0 : r;
+
+function extrudeCentred(shape: THREE.Shape, depth: number): THREE.BufferGeometry {
+    const geometry = new THREE.ExtrudeGeometry(shape, { depth, bevelEnabled: false, curveSegments: 3 });
+    geometry.translate(0, 0, -depth / 2);
+    return geometry;
+}
+
+/**
+ * One tile of partition face-on, with the opening cut out of its foot.
+ *
+ * The hole is cut halfway into the trim rather than on its inner edge: on the
+ * same line, the panel's and the trim's inside faces would share one surface
+ * and z-fight all down the opening.
+ */
+function gapPanel(outline: GapStep[]): THREE.Shape {
+    const edge = openingEdge(outline, GAP_TRIM / 2);
+    const points = [
+        new THREE.Vector2(-TILE / 2, 0),
+        ...edge,
+        new THREE.Vector2(TILE / 2, 0),
+        new THREE.Vector2(TILE / 2, PARTITION_HEIGHT),
+        new THREE.Vector2(-TILE / 2, PARTITION_HEIGHT),
+    ];
+    const radius = edgeRadius(edge, GAP_RADIUS + GAP_TRIM / 2);
+    return roundedShape(points, (i) => (i >= 1 && i <= edge.length ? radius(i - 1) : 0));
+}
+
+/** The band of trim lining the opening, `GAP_TRIM` wide. */
+function gapTrim(outline: GapStep[]): THREE.Shape {
+    const outer = openingEdge(outline, GAP_TRIM);
+    const inner = openingEdge(outline, 0).reverse();
+    const outerRadius = edgeRadius(outer, GAP_RADIUS + GAP_TRIM);
+    const innerRadius = edgeRadius(inner, GAP_RADIUS);
+    return roundedShape([...outer, ...inner], (i) => (i < outer.length ? outerRadius(i) : innerRadius(i - outer.length)));
+}
 /** A door's leaves fill the wall's full height, under its cap. */
 const DOOR_HEIGHT = PARTITION_HEIGHT;
 const SLAB = 0.1;
@@ -75,7 +177,7 @@ export class TileFactory {
      * Build the visual for one tile, or `null` for a pit's missing floor.
      * The returned object is positioned by the caller.
      *
-     * `shape` only matters to a wall or a robot gap: the neighbours it joins.
+     * `shape` only matters to a wall or a gap: the neighbours it joins.
      * Left out — a brush preview — it draws as a lone span.
      */
     create(tile: Tile, coord: Coord, shape: WallShape = LONE_WALL): THREE.Object3D | null {
@@ -85,10 +187,13 @@ export class TileFactory {
             case 'pit':
                 return this.pit();
             case 'wall':
-                return this.partition(coord, shape, 0);
+                return this.partition(coord, shape);
             case 'robot_gap':
-                // A bridge in the wall. Never filled: a gap is a hole.
-                return this.partition(coord, { arms: shape.arms, fill: false }, GAP_CLEARANCE);
+                return this.gap(tile.kind, coord, shape, this.kitMat('dark'));
+            case 'crate_gap':
+                // Trimmed in the cargo belts' amber: the colour that already
+                // means "crates only, not Dewy".
+                return this.gap(tile.kind, coord, shape, this.mat(COLORS.cargo));
             case 'conveyor':
                 return this.conveyor(tile, COLORS.chevron);
             case 'cargo_conveyor':
@@ -170,35 +275,18 @@ export class TileFactory {
     }
 
     /**
-     * One block of partition, `w` × `d` in plan, from `bottom` up to the
-     * partition's height, with a dark cap a hair wider — the warehouse walls'
+     * One block of partition, `w` × `d` in plan, the partition's full height, with a dark cap a hair wider — the warehouse walls'
      * cap, at partition scale.
      */
-    private wallPiece(parent: THREE.Object3D, w: number, d: number, x: number, z: number, bottom: number) {
-        const h = PARTITION_HEIGHT - bottom;
-        this.kitBox(parent, w, h, d, 'wall', x, bottom + h / 2, z);
+    private wallPiece(parent: THREE.Object3D, w: number, d: number, x: number, z: number) {
+        const h = PARTITION_HEIGHT;
+        this.kitBox(parent, w, h, d, 'wall', x, h / 2, z);
         this.wallCap(parent, w, d, x, z);
     }
 
     /** Just the cap — what runs on unbroken over a doorway. */
     private wallCap(parent: THREE.Object3D, w: number, d: number, x: number, z: number) {
         this.kitBox(parent, w + 0.03, PARTITION_CAP, d + 0.03, 'dark', x, PARTITION_HEIGHT + PARTITION_CAP / 2, z);
-    }
-
-    /**
-     * Dark uprights down both sides of a robot gap's opening, from the floor
-     * to its bridge — the same trim as the walls' tops. One per arm: each
-     * stands where the gap meets the wall beside it.
-     */
-    private gapJambs(parent: THREE.Object3D, shape: WallShape, bottom: number) {
-        const c = PARTITION_CAP;
-        const across = PARTITION_THICKNESS + 0.03;
-        for (const arm of shape.arms) {
-            const { x, y } = DIRECTION_DELTA[arm];
-            const offset = TILE / 2 - c / 2;
-            if (x !== 0) this.kitBox(parent, c, bottom, across, 'dark', x * offset, bottom / 2, 0);
-            else this.kitBox(parent, across, bottom, c, 'dark', 0, bottom / 2, y * offset);
-        }
     }
 
     private kitBox(parent: THREE.Object3D, w: number, h: number, d: number, material: KitMaterialName, x: number, y: number, z: number) {
@@ -236,7 +324,7 @@ export class TileFactory {
      * wall is thick there. Arms of neighbouring tiles meet end to end at the
      * shared edge, so a run is one unbroken wall.
      */
-    private partition(coord: Coord, shape: WallShape, bottom: number) {
+    private partition(coord: Coord, shape: WallShape) {
         const group = new THREE.Group();
         group.add(this.floor(coord));
 
@@ -246,18 +334,47 @@ export class TileFactory {
         // post: every extra join along a wall's face shows as a seam.
         const eastWest = has('east') && has('west');
         const northSouth = has('north') && has('south');
-        if (eastWest) this.wallPiece(group, TILE, t, 0, 0, bottom);
-        if (northSouth) this.wallPiece(group, t, TILE, 0, 0, bottom);
-        if (!eastWest && !northSouth) this.wallPiece(group, t, t, 0, 0, bottom);
+        if (eastWest) this.wallPiece(group, TILE, t, 0, 0);
+        if (northSouth) this.wallPiece(group, t, TILE, 0, 0);
+        if (!eastWest && !northSouth) this.wallPiece(group, t, t, 0, 0);
         for (const arm of shape.arms) {
             if ((eastWest && (arm === 'east' || arm === 'west'))
                 || (northSouth && (arm === 'north' || arm === 'south'))) continue;
             const { x, y } = DIRECTION_DELTA[arm];
-            if (x !== 0) this.wallPiece(group, TILE / 2, t, x * TILE / 4, 0, bottom);
-            else this.wallPiece(group, t, TILE / 2, 0, y * TILE / 4, bottom);
+            if (x !== 0) this.wallPiece(group, TILE / 2, t, x * TILE / 4, 0);
+            else this.wallPiece(group, t, TILE / 2, 0, y * TILE / 4);
         }
-        if (shape.fill) this.wallPiece(group, TILE, TILE, TILE / 2, TILE / 2, bottom);
-        if (bottom > 0) this.gapJambs(group, shape, bottom);
+        if (shape.fill) this.wallPiece(group, TILE, TILE, TILE / 2, TILE / 2);
+        return group;
+    }
+
+    /**
+     * A tile of partition with an opening through its foot, the outline of
+     * what fits through. It runs along the wall's line — east–west unless the
+     * gap only meets walls to its north or south — and grows no arms across
+     * that line: a gap is a hole in a straight wall, and a cross arm would
+     * stand in the opening.
+     */
+    private gap(kind: GapKind, coord: Coord, shape: WallShape, trim: THREE.Material) {
+        const group = new THREE.Group();
+        group.add(this.floor(coord));
+
+        const t = PARTITION_THICKNESS;
+        const outline = GAP_OUTLINES[kind];
+        const span = new THREE.Group();
+        span.add(new THREE.Mesh(
+            this.geo(`gap:${kind}`, () => extrudeCentred(gapPanel(outline), t)),
+            this.kitMat('wall'),
+        ));
+        span.add(new THREE.Mesh(
+            this.geo(`gapTrim:${kind}`, () => extrudeCentred(gapTrim(outline), t + 0.03)),
+            trim,
+        ));
+        this.wallCap(span, TILE, t, 0, 0);
+        if (!shape.arms.includes('east') && !shape.arms.includes('west')) {
+            span.rotation.y = Math.PI / 2;
+        }
+        group.add(span);
         return group;
     }
 

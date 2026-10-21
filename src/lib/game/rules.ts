@@ -59,7 +59,9 @@ export type Blocker =
     | { kind: 'door' }
     | { kind: 'pit' }
     | { kind: 'cargo_belt' }
-    | { kind: 'gap' }
+    | { kind: 'robot_gap' }
+    | { kind: 'robot_gap_carrying' }
+    | { kind: 'crate_gap' }
     | { kind: 'switch' }
     | { kind: 'obstacle'; decoration: DecorationKind }
     | { kind: 'crate'; crateId: string };
@@ -86,8 +88,12 @@ export function tileBlocksRobot(level: Level, state: LevelState, coord: Coord): 
         case 'pit':            return { kind: 'pit' };
         case 'switch':         return { kind: 'switch' };
         case 'cargo_conveyor': return { kind: 'cargo_belt' };
+        case 'crate_gap':      return { kind: 'crate_gap' };
         case 'door':           return doorOpen(state, tile.doorId) ? null : { kind: 'door' };
-        // floor, goal, drop_off, pressure_plate, conveyor, robot_gap
+        // The opening is Dewy's own outline, with no room left for the crate
+        // in its jaws — otherwise a crate would pass simply by being carried.
+        case 'robot_gap':      return state.robot.carrying ? { kind: 'robot_gap_carrying' } : null;
+        // floor, goal, drop_off, pressure_plate, conveyor
         default:               return null;
     }
 }
@@ -104,9 +110,9 @@ export function tileBlocksCrate(level: Level, state: LevelState, coord: Coord): 
         case 'wall':      return { kind: 'wall' };
         case 'pit':       return { kind: 'pit' };
         case 'switch':    return { kind: 'switch' };
-        case 'robot_gap': return { kind: 'gap' };
+        case 'robot_gap': return { kind: 'robot_gap' };
         case 'door':      return doorOpen(state, tile.doorId) ? null : { kind: 'door' };
-        // floor, goal, drop_off, pressure_plate, conveyor, cargo_conveyor
+        // floor, goal, drop_off, pressure_plate, conveyor, cargo_conveyor, crate_gap
         default:          return null;
     }
 }

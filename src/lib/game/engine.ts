@@ -370,7 +370,12 @@ export class GameEngine {
             const behind = ahead(target, facing);
             const crateBlocker = crateBlockedBy(this.level, this.levelState, behind);
             if (crateBlocker) {
-                return { kind: 'blocked', target, reason: crash('crate_blocked') };
+                // A robot gap gets its own message even here: the crate fits
+                // nowhere *in this shape*, and a crate gap may be what is missing.
+                const reason = crateBlocker.kind === 'robot_gap' ? crash('robot_gap')
+                    : crateBlocker.kind === 'crate' ? crash('crate_chain')
+                    : crash('crate_blocked');
+                return { kind: 'blocked', target, reason };
             }
             // The robot still has to be able to stand where the crate was —
             // a crate sitting on a cargo belt cannot be pushed off it.
@@ -841,7 +846,9 @@ function reasonFor(blocker: Blocker): CrashReason {
         case 'door':       return crash('door_closed');
         case 'pit':        return crash('pit');
         case 'cargo_belt': return crash('cargo_belt');
-        case 'gap':        return crash('robot_gap');
+        case 'robot_gap':  return crash('robot_gap');
+        case 'robot_gap_carrying': return crash('robot_gap_carrying');
+        case 'crate_gap':  return crash('crate_gap');
         case 'switch':     return crash('switch_blocked');
         case 'obstacle':   return obstacleCrash(DECORATION_NAMES[blocker.decoration]);
         case 'crate':      return crash('crate_blocked');

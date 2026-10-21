@@ -205,6 +205,7 @@ function tile(value: unknown, path: string): Tile {
         case 'pit':
         case 'wall':
         case 'robot_gap':
+        case 'crate_gap':
         case 'goal':
             return { kind };
 

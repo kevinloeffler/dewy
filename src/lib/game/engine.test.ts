@@ -109,6 +109,7 @@ describe('moveForward', () => {
         ['closed door',    { kind: 'door', doorId: 'd', initiallyOpen: false, facing: 'south' }, 'door_closed'],
         ['switch',         { kind: 'switch', targetId: 't', initiallyOn: false }, 'switch_blocked'],
         ['cargo belt',     cargo('east'),                                   'cargo_belt'],
+        ['crate gap',      { kind: 'crate_gap' },                           'crate_gap'],
     ];
 
     for (const [label, tile, code] of blockers) {
@@ -213,7 +214,6 @@ describe('pushing', () => {
     const unpushable: [string, Tile][] = [
         ['a wall',      { kind: 'wall' }],
         ['a pit',       { kind: 'pit' }],
-        ['a robot gap', { kind: 'robot_gap' }],
         ['a switch',    { kind: 'switch', targetId: 't', initiallyOn: false }],
         ['a closed door', { kind: 'door', doorId: 'd', initiallyOpen: false, facing: 'south' }],
     ];
@@ -229,11 +229,32 @@ describe('pushing', () => {
         });
     }
 
+    it('pushes a crate into a crate gap, but not out of it', () => {
+        const engine = new GameEngine(makeLevel({
+            width: 7,
+            robot: { position: { x: 2, y: 1 }, facing: 'east' },
+            tiles: { '4,1': { kind: 'crate_gap' } },
+            items: crateAtThree(),
+        }));
+        expect(engine.moveForward().status).toBe('ok');
+        expect(engine.state.crates[0].position).toEqual({ x: 4, y: 1 });
+        // Pushing it on would need Dewy to stand in the gap.
+        expect(engine.moveForward().reason?.code).toBe('crate_gap');
+    });
+
+    it('crashes pushing a crate into a robot gap, saying the gap is Dewy-shaped', () => {
+        const engine = pushSetup({ kind: 'robot_gap' });
+        const outcome = engine.moveForward();
+
+        expect(outcome.reason?.code).toBe('robot_gap');
+        expect(engine.state.crates[0].position).toEqual({ x: 3, y: 1 });
+    });
+
     it('will not chain-push — a crate behind a crate is a wall', () => {
         const engine = pushSetup(undefined, [
             { kind: 'crate_grey', id: 'c2', position: { x: 4, y: 1 } },
         ]);
-        expect(engine.moveForward().reason?.code).toBe('crate_blocked');
+        expect(engine.moveForward().reason?.code).toBe('crate_chain');
     });
 
     it('crashes pushing a crate into furniture', () => {
@@ -360,6 +381,48 @@ describe('carrying', () => {
         engine.pick();
         engine.moveForward();     // robot to (2,1), crate rides along
         expect(engine.state.plates[0].pressed).toBe(false);
+    });
+
+    it('will not carry a crate into a robot gap', () => {
+        const engine = new GameEngine(makeLevel({
+            tiles: { '3,1': { kind: 'robot_gap' } },
+            items: [{ kind: 'crate_colour', id: 'c', color: 'red', position: { x: 2, y: 1 } }],
+        }));
+        engine.pick();
+        engine.moveForward();       // robot to (2,1), facing the gap
+        expect(engine.isBlocked()).toBe(true);
+        const outcome = engine.moveForward();
+        expect(outcome.reason?.code).toBe('robot_gap_carrying');
+        expect(at(engine)).toEqual({ x: 2, y: 1 });
+    });
+
+    it('takes a crate through a crate gap while the robot uses the robot gap beside it', () => {
+        // Wall along x = 3: crate gap at (3,1), robot gap at (3,2).
+        const engine = new GameEngine(makeLevel({
+            tiles: {
+                '3,0': { kind: 'wall' },
+                '3,1': { kind: 'crate_gap' },
+                '3,2': { kind: 'robot_gap' },
+                '3,3': { kind: 'wall' },
+                '3,4': { kind: 'wall' },
+            },
+            items: [{ kind: 'crate_grey', id: 'c', position: { x: 2, y: 1 } }],
+        }));
+        engine.pick();
+        engine.moveForward();       // (2,1), crate in hand
+        expect(engine.drop().status).toBe('ok');   // onto the crate gap
+        expect(engine.state.crates[0].position).toEqual({ x: 3, y: 1 });
+
+        engine.turnRight();
+        engine.moveForward();       // (2,2)
+        engine.turnLeft();
+        engine.moveForward();       // (3,2) — in the robot gap
+        expect(engine.moveForward().status).toBe('ok');   // (4,2)
+        engine.turnLeft();          // face north
+        engine.moveForward();       // (4,1), the crate gap's far side
+        engine.turnLeft();          // face west, crate at (3,1)
+        expect(engine.pick().status).toBe('ok');
+        expect(engine.state.robot.carrying).toBe('c');
     });
 
     it('does not deliver a crate merely carried across a bay', () => {
@@ -502,6 +565,17 @@ describe('drop', () => {
         ['a robot gap',   { kind: 'robot_gap' }],
         ['a switch',      { kind: 'switch', targetId: 't', initiallyOn: false }],
     ];
+
+    it('reports a crate dropped into a robot gap as the gap being Dewy-shaped', () => {
+        expect(holding({ '2,1': { kind: 'robot_gap' } }).drop().reason?.code).toBe('robot_gap');
+    });
+
+    it('drops onto and picks up from a crate gap', () => {
+        const engine = holding({ '2,1': { kind: 'crate_gap' } });
+        expect(engine.drop().status).toBe('ok');
+        expect(engine.state.crates[0].position).toEqual({ x: 2, y: 1 });
+        expect(engine.pick().status).toBe('ok');
+    });
 
     for (const [label, tile] of undroppable) {
         it(`crashes dropping onto ${label}`, () => {
@@ -1388,6 +1462,7 @@ describe('sensing', () => {
             { kind: 'door', doorId: 'd', initiallyOpen: true, facing: 'south' },
             { kind: 'goal' },
             { kind: 'robot_gap' },
+            { kind: 'crate_gap' },
         ];
 
         for (const tile of cases) {

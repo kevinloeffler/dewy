@@ -61,7 +61,7 @@ export type Brush =
 // ============================================================
 
 export type BrushId =
-    | 'wall' | 'pit' | 'robot_gap' | 'goal'
+    | 'wall' | 'pit' | 'robot_gap' | 'crate_gap' | 'goal'
     | 'conveyor' | 'cargo_conveyor' | 'door' | 'pressure_plate' | 'switch' | 'drop_off'
     | 'crate_grey' | 'crate_colour' | 'keycard'
     | 'motion_sensor'
@@ -171,7 +171,7 @@ export const BRUSH_GROUPS: { title: string; ids: BrushId[]; collapsed?: boolean 
     },
     {
         title: 'Hindernisse',
-        ids: ['pit', 'wall', 'robot_gap', 'door', 'switch', 'pressure_plate', 'motion_sensor'],
+        ids: ['pit', 'wall', 'robot_gap', 'crate_gap', 'door', 'switch', 'pressure_plate', 'motion_sensor'],
     },
     {
         title: 'Deko',
@@ -191,7 +191,8 @@ export const TOOL_IDS: BrushId[] = ['select', 'erase'];
 export const BRUSH_LABELS: Record<BrushId, string> = {
     wall: 'Wand',
     pit: 'Loch',
-    robot_gap: 'Lücke',
+    robot_gap: 'Dewy-Lücke',
+    crate_gap: 'Kisten-Lücke',
     goal: 'Ziel',
     conveyor: 'Förderband',
     cargo_conveyor: 'Kistenband',
@@ -399,6 +400,7 @@ export function buildBrush(id: BrushId, options: BrushOptions): Brush {
         case 'wall':
         case 'pit':
         case 'robot_gap':
+        case 'crate_gap':
         case 'goal':
             return { kind: 'tile', tile: { kind: id } };
 

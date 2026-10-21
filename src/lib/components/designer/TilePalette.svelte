@@ -20,6 +20,7 @@
 	import LibraryBig from '@lucide/svelte/icons/library-big';
 	import MousePointer2 from '@lucide/svelte/icons/mouse-pointer-2';
 	import Package from '@lucide/svelte/icons/package';
+	import PackageOpen from '@lucide/svelte/icons/package-open';
 	import PanelBottomOpen from '@lucide/svelte/icons/panel-bottom-open';
 	import SquareDashed from '@lucide/svelte/icons/square-dashed';
 	import ToggleLeft from '@lucide/svelte/icons/toggle-left';
@@ -50,6 +51,7 @@
 		pit: SquareDashed,
 		wall: BrickWall,
 		robot_gap: PanelBottomOpen,
+		crate_gap: PackageOpen,
 		goal: Flag,
 		conveyor: ChevronsRight,
 		cargo_conveyor: ArrowBigRightDash,

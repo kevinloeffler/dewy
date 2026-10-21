@@ -33,7 +33,8 @@ If a pushable crate is ahead and the tile behind it is free, the crate is pushed
 
 **Crashes if:**
 - Tile ahead is a wall, closed door, world edge, or pit
-- Tile ahead is a switch, or a cargo belt (crates only)
+- Tile ahead is a switch, a cargo belt or a crate gap (crates only)
+- Tile ahead is a robot gap and the robot is carrying a crate
 - Tile ahead has a crate with no free tile behind it
 
 Pushing a crate onto a matching drop-off bay **delivers** it, exactly as `drop()` would.
@@ -77,7 +78,7 @@ If the tile ahead is a matching drop-off bay the level goal is updated.
 **Crashes if:**
 - Robot is not carrying a crate
 - Tile ahead cannot hold a crate: another crate, a wall, a closed door, a pit,
-  a switch, a robot gap, or the world edge
+  a switch, a robot gap, or the world edge (a crate gap is fine)
 
 A bay that does not accept the crate is **not** a crash — the crate is simply
 placed there, so it can be picked back up and taken somewhere else.

@@ -17,7 +17,10 @@ export type CrashCode =
     | 'cargo_belt'
     | 'switch_blocked'
     | 'robot_gap'
+    | 'robot_gap_carrying'
+    | 'crate_gap'
     | 'crate_blocked'
+    | 'crate_chain'
     | 'obstacle'
     // carrying
     | 'nothing_to_pick'
@@ -47,8 +50,11 @@ const MESSAGES: Record<CrashCode, string> = {
     pit:             'Das ist ein Loch — Dewy ist hineingefallen!',
     cargo_belt:      'Förderbänder sind nur für Kisten — Dewy kann nicht darauf stehen.',
     switch_blocked:  'Da ist ein Schalter im Weg — betätige ihn, lauf nicht hinein.',
-    robot_gap:       'Durch diese Lücke passt nur Dewy allein.',
+    robot_gap:       'Diese Lücke hat genau Dewys Form — eine Kiste passt da nicht hindurch.',
+    robot_gap_carrying: 'Mit einer Kiste passt Dewy nicht hindurch. Stell die Kiste zuerst ab.',
+    crate_gap:       'Diese Lücke ist zu niedrig für Dewy. Vielleicht passt ja etwas anderes hindurch?',
     crate_blocked:   'Die Kiste kann nirgendwohin.',
+    crate_chain:     'Hinter dieser Kiste steht noch eine — Dewy ist nicht stark genug, um zwei Kisten auf einmal zu schieben.',
     obstacle:        'Da steht etwas im Weg.',
 
     nothing_to_pick:  'Hier gibt es nichts zum Aufheben.',
@@ -71,8 +77,11 @@ export const CRASH_REACTIONS: Record<CrashCode, Reaction> = {
     door_closed:     'collide',
     switch_blocked:  'collide',
     robot_gap:       'collide',
+    robot_gap_carrying: 'collide',
+    crate_gap:       'collide',
     obstacle:        'collide',
     crate_blocked:   'strain',
+    crate_chain:     'strain',
     pit:             'fall',
     // The belt is not solid — Dewy just cannot use it, so it is a
     // misunderstanding rather than a collision.

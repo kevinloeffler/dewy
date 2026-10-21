@@ -83,7 +83,8 @@ the next tile would have been claimed.
 |---------|-------------|
 | Wall | Fully impassable for robot and crates — crash on contact |
 | Door | Impassable until unlocked via keycard + `open()`, then passable for both robot and crates. A door never closes on a tile the robot or a crate is standing on |
-| Robot gap | A hole in the wall only the robot fits through — crates cannot pass |
+| Robot gap | A Dewy-shaped hole in the wall. Only the robot fits through, and only empty-handed — a crate can neither be pushed, dropped nor carried into it |
+| Crate gap | A crate-shaped hole in the wall, too low for the robot. Crates can be pushed, dropped and belted onto it and picked up from it, from either side — so a crate gap beside a robot gap is a way through for both |
 
 ---
 
@@ -161,8 +162,9 @@ A keycard is different — `open()` unlocks a door permanently, whatever its con
 - Walking into a wall, world edge, or impassable door
 - Walking into a decoration — the crash names the piece ("Da steht ein Regal im Weg")
 - Walking into a switch tile, or onto a cargo belt
+- Walking into a crate gap, or into a robot gap while carrying a crate
 - Stepping into a pit
-- Pushing a crate into a wall, pit, decoration, or another crate
+- Pushing a crate into a wall, pit, robot gap, decoration, or another crate
 - Entering a motion sensor's forbidden zone
 - Calling `open()` without the required keycard
 - Calling `pick()` on an empty tile
