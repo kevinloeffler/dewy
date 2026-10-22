@@ -397,12 +397,16 @@ export class World implements EventPlayer {
         for (const crate of state.crates) {
             const mesh = this.crateMeshes.get(crate.id)
             if (!mesh) continue
+            // A crate still held from the last run swung with the boom when
+            // resetPose lowered it, and attach() keeps that tilt — square it
+            // up before placing it anywhere.
+            this.itemRoot.attach(mesh)
+            mesh.rotation.set(0, 0, 0)
             if (crate.carried) {
+                robot.pickUp(true)   // snap: applyState animates nothing
                 robot.carrySlot.attach(mesh)
                 mesh.position.set(0, 0, 0)
-                robot.pickUp(true)   // snap: applyState animates nothing
             } else {
-                this.itemRoot.attach(mesh)
                 mesh.position.set(crate.position.x, 0, crate.position.y)
             }
             mesh.visible = true

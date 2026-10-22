@@ -519,3 +519,40 @@ describe('meta, options and goals', () => {
         expect(removeGoal(level, 9)).toBe(level);
     });
 });
+
+describe('reach_goal follows the goal tiles', () => {
+    const goal = { kind: 'goal' } as const;
+
+    it('adds the goal with the first goal tile, once', () => {
+        let level = setTile(base(), { x: 1, y: 1 }, goal);
+        expect(level.goals).toEqual([{ kind: 'reach_goal' }]);
+
+        level = setTile(level, { x: 2, y: 2 }, goal);
+        expect(level.goals).toEqual([{ kind: 'reach_goal' }]);
+    });
+
+    it('drops the goal with the last goal tile, keeping the others', () => {
+        let level = setTile(base(), { x: 1, y: 1 }, goal);
+        level = setTile(level, { x: 2, y: 2 }, goal);
+        level = addGoal(level, { kind: 'deliver_all' });
+
+        level = clearTile(level, { x: 1, y: 1 });
+        expect(level.goals).toHaveLength(2);
+
+        level = setTile(level, { x: 2, y: 2 }, { kind: 'wall' });
+        expect(level.goals).toEqual([{ kind: 'deliver_all' }]);
+    });
+
+    it('does not re-add a goal removed by hand while a goal tile stands', () => {
+        let level = setTile(base(), { x: 1, y: 1 }, goal);
+        level = removeGoal(level, 0);
+        level = setTile(level, { x: 2, y: 2 }, goal);
+        level = setTile(level, { x: 3, y: 3 }, { kind: 'wall' });
+        expect(level.goals).toEqual([]);
+    });
+
+    it('drops the goal when a resize cuts off the last goal tile', () => {
+        const level = setTile(base(), { x: 7, y: 7 }, goal);
+        expect(resize(level, 4, 4).goals).toEqual([]);
+    });
+});

@@ -26,6 +26,7 @@ import {
 	updateCourse,
 	updateStage
 } from '$lib/server/courses';
+import { findLevelMetadata } from '$lib/server/levels';
 import { actorOf, Forbidden, listTeachers } from '$lib/server/users';
 
 export const load: PageServerLoad = async (event) => {
@@ -40,9 +41,14 @@ export const load: PageServerLoad = async (event) => {
 	if (!(await canViewCourse(actor, course.id))) error(404, 'Diesen Kurs gibt es nicht.');
 	const canEdit = await canEditCourse(actor, course.id);
 
+	const levelIds = course.stages.flatMap((stage) =>
+		stage.items.flatMap((item) => (item.kind === 'level' && item.levelId ? [item.levelId] : []))
+	);
+
 	return {
 		course,
 		canEdit,
+		levels: await findLevelMetadata(levelIds),
 		shares: canEdit ? await listCourseShares(actor, course.id) : [],
 		teachers: canEdit ? (await listTeachers()).filter((row) => row.id !== actor.user.id) : [],
 		sharedLevels: canEdit ? await listSharedLevels(actor) : []

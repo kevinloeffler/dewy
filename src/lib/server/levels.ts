@@ -1,11 +1,12 @@
-import { and, asc, eq, isNull, or } from 'drizzle-orm';
+import { and, asc, eq, inArray, isNull, or } from 'drizzle-orm';
 import { db } from '$lib/server/db';
 import { course, level as levelTable, stage, stageItem, user } from '$lib/server/db/schema';
 import { emptyLevel } from '$lib/game/editor/operations';
 import { parseLevel } from '$lib/game/editor/parse';
+import { validateLevel } from '$lib/game/rules';
 import { roleOf } from '$lib/roles';
 import type { Actor } from '$lib/server/users';
-import type { Level } from '$lib/game/level';
+import type { LanguageStage, Level } from '$lib/game/level';
 
 /**
  * Reading and writing authored levels.
@@ -43,6 +44,18 @@ export type LevelOwner = {
     stageTitle: string;
     courseId: string;
     courseTitle: string;
+};
+
+/**
+ * What a course outline shows beside a level's name: its options, and whether
+ * the designer would flag it. `problems` are `validateLevel`'s warnings — or,
+ * for a row that no longer parses, the parse errors, with the options unknown.
+ */
+export type LevelMetadata = {
+    languageStage: LanguageStage | null;
+    energy: number | null;
+    memory: number | null;
+    problems: string[];
 };
 
 export class InvalidLevel extends Error {
@@ -129,6 +142,29 @@ export async function findLevel(id: string): Promise<Level | null> {
     const result = parseLevel(row.data);
     if (!result.ok) throw new InvalidLevel(result.errors);
     return result.level;
+}
+
+/** Metadata for each of `ids` that exists, keyed by level id. */
+export async function findLevelMetadata(ids: string[]): Promise<Record<string, LevelMetadata>> {
+    if (ids.length === 0) return {};
+    const rows = await db
+        .select({ id: levelTable.id, data: levelTable.data })
+        .from(levelTable)
+        .where(inArray(levelTable.id, ids));
+
+    const byId: Record<string, LevelMetadata> = {};
+    for (const row of rows) {
+        const result = parseLevel(row.data);
+        byId[row.id] = result.ok
+            ? {
+                  languageStage: result.level.options.languageStage,
+                  energy: result.level.options.energy,
+                  memory: result.level.options.memory,
+                  problems: validateLevel(result.level)
+              }
+            : { languageStage: null, energy: null, memory: null, problems: result.errors };
+    }
+    return byId;
 }
 
 /** The course and stage a level belongs to, or `null` if it belongs to none. */

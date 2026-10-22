@@ -2,9 +2,12 @@
 	import { enhance } from '$app/forms';
 	import { invalidateAll } from '$app/navigation';
 	import { untrack } from 'svelte';
+	import Battery from '@lucide/svelte/icons/battery';
 	import BookOpen from '@lucide/svelte/icons/book-open';
 	import CirclePlay from '@lucide/svelte/icons/circle-play';
 	import GripVertical from '@lucide/svelte/icons/grip-vertical';
+	import MemoryStick from '@lucide/svelte/icons/memory-stick';
+	import TriangleAlert from '@lucide/svelte/icons/triangle-alert';
 	import { draggable, droppable, type DragDropState } from '@thisux/sveltednd';
 	import { autosave, SaveTracker } from '$lib/autosave.svelte.js';
 	import { Button, Callout, Modal } from '$lib/components/index.js';
@@ -381,8 +384,38 @@
 							</span>
 						</a>
 
-						{#if item.kind === 'level' && item.linked}
-							<span class="chip">Geteilt</span>
+						{#if item.kind === 'level'}
+							{@const meta = data.levels[item.levelId]}
+							{#if meta}
+								<span class="meta">
+									{#if meta.problems.length > 0}
+										<span
+											class="chip warn"
+											title={meta.problems.join('\n')}
+											aria-label="{meta.problems.length} {meta.problems.length === 1
+												? 'Problem'
+												: 'Probleme'}: {meta.problems.join('; ')}"
+										>
+											<TriangleAlert size={13} />
+											{meta.problems.length}
+										</span>
+									{/if}
+									{#if meta.energy !== null}
+										<span class="chip" title="Batterie"><Battery size={13} />{meta.energy}</span>
+									{/if}
+									{#if meta.memory !== null}
+										<span class="chip" title="Speicherlimit">
+											<MemoryStick size={13} />{meta.memory}
+										</span>
+									{/if}
+									{#if meta.languageStage !== null}
+										<span class="chip" title="Sprachstufe">Stufe {meta.languageStage}</span>
+									{/if}
+								</span>
+							{/if}
+							{#if item.linked}
+								<span class="chip">Geteilt</span>
+							{/if}
 						{/if}
 
 						<div class="controls" class:is-hidden={!canEdit}>
@@ -770,6 +803,22 @@
 
 	.item-link:hover .item-name {
 		color: var(--accent);
+	}
+
+	.meta {
+		display: flex;
+		align-items: center;
+		gap: 6px;
+		flex-shrink: 0;
+	}
+
+	.meta .chip {
+		gap: 4px;
+	}
+
+	.chip.warn {
+		color: var(--warning);
+		cursor: help;
 	}
 
 	/* A chapter with nothing in it still has to read as somewhere you can drop. */

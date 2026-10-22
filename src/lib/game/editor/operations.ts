@@ -104,11 +104,32 @@ export function setTile(level: Level, coord: Coord, tile: Tile): Level {
         if (current === undefined) return level;
         const tiles = { ...level.tiles };
         delete tiles[key];
-        return { ...level, tiles };
+        return syncReachGoal(level, { ...level, tiles });
     }
 
     if (current && sameTile(current, tile)) return level;
-    return { ...level, tiles: { ...level.tiles, [key]: tile } };
+    return syncReachGoal(level, { ...level, tiles: { ...level.tiles, [key]: tile } });
+}
+
+function hasGoalTile(level: Level): boolean {
+    return Object.values(level.tiles).some((tile) => tile?.kind === 'goal');
+}
+
+/**
+ * Keep `reach_goal` in step with the goal tiles, the way delivery goals
+ * follow the bays: the first goal tile placed adds it, and removing the last
+ * one drops it. Only the transition does anything, so a designer who removes
+ * the goal by hand while a goal tile stands is not overruled on the next edit.
+ */
+function syncReachGoal(before: Level, after: Level): Level {
+    const had = hasGoalTile(before);
+    const has = hasGoalTile(after);
+    if (!had && has) return addGoal(after, { kind: 'reach_goal' });
+    if (had && !has) {
+        const goals = after.goals.filter((goal) => goal.kind !== 'reach_goal');
+        return goals.length === after.goals.length ? after : { ...after, goals };
+    }
+    return after;
 }
 
 export function clearTile(level: Level, coord: Coord): Level {
@@ -827,7 +848,7 @@ export function resize(level: Level, width: number, height: number): Level {
         if (within(parseTileKey(key as TileKey))) tiles[key as TileKey] = tile;
     }
 
-    return {
+    return syncReachGoal(level, {
         ...level,
         width: w,
         height: h,
@@ -848,7 +869,7 @@ export function resize(level: Level, width: number, height: number): Level {
         // A device off the grid goes; one still on it keeps its size, and the
         // part of its zone past the new edge simply watches nothing.
         motionSensors: level.motionSensors.filter((sensor) => within(sensor.position)),
-    };
+    });
 }
 
 /** `reach_goal` and `deliver_all` are level-wide, so adding a second is a no-op. */
