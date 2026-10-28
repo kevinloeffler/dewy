@@ -1627,6 +1627,144 @@ describe('goals', () => {
 });
 
 
+describe('multi bays', () => {
+    const funnel = (capacity: number, color: 'red' | null = 'red'): Tile =>
+        ({ kind: 'drop_off', color, capacity });
+
+    /**
+     * Robot at (1,1) facing east at a red funnel on (2,1), with red crates
+     * lined up south of it at (1,2), (1,3)… to fetch one at a time.
+     */
+    function feeding(capacity: number, crates = capacity, color: 'red' | 'blue' = 'red') {
+        return new GameEngine(makeLevel({
+            width: 3,
+            height: crates + 2,
+            tiles: { '2,1': funnel(capacity) },
+            items: Array.from({ length: crates }, (_, i) => (
+                { kind: 'crate_colour', id: `c${i}`, color, position: { x: 1, y: 2 + i } } as const
+            )),
+        }));
+    }
+
+    /** Fetch the nearest crate from the line south and drop it into the funnel. */
+    function deliverNext(engine: GameEngine): StepOutcome {
+        engine.turnRight();                                      // face south
+        let walked = 0;
+        while (!engine.isCrate()) { engine.moveForward(); walked++; }
+        engine.pick();
+        engine.turnLeft(); engine.turnLeft();                    // face north
+        for (let i = 0; i < walked; i++) engine.moveForward();
+        engine.turnRight();                                      // face east, at the funnel
+        return engine.drop();
+    }
+
+    it('swallows a dropped crate for good', () => {
+        const engine = feeding(2);
+        const outcome = deliverNext(engine);
+
+        expect(outcome.status).toBe('ok');
+        expect(shape(outcome)).toEqual([['drop'], ['crateSwallowed']]);
+        const crate = engine.state.crates[0];
+        expect(crate.swallowed).toBe(true);
+        expect(crate.delivered).toBe(true);
+        // Gone from the world: nothing ahead to sense or pick back up.
+        expect(engine.isCrate()).toBe(false);
+        expect(engine.pick().fumble?.code).toBe('nothing_to_pick');
+    });
+
+    it('counts the crates it has swallowed in its event', () => {
+        const engine = feeding(3);
+        const counts = [deliverNext(engine), deliverNext(engine)].map((outcome) =>
+            outcome.events.flat().find((event) => event.kind === 'crateSwallowed'));
+        expect(counts.map((event) => event?.kind === 'crateSwallowed' && event.count)).toEqual([1, 2]);
+    });
+
+    it('completes once it has swallowed its capacity', () => {
+        const engine = feeding(3);
+        expect(deliverNext(engine).status).toBe('ok');
+        expect(deliverNext(engine).status).toBe('ok');
+        expect(deliverNext(engine).status).toBe('complete');
+    });
+
+    it('defaults to one crate', () => {
+        const engine = feeding(1);
+        expect(deliverNext(engine).status).toBe('complete');
+    });
+
+    it('swallows a pushed crate', () => {
+        const engine = new GameEngine(makeLevel({
+            robot: { position: { x: 2, y: 1 }, facing: 'east' },
+            tiles: { '4,1': funnel(1) },
+            items: [{ kind: 'crate_colour', id: 'c', color: 'red', position: { x: 3, y: 1 } }],
+        }));
+        const outcome = engine.moveForward();
+        expect(shape(outcome)).toEqual([['move', 'push'], ['crateSwallowed'], ['goalReached']]);
+    });
+
+    it('swallows a whole queue of crates off a cargo belt', () => {
+        const engine = new GameEngine(makeLevel({
+            width: 6,
+            height: 3,
+            robot: { position: { x: 0, y: 2 }, facing: 'east' },
+            tiles: { '1,1': cargo('east'), '2,1': cargo('east'), '3,1': cargo('east'), '4,1': funnel(3) },
+            items: [
+                { kind: 'crate_colour', id: 'a', color: 'red', position: { x: 1, y: 1 } },
+                { kind: 'crate_colour', id: 'b', color: 'red', position: { x: 2, y: 1 } },
+                { kind: 'crate_colour', id: 'c', color: 'red', position: { x: 3, y: 1 } },
+            ],
+        }));
+        // One tick sets the belt off; the ride feeds the funnel tile by tile.
+        const outcome = engine.wait();
+        expect(outcome.status).toBe('complete');
+        expect(engine.state.crates.every((crate) => crate.swallowed)).toBe(true);
+        expect(outcome.events.flat().filter((event) => event.kind === 'crateSwallowed')).toHaveLength(3);
+    });
+
+    it('goes on swallowing once full', () => {
+        // `deliver_all` keeps the level open past the bay's own capacity of 1.
+        const level = { ...feeding(1, 2).level, goals: [{ kind: 'deliver_all' } as const] };
+        const engine = new GameEngine(level);
+        expect(deliverNext(engine).status).toBe('ok');
+        expect(deliverNext(engine).status).toBe('complete');
+        expect(engine.state.crates.every((crate) => crate.swallowed)).toBe(true);
+    });
+
+    it('is solid for the robot', () => {
+        const engine = new GameEngine(makeLevel({ tiles: { '2,1': funnel(1) } }));
+        expect(engine.isBlocked()).toBe(true);
+        expect(engine.isDropOff()).toBe(true);
+        expect(engine.moveForward().reason?.code).toBe('multi_bay');
+    });
+
+    it('leaves a crate it does not accept standing in it', () => {
+        const engine = feeding(1, 1, 'blue');
+        const outcome = deliverNext(engine);
+        expect(shape(outcome)).toEqual([['drop']]);
+        expect(engine.state.crates[0].swallowed).toBe(false);
+        expect(engine.isCrate()).toBe(true);
+    });
+
+    it('never swallows a grey crate, even as a plain funnel', () => {
+        const engine = new GameEngine(makeLevel({
+            robot: { position: { x: 2, y: 1 }, facing: 'east' },
+            tiles: { '4,1': funnel(1, null) },
+            items: [{ kind: 'crate_grey', id: 'g', position: { x: 3, y: 1 } }],
+        }));
+        engine.moveForward();
+        expect(engine.state.crates[0].swallowed).toBe(false);
+    });
+
+    it('counts as one bay towards a lowered bay goal', () => {
+        const engine = new GameEngine(makeLevel({
+            robot: { position: { x: 2, y: 1 }, facing: 'east' },
+            tiles: { '4,1': funnel(1), '4,4': funnel(5) },
+            items: [{ kind: 'crate_colour', id: 'c', color: 'red', position: { x: 3, y: 1 } }],
+            goals: [{ kind: 'deliver_bays', color: 'red', count: 1 }],
+        }));
+        expect(engine.moveForward().status).toBe('complete');
+    });
+});
+
 describe('wait', () => {
     it('stands still and costs no energy', () => {
         const engine = new GameEngine(makeLevel());
@@ -1884,6 +2022,37 @@ describe('robot-api', () => {
 // ============================================================
 
 describe('validateLevel', () => {
+    it('asks for a multi bay\'s whole capacity in crates', () => {
+        const level = makeLevel({
+            tiles: { '3,3': { kind: 'drop_off', color: 'red', capacity: 3 } },
+            items: [
+                { kind: 'crate_colour', id: 'a', color: 'red', position: { x: 2, y: 1 } },
+                { kind: 'crate_colour', id: 'b', color: 'red', position: { x: 3, y: 1 } },
+            ],
+        });
+        expect(validateLevel(level).join(' ')).toContain('brauchen 3 Kiste(n)');
+    });
+
+    it('fills the smallest bays first when only some must be filled', () => {
+        const level = makeLevel({
+            tiles: {
+                '3,3': { kind: 'drop_off', color: 'red', capacity: 9 },
+                '4,3': { kind: 'drop_off', color: 'red' },
+            },
+            items: [{ kind: 'crate_colour', id: 'a', color: 'red', position: { x: 2, y: 1 } }],
+            goals: [{ kind: 'deliver_bays', color: 'red', count: 1 }],
+        });
+        expect(validateLevel(level).join(' ')).not.toContain('Abgabestelle');
+    });
+
+    it('flags a robot starting inside a multi bay', () => {
+        const level = makeLevel({
+            tiles: { '1,1': { kind: 'drop_off', color: null, capacity: 1 } },
+            items: [{ kind: 'crate_colour', id: 'a', color: 'red', position: { x: 2, y: 1 } }],
+        });
+        expect(validateLevel(level).join(' ')).toContain('Trichter');
+    });
+
     it('flags bays with too few crates of their colour', () => {
         const problems = validateLevel(makeLevel({
             tiles: { '3,3': { kind: 'drop_off', color: 'red' }, '4,3': { kind: 'drop_off', color: 'red' } },

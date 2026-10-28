@@ -178,8 +178,8 @@ describe('doors and bays', () => {
         level = setTile(level, { x: 2, y: 0 }, { kind: 'drop_off', color: 'red' });
 
         expect(bayGoals(level)).toEqual([
-            { color: 'red', total: 2, count: 2 },
-            { color: null, total: 1, count: 1 },
+            { color: 'red', total: 2, count: 2, crates: 2 },
+            { color: null, total: 1, count: 1, crates: 1 },
         ]);
     });
 
@@ -208,7 +208,7 @@ describe('doors and bays', () => {
     it('clamps an override to the bays that are left', () => {
         let level = setTile(base(), { x: 1, y: 0 }, { kind: 'drop_off', color: 'red' });
         level = { ...level, goals: [{ kind: 'deliver_bays', color: 'red', count: 3 }] };
-        expect(bayGoals(level)).toEqual([{ color: 'red', total: 1, count: 1 }]);
+        expect(bayGoals(level)).toEqual([{ color: 'red', total: 1, count: 1, crates: 1 }]);
     });
 });
 

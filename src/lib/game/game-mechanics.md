@@ -51,7 +51,7 @@ A belt laid out in a ring carries its rider round **one lap** and stops rather
 than running forever.
 
 A belt that carries a crate onto a matching bay delivers it, exactly as a push
-would.
+would — so a cargo belt ending in a multi bay empties into it, crate by crate.
 
 ### Driven belts
 
@@ -126,6 +126,27 @@ several tiles wide.
 - Crates cannot chain-push other crates — a crate behind a crate is effectively a wall
 - The robot can carry at most one crate at a time
 
+### Multi bays
+
+A drop-off bay can be switched to a **multi bay**: a pipe-shaped funnel that
+swallows every crate it accepts, instead of holding one.
+
+- Its **capacity** (1–99, default 1) is how many crates it must swallow to
+  count as *filled*. Above it a counter shows how far along it is, e.g. `2/5`
+- A crate reaches it the same three ways — `drop()`, a push, or a belt — and
+  then sinks out of sight. **Swallowing latches**: the crate is gone, nothing
+  can take it back out, and it stays delivered for good
+- A full multi bay goes on swallowing. The student has no sensor that tells
+  a full bay from one that is not, so refusing the crate would punish a guess
+- What it does not accept — the wrong colour, or any grey crate — simply stands
+  in its mouth and can be picked back up, as on a plain bay
+- It is **solid for the robot**, like a switch: Dewy faces it, never drives in.
+  `isBlocked()` is true in front of one, and `isDropOff()` too
+- For the goals it is still **one bay**: "fill 2 of 3 red bays" counts a multi
+  bay once it has reached its capacity, exactly as it counts a plain bay once a
+  crate rests on it. Only the crate check in validation reads capacities —
+  it asks for the fewest crates that could fill the bays the goal wants
+
 ---
 
 ## Items
@@ -143,7 +164,7 @@ several tiles wide.
 | Motion sensor | A camera hanging from the ceiling over one tile, watching the odd-sized W × D rectangle centred on it (e.g. 3 × 5), its own tile included — robot entering any of those tiles fails the level immediately. It blocks nothing: while switched off, the whole zone is ordinary floor. Only *active* sensors fire; crates are ignored. The zone is marked on the map: **red** while active, **green** while switched off |
 | Pressure plate | Active while a robot or crate stands on it — linked to a door, sensor, or belt |
 | Switch | Flipped via `toggle()` — linked to a door, motion sensor, or belt. The switch tile is solid: the robot faces it, never stands on it |
-| Drop-off bay | Goal tile for cargo — plain bays accept any crate, colour bays accept only the matching colour |
+| Drop-off bay | Goal tile for cargo — plain bays accept any crate, colour bays accept only the matching colour. A multi bay swallows crates up to its capacity (see *Multi bays*) |
 
 ---
 
@@ -163,7 +184,7 @@ A keycard is different — `open()` unlocks a door permanently, whatever its con
 
 - Walking into a wall, world edge, or impassable door
 - Walking into a decoration — the crash names the piece ("Da steht ein Regal im Weg")
-- Walking into a switch tile, or onto a cargo belt
+- Walking into a switch tile or a multi bay, or onto a cargo belt
 - Walking into a crate gap, or into a robot gap while carrying a crate
 - Stepping into a pit
 - Pushing a crate into a wall, pit, robot gap, decoration, or another crate

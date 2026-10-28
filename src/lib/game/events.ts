@@ -49,6 +49,12 @@ export type WorldEvent =
     | { kind: 'crateDelivered'; crateId: string }
     /** A delivered crate pushed or picked back off its bay. */
     | { kind: 'crateUndelivered'; crateId: string }
+    /**
+     * A crate gone into a multi bay — dropped, pushed or belted there. It
+     * sinks out of sight for good; `count` is how many that bay has swallowed
+     * now, this one included, for its counter.
+     */
+    | { kind: 'crateSwallowed'; crateId: string; at: Coord; count: number }
     | { kind: 'bump';        at: Coord; toward: Coord }
     /** `wait()`: nothing moves, the step only holds for a beat. */
     | { kind: 'wait';        at: Coord }

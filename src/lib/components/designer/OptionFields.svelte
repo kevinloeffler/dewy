@@ -3,10 +3,11 @@
 	import { doorIds, targetIds } from '$lib/game/editor/operations';
 	import {
 		brushOptionKeys,
+		clampBayCapacity,
 		type BrushId,
 		type BrushOptions
 	} from '$lib/game/editor/brush';
-	import { linkLabel, type Direction, type Level } from '$lib/game/level';
+	import { linkLabel, MAX_BAY_CAPACITY, type Direction, type Level } from '$lib/game/level';
 	import { SENSOR_SIZES } from '$lib/game/sensors';
 
 	interface Props {
@@ -122,6 +123,35 @@
 					<option value={color}>{CRATE_COLOR_NAMES[color]}</option>
 				{/each}
 			</select>
+		</label>
+	{:else if key === 'bayMulti'}
+		<label class="option check">
+			<input
+				type="checkbox"
+				checked={options.bayMulti}
+				onchange={(event) => onchange({ bayMulti: event.currentTarget.checked })}
+			/>
+			Mehrere Kisten (Trichter)
+		</label>
+		<p class="hint">
+			Ein Trichter schluckt jede passende Kiste. Dewy kann nicht hineinfahren — Kisten werden
+			hineingelegt, -geschoben oder per Band geliefert.
+		</p>
+	{:else if key === 'bayCapacity'}
+		<!-- Committed on change, like the names: typing "12" is one undo step. -->
+		<label class="option">
+			Kisten bis voll
+			<input
+				type="number"
+				min="1"
+				max={MAX_BAY_CAPACITY}
+				value={options.bayCapacity}
+				onchange={(event) => {
+					const capacity = clampBayCapacity(event.currentTarget.valueAsNumber);
+					event.currentTarget.value = String(capacity);
+					onchange({ bayCapacity: capacity });
+				}}
+			/>
 		</label>
 	{:else if key === 'sensorWidth' || key === 'sensorDepth'}
 		<label class="option">
@@ -247,7 +277,8 @@
 	}
 
 	.option select,
-	.option input[type='text'] {
+	.option input[type='text'],
+	.option input[type='number'] {
 		font: inherit;
 		font-family: var(--font-ui);
 		font-size: 13px;

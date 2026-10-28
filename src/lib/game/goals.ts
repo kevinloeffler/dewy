@@ -1,4 +1,4 @@
-import type { GoalCondition, Level } from './level';
+import type { DropOffTile, GoalCondition, Level } from './level';
 import { DELIVERY_COLORS, type CrateColor } from './crate-color';
 
 /**
@@ -10,6 +10,10 @@ import { DELIVERY_COLORS, type CrateColor } from './crate-color';
  * exception rather than the rule is what lets a fourth red bay raise the
  * requirement to four without the designer touching the goal again.
  *
+ * A bay is one bay whatever it holds: a multi bay counts as filled once it
+ * has swallowed its `capacity`, so it is still one of `total`, and the goal
+ * logic never has to know crates from bays.
+ *
  * Pure and framework-free: the engine, the player's goal list, validation
  * and the designer all read goals through here, so they cannot disagree.
  */
@@ -19,30 +23,44 @@ export type BayGoal = {
     color: CrateColor | null;
     /** How many bays of this colour the level has. */
     total: number;
-    /** How many of them must hold a crate — `total` unless overridden. */
+    /** How many of them must be filled — `total` unless overridden. */
     count: number;
+    /**
+     * The fewest crates that fill `count` of them: the smallest capacities
+     * first, so a level is only ever asked for crates it could not do without.
+     */
+    crates: number;
 };
+
+/** How many crates fill this bay: one, or a multi bay's capacity. */
+export function bayCapacity(tile: DropOffTile): number {
+    return tile.capacity ?? 1;
+}
 
 /** Bay colours in palette order, plain bays last — the designer's row order. */
 export const BAY_ORDER: (CrateColor | null)[] = [...DELIVERY_COLORS, null];
 
 /** One entry per colour of bay the level has, including those set to 0. */
 export function bayGoals(level: Level): BayGoal[] {
-    const totals = new Map<CrateColor | null, number>();
+    const capacities = new Map<CrateColor | null, number[]>();
     for (const tile of Object.values(level.tiles)) {
         if (tile?.kind !== 'drop_off') continue;
-        totals.set(tile.color, (totals.get(tile.color) ?? 0) + 1);
+        const list = capacities.get(tile.color) ?? [];
+        list.push(bayCapacity(tile));
+        capacities.set(tile.color, list);
     }
 
     return BAY_ORDER.flatMap((color) => {
-        const total = totals.get(color);
-        if (!total) return [];
+        const sizes = capacities.get(color)?.sort((a, b) => a - b);
+        if (!sizes) return [];
+        const total = sizes.length;
         const override = level.goals.find(
             (goal) => goal.kind === 'deliver_bays' && goal.color === color,
         );
         // Bays deleted under an override leave it pointing past the end.
         const count = override?.kind === 'deliver_bays' ? Math.min(override.count, total) : total;
-        return [{ color, total, count }];
+        const crates = sizes.slice(0, count).reduce((sum, size) => sum + size, 0);
+        return [{ color, total, count, crates }];
     });
 }
 

@@ -21,6 +21,7 @@ export type CrashCode =
     | 'pit'
     | 'cargo_belt'
     | 'switch_blocked'
+    | 'multi_bay'
     | 'robot_gap'
     | 'robot_gap_carrying'
     | 'crate_gap'
@@ -57,6 +58,7 @@ const MESSAGES: Record<CrashCode, string> = {
     pit:             'Das ist ein Loch — Dewy ist hineingefallen!',
     cargo_belt:      'Förderbänder sind nur für Kisten — Dewy kann nicht darauf stehen.',
     switch_blocked:  'Da ist ein Schalter im Weg — betätige ihn, lauf nicht hinein.',
+    multi_bay:       'Da steht ein Trichter im Weg — Kisten gehören hinein, Dewy nicht.',
     robot_gap:       'Diese Lücke hat genau Dewys Form — eine Kiste passt da nicht hindurch.',
     robot_gap_carrying: 'Mit einer Kiste passt Dewy nicht hindurch. Stell die Kiste zuerst ab.',
     crate_gap:       'Diese Lücke ist zu niedrig für Dewy. Vielleicht passt ja etwas anderes hindurch?',
@@ -83,6 +85,7 @@ export const CRASH_REACTIONS: Record<CrashCode, Reaction> = {
     wall:            'collide',
     door_closed:     'collide',
     switch_blocked:  'collide',
+    multi_bay:       'collide',
     robot_gap:       'collide',
     robot_gap_carrying: 'collide',
     crate_gap:       'collide',

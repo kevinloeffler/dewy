@@ -25,8 +25,8 @@
 	const commandDetails: Record<string, Details> = {
 		moveForward: {
 			text: [
-				'Steht eine Kiste vor dem Roboter, schiebt er sie ein Feld weiter — aber nur, wenn das Feld dahinter frei ist. Landet die Kiste dabei auf einer passenden Abgabestelle, ist sie abgeliefert, genau wie mit `drop()`.',
-				'Der Roboter stürzt ab bei einer Wand, einer geschlossenen Türe, einem Loch, dem Rand der Welt, einem Schalter, einem Kistenband oder einer Kisten-Lücke — und bei einer Dewy-Lücke, wenn er eine Kiste trägt.',
+				'Steht eine Kiste vor dem Roboter, schiebt er sie ein Feld weiter — aber nur, wenn das Feld dahinter frei ist. Landet die Kiste dabei auf einer passenden Abgabestelle, ist sie abgeliefert, genau wie mit `drop()`. Ein Trichter schluckt sie.',
+				'Der Roboter stürzt ab bei einer Wand, einer geschlossenen Türe, einem Loch, dem Rand der Welt, einem Schalter, einem Trichter, einem Kistenband oder einer Kisten-Lücke — und bei einer Dewy-Lücke, wenn er eine Kiste trägt.',
 			],
 			example: 'moveForward();\nmoveForward(); // schiebt die Kiste davor weiter',
 		},
@@ -49,6 +49,7 @@
 		drop: {
 			text: [
 				'Ist das Feld davor eine passende Abgabestelle, ist die Kiste abgeliefert. Eine Abgabestelle in einer anderen Farbe ist kein Absturz — die Kiste steht dann einfach dort, und du kannst sie wieder aufheben.',
+				'Ein Trichter ist eine Abgabestelle für viele Kisten: Er schluckt jede passende Kiste, die hineinfällt, geschoben oder vom Band gebracht wird. Die Zahl darüber zeigt, wie viele er schon hat und wie viele er braucht. Eine geschluckte Kiste kommt nicht wieder heraus — und auch ein voller Trichter schluckt weiter.',
 				'Der Roboter stürzt ab, wenn das Feld keine Kiste aufnehmen kann: eine andere Kiste, eine Wand, eine geschlossene Türe, ein Loch, ein Schalter, eine Dewy-Lücke oder der Rand der Welt. Eine Kisten-Lücke geht.',
 			],
 			example: 'pick();\nturnRight();\ndrop();',
@@ -101,7 +102,10 @@
 			example: 'while (!isGoal()) {\n    moveForward();\n}',
 		},
 		isDropOff: {
-			text: ['Sagt nicht, ob die Abgabestelle zur Kiste passt: Eine graue Abgabestelle nimmt jede Kiste, eine farbige nur Kisten in ihrer Farbe.'],
+			text: [
+				'Sagt nicht, ob die Abgabestelle zur Kiste passt: Eine graue Abgabestelle nimmt jede Kiste, eine farbige nur Kisten in ihrer Farbe.',
+				'Auch vor einem Trichter meldet `isDropOff()` true. In einen Trichter fahren kann der Roboter nicht — `isBlocked()` ist dort ebenfalls true.',
+			],
 			values: [
 				{ value: 'true', meaning: 'Das Feld davor ist eine Abgabestelle.' },
 				{ value: 'false', meaning: 'Das Feld davor ist keine.' },

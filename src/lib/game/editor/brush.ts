@@ -1,6 +1,7 @@
 import type { CrateColor } from '$lib/game/crate-color';
 import { canTurn } from '$lib/game/decorations';
 import { turn } from '$lib/game/grid';
+import { MAX_BAY_CAPACITY } from '$lib/game/level';
 import type {
     BeltControl,
     Decoration,
@@ -85,6 +86,10 @@ export type BrushOptions = {
     crateColor: CrateColor;
     /** `null` is a plain bay, which accepts a crate of any colour. */
     bayColor: CrateColor | null;
+    /** A multi bay: a funnel that swallows every crate it accepts. */
+    bayMulti: boolean;
+    /** How many crates fill a multi bay. Kept while `bayMulti` is off, so toggling back restores it. */
+    bayCapacity: number;
     /** The id a door brush paints. Minted, never typed — see `doorName`. */
     doorId: string;
     /** What the author calls the door; empty leaves it unnamed. */
@@ -140,6 +145,8 @@ export function defaultBrushOptions(): BrushOptions {
         facing: 'south',
         crateColor: 'red',
         bayColor: 'red',
+        bayMulti: false,
+        bayCapacity: 1,
         doorId: 'door-1',
         doorName: '',
         keycardDoorId: '',
@@ -243,7 +250,7 @@ export function brushOptionKeys(
         case 'switch':
             return ['switchTargetId', 'initiallyOn'];
         case 'drop_off':
-            return ['bayColor'];
+            return options.bayMulti ? ['bayColor', 'bayMulti', 'bayCapacity'] : ['bayColor', 'bayMulti'];
         case 'crate_colour':
             return ['crateColor'];
         case 'keycard':
@@ -347,7 +354,12 @@ export function tileOptions(tile: Tile, base: BrushOptions = defaultBrushOptions
         case 'switch':
             return { ...base, switchTargetId: tile.targetId, initiallyOn: tile.initiallyOn };
         case 'drop_off':
-            return { ...base, bayColor: tile.color };
+            return {
+                ...base,
+                bayColor: tile.color,
+                bayMulti: tile.capacity !== undefined,
+                bayCapacity: tile.capacity ?? base.bayCapacity,
+            };
         default:
             return base;
     }
@@ -389,6 +401,12 @@ export function sensorOptions(
         sensorInitiallyActive: sensor.initiallyActive,
         sensorName: sensor.name ?? '',
     };
+}
+
+/** A multi bay's capacity as the level can store it: a whole number, 1–99. */
+export function clampBayCapacity(value: number): number {
+    if (!Number.isFinite(value)) return 1;
+    return Math.min(MAX_BAY_CAPACITY, Math.max(1, Math.round(value)));
 }
 
 export function buildBrush(id: BrushId, options: BrushOptions): Brush {
@@ -448,7 +466,14 @@ export function buildBrush(id: BrushId, options: BrushOptions): Brush {
             };
 
         case 'drop_off':
-            return { kind: 'tile', tile: { kind: 'drop_off', color: options.bayColor } };
+            return {
+                kind: 'tile',
+                tile: {
+                    kind: 'drop_off',
+                    color: options.bayColor,
+                    ...(options.bayMulti ? { capacity: clampBayCapacity(options.bayCapacity) } : {}),
+                },
+            };
 
         case 'crate_grey':
             return { kind: 'item', item: { kind: 'crate_grey' } };

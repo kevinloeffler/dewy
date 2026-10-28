@@ -89,6 +89,28 @@ describe('parseLevel', () => {
         if (result.ok) expect(Object.keys(result.level.variants[0].tiles)).toHaveLength(11);
     });
 
+    it('round-trips a multi bay and reads a plain one as holding one crate', () => {
+        const document = withLayout({
+            tiles: {
+                '1,1': { kind: 'drop_off', color: 'red', capacity: 12 },
+                '2,1': { kind: 'drop_off', color: null },
+            },
+        });
+        const result = parseLevel(document);
+        expect(result.ok).toBe(true);
+        if (result.ok) {
+            expect(result.level.variants[0].tiles['1,1']).toEqual({ kind: 'drop_off', color: 'red', capacity: 12 });
+            expect(result.level.variants[0].tiles['2,1']).toEqual({ kind: 'drop_off', color: null });
+        }
+    });
+
+    it('rejects a multi bay capacity outside 1–99', () => {
+        for (const capacity of [0, 100, 2.5, '3']) {
+            const document = withLayout({ tiles: { '1,1': { kind: 'drop_off', color: 'red', capacity } } });
+            expect(parseLevel(document).ok).toBe(false);
+        }
+    });
+
     it('round-trips a driven belt', () => {
         const control = { beltId: 'belt-1', effect: 'reverse', initiallyOn: false };
         const document = withLayout({

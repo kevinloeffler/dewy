@@ -15,7 +15,7 @@ import type {
     Tile,
     TileKey,
 } from '$lib/game/level';
-import { MAX_VARIANTS } from '$lib/game/level';
+import { MAX_BAY_CAPACITY, MAX_VARIANTS } from '$lib/game/level';
 
 /**
  * The trust boundary between the browser and the database.
@@ -145,6 +145,12 @@ function optional<T>(
     return parse(source[key], `${path}.${key}`);
 }
 
+function bayCapacity(value: unknown, path: string): number {
+    const n = positiveInteger(value, path);
+    if (n > MAX_BAY_CAPACITY) throw new ParseError(path, `must be at most ${MAX_BAY_CAPACITY}`);
+    return n;
+}
+
 function nullable<T>(
     value: unknown,
     path: string,
@@ -254,6 +260,9 @@ function tile(value: unknown, path: string): Tile {
             return {
                 kind,
                 color: nullable(field(source, 'color', path), `${path}.color`, crateColor),
+                ...('capacity' in source
+                    ? { capacity: bayCapacity(source.capacity, `${path}.capacity`) }
+                    : {}),
             };
 
         default:

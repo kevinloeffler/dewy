@@ -92,7 +92,8 @@ function sameTile(a: Tile, b: Tile): boolean {
             return a.targetId === (b as typeof a).targetId
                 && a.initiallyOn === (b as typeof a).initiallyOn;
         case 'drop_off':
-            return a.color === (b as typeof a).color;
+            return a.color === (b as typeof a).color
+                && a.capacity === (b as typeof a).capacity;
         default:
             return true;
     }

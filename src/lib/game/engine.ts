@@ -1,22 +1,26 @@
 import type { Coord, Level, TileKey } from './level';
+import { isMultiBay } from './level';
 import type { CrateColor } from './crate-color';
 import type {
     LevelState, BeltState, DoorState, MotionSensorState, GoalConditionState,
 } from './level-state';
 import type { WorldEvent } from './events';
 import { createLevelState } from './level-state';
-import { ahead, coordKey, sameCoord, tileAt, turn } from './grid';
+import { ahead, coordKey, parseTileKey, sameCoord, tileAt, turn } from './grid';
 import { crash, obstacleCrash, type CrashReason } from './crash-reasons';
 import { DECORATION_NAMES } from './decorations';
+import { bayCapacity } from './goals';
 import {
     bayAccepts,
     beltDirection,
     crateAt,
     crateById,
     crateBlockedBy,
+    inWorld,
     keycardAt,
     platePressedAt,
     sensorForbidding,
+    swallowedAt,
     tileBlocksCrate,
     tileBlocksRobot,
     type Blocker,
@@ -265,7 +269,9 @@ export class GameEngine {
         robot.carrying = null;
 
         const tile = tileAt(this.level, target)!;
-        if (tile.kind === 'drop_off' && bayAccepts(tile, crate)) {
+        // A multi bay is left to settle: the crate is dropped into the funnel
+        // and swallowed there, the same way a pushed or belted one is.
+        if (tile.kind === 'drop_off' && !isMultiBay(tile) && bayAccepts(tile, crate)) {
             // Latched here rather than in settle, so the delivery plays as
             // the arc out of the robot's hand instead of a second flourish.
             crate.delivered = true;
@@ -562,8 +568,31 @@ export class GameEngine {
             // level ends the moment the last goal holds, which is what makes
             // the final delivery stick. Hand-drops set the flag in `drop()`
             // so they animate as one arc instead of two flourishes.
+            //
+            // A multi bay swallows what it accepts instead, and that latches:
+            // the crate is gone, so nothing can take it back off again. A
+            // full one goes on swallowing — the student has no sensor that
+            // could tell it is full, so refusing would punish a guess.
             for (const crate of state.crates) {
+                if (crate.swallowed) continue;
                 const tile = tileAt(this.level, crate.position);
+                if (
+                    !crate.carried
+                    && tile?.kind === 'drop_off'
+                    && isMultiBay(tile)
+                    && bayAccepts(tile, crate)
+                ) {
+                    crate.swallowed = true;
+                    crate.delivered = true;
+                    events.push({
+                        kind: 'crateSwallowed',
+                        crateId: crate.id,
+                        at: { ...crate.position },
+                        count: swallowedAt(state, crate.position),
+                    });
+                    changed = true;
+                    continue;
+                }
                 const onBay = !crate.carried && tile?.kind === 'drop_off' && bayAccepts(tile, crate);
                 if (onBay === crate.delivered) continue;
                 crate.delivered = onBay;
@@ -687,8 +716,8 @@ export class GameEngine {
         }
 
         for (const crate of state.crates) {
-            // A carried crate rides in the robot's hands.
-            if (crate.carried) continue;
+            // A carried crate rides in the robot's hands; a swallowed one is gone.
+            if (!inWorld(crate)) continue;
             const belt = beltDirection(this.level, state, crate.position, 'crate');
             if (!belt) continue;
             trail(crateKey(crate.id), crate.position);
@@ -707,7 +736,7 @@ export class GameEngine {
         const occupants = new Map<TileKey, string>();
         occupants.set(coordKey(state.robot.position), ROBOT_KEY);
         for (const crate of state.crates) {
-            if (crate.carried) continue;
+            if (!inWorld(crate)) continue;
             occupants.set(coordKey(crate.position), crateKey(crate.id));
         }
 
@@ -831,15 +860,20 @@ export class GameEngine {
                     .every((crate) => crate.delivered);
 
             case 'deliver_bays': {
-                // `delivered` already means "on a bay that takes it", so only
-                // the bay's colour is left to check.
+                // Counted in bays, not crates: a plain bay is filled while a
+                // crate it takes rests on it — `delivered` already means that —
+                // and a multi bay once it has swallowed its capacity.
                 const { color, count } = goal.condition;
-                const filled = state.crates.filter((crate) => {
-                    if (!crate.delivered) return false;
-                    const tile = tileAt(this.level, crate.position);
-                    return tile?.kind === 'drop_off' && tile.color === color;
-                });
-                return filled.length >= count;
+                let filled = 0;
+                for (const [key, tile] of Object.entries(this.level.tiles)) {
+                    if (tile?.kind !== 'drop_off' || tile.color !== color) continue;
+                    const coord = parseTileKey(key as TileKey);
+                    const full = isMultiBay(tile)
+                        ? swallowedAt(state, coord) >= bayCapacity(tile)
+                        : crateAt(state, coord)?.delivered === true;
+                    if (full) filled++;
+                }
+                return filled >= count;
             }
         }
     }
@@ -885,6 +919,7 @@ function reasonFor(blocker: Blocker): CrashReason {
         case 'robot_gap_carrying': return crash('robot_gap_carrying');
         case 'crate_gap':  return crash('crate_gap');
         case 'switch':     return crash('switch_blocked');
+        case 'multi_bay':  return crash('multi_bay');
         case 'obstacle':   return obstacleCrash(DECORATION_NAMES[blocker.decoration]);
         case 'crate':      return crash('crate_blocked');
     }

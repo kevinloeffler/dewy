@@ -78,9 +78,9 @@ describe('goals per variant', () => {
         );
 
         expect(documentBayGoals(document)).toEqual([
-            { color: 'red', total: 2, count: 2 },
-            { color: 'blue', total: 1, count: 1 },
-            { color: null, total: 1, count: 1 },
+            { color: 'red', total: 2, count: 2, crates: 2 },
+            { color: 'blue', total: 1, count: 1, crates: 1 },
+            { color: null, total: 1, count: 1, crates: 1 },
         ]);
     });
 });

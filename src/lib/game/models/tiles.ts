@@ -1,7 +1,9 @@
 import * as THREE from 'three';
 import type { CargoConveyorTile, ConveyorTile, Coord, Direction, DoorTile, SwitchTile, Tile } from '$lib/game/level';
+import { isMultiBay } from '$lib/game/level';
+import type { CrateColor } from '$lib/game/crate-color';
 import { DIRECTION_DELTA, DIRECTION_YAW } from '$lib/game/grid';
-import { createDropOffBay } from '$lib/game/models/drop-off-bay';
+import { createDropOffBay, createMultiBay } from '$lib/game/models/drop-off-bay';
 import { kitMaterial, type KitMaterialName } from '$lib/game/models/palette';
 import { LONE_WALL, type WallShape } from '$lib/game/partitions';
 
@@ -167,7 +169,7 @@ export const COLORS = {
 export class TileFactory {
     private geometries = new Map<string, THREE.BufferGeometry>();
     private materials = new Map<number, THREE.Material>();
-    /** Groups from `createDropOffBay`, which owns its own resources. */
+    /** Groups from `createDropOffBay` / `createMultiBay`, which own their own resources. */
     private owned: THREE.Object3D[] = [];
 
     /** Warehouse-kit materials, memoised like `materials` and shared the same way. */
@@ -207,6 +209,7 @@ export class TileFactory {
             case 'goal':
                 return this.goal(coord);
             case 'drop_off': {
+                if (isMultiBay(tile)) return this.multiBay(tile.color, coord);
                 const bay = createDropOffBay({ color: tile.color ?? undefined });
                 this.owned.push(bay);
                 return bay;
@@ -513,6 +516,16 @@ export class TileFactory {
         light.name = 'switchLight';
         light.position.set(0.18, 0.1, 0);
         group.add(light);
+        return group;
+    }
+
+    /** The pipe on plain floor — it has no slab of its own. */
+    private multiBay(color: CrateColor | null, coord: Coord) {
+        const group = new THREE.Group();
+        group.add(this.floor(coord));
+        const pipe = createMultiBay({ color: color ?? undefined });
+        this.owned.push(pipe);
+        group.add(pipe);
         return group;
     }
 

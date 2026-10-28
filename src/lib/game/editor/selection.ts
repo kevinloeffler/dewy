@@ -250,7 +250,10 @@ function sameGroup(a: Tile, b: Tile): boolean {
         case 'switch':
             return a.targetId === (b as typeof a).targetId;
         case 'drop_off':
-            return a.color === (b as typeof a).color;
+            // A multi bay is a funnel of its own, never part of a run of bays.
+            return a.color === (b as typeof a).color
+                && a.capacity === undefined
+                && (b as typeof a).capacity === undefined;
         default:
             return true;
     }

@@ -102,7 +102,22 @@ export type GoalTile = { kind: 'goal' };
 export type DropOffTile = {
     kind: 'drop_off';
     color: CrateColor | null;
+    /**
+     * Present only on a **multi bay** — a funnel that swallows every crate it
+     * accepts — and then how many it must swallow to count as filled (1–99).
+     * Absent is a plain bay that holds one crate. Levels written before multi
+     * bays have none, so they read as plain bays without a data migration.
+     */
+    capacity?: number;
 };
+
+/** The most crates a multi bay can be asked to swallow. */
+export const MAX_BAY_CAPACITY = 99;
+
+/** Whether this bay swallows crates rather than holding one. */
+export function isMultiBay(tile: DropOffTile): boolean {
+    return tile.capacity !== undefined;
+}
 
 export type Tile =
     | FloorTile

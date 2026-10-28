@@ -3,7 +3,9 @@ import { type WorldState } from './worldState.svelte'
 import type { Coord, Decoration, Level, TileKey } from './level'
 import type { LevelState } from './level-state'
 import type { EventPlayer, WorldEvent, WorldEventKind } from './events'
-import { coordKey, DIRECTION_YAW, tileAt } from './grid'
+import { coordKey, DIRECTION_YAW, parseTileKey, tileAt } from './grid'
+import { isMultiBay } from './level'
+import { swallowedAt } from './rules'
 import { footprintOf, railConnections } from './decorations'
 import {
     AnimationQueue,
@@ -23,6 +25,7 @@ import { sensorZone } from './sensors'
 import { CELEBRATE_DURATION, createRoboter, REACTION_DURATIONS, type Roboter } from '$lib/game/models/roboter'
 import { createCrate } from '$lib/game/models/crate'
 import { createKeycard } from '$lib/game/models/keycard'
+import { createBayCounter, type BayCounter } from '$lib/game/models/drop-off-bay'
 import {
     createMotionSensor,
     createSensorZoneTile,
@@ -130,6 +133,7 @@ const DURATIONS: Record<WorldEventKind, number> = {
     sensor:      0.30,
     crateDelivered: 0.35,
     crateUndelivered: 0,
+    crateSwallowed: 0.45,
     bump:        0.25,
     wait:        0.30,
     // Unused: a crash or fumble holds for its own reaction's length (REACTION_DURATIONS).
@@ -342,6 +346,8 @@ export class World implements EventPlayer {
     private sensorDevices = new Map<string, MotionSensorModel>()
     /** One entry per conveyor tile, scrolled by `tick` and dimmed by `setBeltState`. */
     private belts: BeltVisual[] = []
+    /** The "2/5" over every multi bay, keyed by its tile. */
+    private bayCounters = new Map<TileKey, { counter: BayCounter; capacity: number }>()
 
     private lastZoom: number
 
@@ -488,7 +494,12 @@ export class World implements EventPlayer {
             } else {
                 mesh.position.set(crate.position.x, 0, crate.position.y)
             }
-            mesh.visible = true
+            mesh.scale.setScalar(1)
+            mesh.visible = !crate.swallowed
+        }
+
+        for (const [key, { counter, capacity }] of this.bayCounters) {
+            counter.set(swallowedAt(state, parseTileKey(key)), capacity)
         }
 
         for (const keycard of state.keycards) {
@@ -668,6 +679,12 @@ export class World implements EventPlayer {
                 } else if (tile.kind === 'pressure_plate') {
                     const pad = object.getObjectByName('platePad')
                     if (pad) this.platePads.set(key, pad)
+                } else if (tile.kind === 'drop_off' && isMultiBay(tile)) {
+                    const counter = createBayCounter()
+                    const capacity = tile.capacity ?? 1
+                    counter.set(0, capacity)
+                    object.add(counter.sprite)
+                    this.bayCounters.set(key, { counter, capacity })
                 } else if (tile.kind === 'conveyor' || tile.kind === 'cargo_conveyor') {
                     const chevrons = object.getObjectByName('beltChevrons')
                     if (chevrons) {
@@ -787,6 +804,8 @@ export class World implements EventPlayer {
         this.platePads.clear()
         this.sensorZones.clear()
         this.sensorDevices.clear()
+        for (const { counter } of this.bayCounters.values()) counter.dispose()
+        this.bayCounters.clear()
         this.belts = []
         this.level = null
         // Measured against the level that is going away — a rail ghost knows
@@ -1310,6 +1329,30 @@ export class World implements EventPlayer {
 
             case 'crateUndelivered':
                 return [instant(() => this.markDelivered(event.crateId, false))]
+
+            case 'crateSwallowed': {
+                // Down the pipe: the crate sinks through the throat and is
+                // gone, and only then does the counter tick over.
+                const mesh = this.crateMeshes.get(event.crateId)
+                const bay = this.bayCounters.get(coordKey(event.at))
+                const count = () => bay?.counter.set(event.count, bay.capacity)
+                if (!mesh) return [instant(count)]
+                const base = mesh.position.y
+                return [tween({
+                    durationSeconds: seconds,
+                    ease: easeInOutCubic,
+                    onUpdate: (t) => {
+                        mesh.position.y = base - t * 0.6
+                        mesh.scale.setScalar(1 - t * 0.3)
+                    },
+                    onDone: () => {
+                        mesh.visible = false
+                        mesh.position.y = base
+                        mesh.scale.setScalar(1)
+                        count()
+                    },
+                })]
+            }
 
             case 'bump': {
                 const at = vec(event.at)

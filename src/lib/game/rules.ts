@@ -1,7 +1,7 @@
 import type { Coord, DecorationKind, Direction, DropOffTile, Level, LevelDocument } from './level';
 import type { CrateState, KeycardState, LevelState } from './level-state';
 import { coordKey, opposite, sameCoord, tileAt } from './grid';
-import { isCrate, linkNames } from './level';
+import { isCrate, isMultiBay, linkNames } from './level';
 import {
     DECORATION_NAMES,
     decorationAt,
@@ -31,10 +31,22 @@ import { hasGoalTile, variantLevels } from './variants';
  *
  * Carried crates are skipped: their `position` deliberately tracks the
  * robot's tile, and `robot.md` promises the robot never shares a tile with
- * a crate. This is the only sanctioned way to look a crate up by position.
+ * a crate. Swallowed crates are skipped too — they keep their multi bay's
+ * tile only so `swallowedAt` can count them. This is the only sanctioned way
+ * to look a crate up by position.
  */
 export function crateAt(state: LevelState, coord: Coord): CrateState | null {
-    return state.crates.find((crate) => !crate.carried && sameCoord(crate.position, coord)) ?? null;
+    return state.crates.find((crate) => inWorld(crate) && sameCoord(crate.position, coord)) ?? null;
+}
+
+/** Standing somewhere in the world: neither in the robot's hands nor in a multi bay. */
+export function inWorld(crate: CrateState): boolean {
+    return !crate.carried && !crate.swallowed;
+}
+
+/** How many crates the multi bay at `coord` has swallowed so far. */
+export function swallowedAt(state: LevelState, coord: Coord): number {
+    return state.crates.filter((crate) => crate.swallowed && sameCoord(crate.position, coord)).length;
 }
 
 export function keycardAt(state: LevelState, coord: Coord): KeycardState | null {
@@ -64,6 +76,7 @@ export type Blocker =
     | { kind: 'robot_gap_carrying' }
     | { kind: 'crate_gap' }
     | { kind: 'switch' }
+    | { kind: 'multi_bay' }
     | { kind: 'obstacle'; decoration: DecorationKind }
     | { kind: 'crate'; crateId: string };
 
@@ -90,11 +103,14 @@ export function tileBlocksRobot(level: Level, state: LevelState, coord: Coord): 
         case 'switch':         return { kind: 'switch' };
         case 'cargo_conveyor': return { kind: 'cargo_belt' };
         case 'crate_gap':      return { kind: 'crate_gap' };
+        // A multi bay is a funnel standing on its tile: crates go in, Dewy
+        // faces it the way it faces a switch.
+        case 'drop_off':       return isMultiBay(tile) ? { kind: 'multi_bay' } : null;
         case 'door':           return doorOpen(state, tile.doorId) ? null : { kind: 'door' };
         // The opening is Dewy's own outline, with no room left for the crate
         // in its jaws — otherwise a crate would pass simply by being carried.
         case 'robot_gap':      return state.robot.carrying ? { kind: 'robot_gap_carrying' } : null;
-        // floor, goal, drop_off, pressure_plate, conveyor
+        // floor, goal, pressure_plate, conveyor
         default:               return null;
     }
 }
@@ -355,6 +371,10 @@ function worldProblems(level: Level, checkReachGoal: boolean): string[] {
     if (!tileAt(level, level.robot.position)) {
         problems.push('Der Roboter startet ausserhalb des Rasters');
     }
+    const start = tileAt(level, level.robot.position);
+    if (start?.kind === 'drop_off' && isMultiBay(start)) {
+        problems.push('Der Roboter startet in einem Trichter');
+    }
 
     // A sensor hangs from the ceiling, so what lies beneath it is its own
     // business — a wall, a belt, a crate. Only the grid and the robot's start
@@ -396,7 +416,8 @@ function worldProblems(level: Level, checkReachGoal: boolean): string[] {
     }
 
     // Enough crates for the bays. A colour bay needs its own colour; a plain
-    // bay takes any coloured crate, but only one not already spoken for.
+    // bay takes any coloured crate, but only one not already spoken for. A
+    // multi bay needs its whole capacity — `crates` already adds that up.
     const crates = new Map<CrateColor, number>();
     for (const item of level.items) {
         if (isCrate(item) && item.kind === 'crate_colour') {
@@ -409,14 +430,14 @@ function worldProblems(level: Level, checkReachGoal: boolean): string[] {
     for (const bay of bays) {
         if (bay.color === null) continue;
         const have = crates.get(bay.color) ?? 0;
-        if (have < bay.count) {
-            problems.push(`${bay.count} Abgabestelle(n) in ${CRATE_COLOR_NAMES[bay.color]} sollen beliefert werden, aber im Level gibt es nur ${have} Kiste(n) in ${CRATE_COLOR_NAMES[bay.color]}`);
+        if (have < bay.crates) {
+            problems.push(`${bay.count} Abgabestelle(n) in ${CRATE_COLOR_NAMES[bay.color]} sollen beliefert werden und brauchen ${bay.crates} Kiste(n), aber im Level gibt es nur ${have} Kiste(n) in ${CRATE_COLOR_NAMES[bay.color]}`);
         }
-        spare -= Math.min(have, bay.count);
+        spare -= Math.min(have, bay.crates);
     }
     const plain = bays.find((bay) => bay.color === null);
-    if (plain && plain.count > spare) {
-        problems.push(`${plain.count} neutrale Abgabestelle(n) sollen beliefert werden, aber nur ${spare} farbige Kiste(n) sind dafür übrig`);
+    if (plain && plain.crates > spare) {
+        problems.push(`${plain.count} neutrale Abgabestelle(n) sollen beliefert werden und brauchen ${plain.crates} Kiste(n), aber nur ${spare} farbige Kiste(n) sind dafür übrig`);
     }
 
     return problems;

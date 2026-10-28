@@ -14,12 +14,18 @@ import { effectiveGoals } from './goals';
  * rebuilding the scene from state is always correct.
  *
  * Because of that, never search `crates` by position directly: use
- * `crateAt` from `./rules`, which skips carried crates. `robot.md` promises
+ * `crateAt` from `./rules`, which skips carried and swallowed crates. `robot.md` promises
  * the robot's tile is always just the robot.
  */
 export type CrateState = Crate & {
     delivered: boolean;
     carried: boolean;
+    /**
+     * Gone into a multi bay. Latches: a swallowed crate stays `delivered` for
+     * good, keeps its bay's tile as `position` so the bay can count it, and
+     * is no longer anywhere in the world — `crateAt` skips it.
+     */
+    swallowed: boolean;
 }
 
 // ============================================================
@@ -116,7 +122,8 @@ export type RobotState = {
 
 /**
  * `satisfied` latches for `reach_goal` only. Delivery goals follow the crates,
- * so pushing a crate back off its bay reopens them.
+ * so pushing a crate back off its bay reopens them — except into a multi bay,
+ * where the crates themselves latch.
  */
 export type GoalConditionState = {
     condition: GoalCondition;
@@ -230,6 +237,7 @@ export function createLevelState(level: Level): LevelState {
             position: { ...crate.position },
             delivered: false,
             carried: false,
+            swallowed: false,
         })),
         keycards: level.items.filter(isKeycard).map((keycard) => ({
             ...keycard,
