@@ -17,6 +17,13 @@ import {
     removeGoal,
     removeItemAt,
     resize,
+    resizeDocument,
+    addVariant,
+    removeVariant,
+    replaceVariant,
+    nextVariantId,
+    withSettings,
+    setDocumentBayGoal,
     MAX_SIZE,
     MIN_SIZE,
     rotateSelection,
@@ -33,7 +40,8 @@ import { bayGoals, effectiveGoals } from '$lib/game/goals';
 import { decorationAt } from '../decorations';
 import { selectAt } from './selection';
 import { tileAt } from '../grid';
-import type { Level } from '../level';
+import { MAX_VARIANTS, type Level, type LevelDocument } from '../level';
+import { singleVariant, variantLevel } from '../variants';
 
 const base = () => emptyLevel('test', 'Test');
 
@@ -522,37 +530,144 @@ describe('meta, options and goals', () => {
 
 describe('reach_goal follows the goal tiles', () => {
     const goal = { kind: 'goal' } as const;
+    const doc = () => singleVariant(base());
+    /** `operation` on variant `index`, written back the way the draft writes it. */
+    const edit = (document: LevelDocument, index: number, operation: (level: Level) => Level) =>
+        replaceVariant(document, index, operation(variantLevel(document, index)));
 
     it('adds the goal with the first goal tile, once', () => {
-        let level = setTile(base(), { x: 1, y: 1 }, goal);
-        expect(level.goals).toEqual([{ kind: 'reach_goal' }]);
+        let document = edit(doc(), 0, (level) => setTile(level, { x: 1, y: 1 }, goal));
+        expect(document.goals).toEqual([{ kind: 'reach_goal' }]);
 
-        level = setTile(level, { x: 2, y: 2 }, goal);
-        expect(level.goals).toEqual([{ kind: 'reach_goal' }]);
+        document = edit(document, 0, (level) => setTile(level, { x: 2, y: 2 }, goal));
+        expect(document.goals).toEqual([{ kind: 'reach_goal' }]);
     });
 
     it('drops the goal with the last goal tile, keeping the others', () => {
-        let level = setTile(base(), { x: 1, y: 1 }, goal);
-        level = setTile(level, { x: 2, y: 2 }, goal);
-        level = addGoal(level, { kind: 'deliver_all' });
+        let document = edit(doc(), 0, (level) => setTile(level, { x: 1, y: 1 }, goal));
+        document = edit(document, 0, (level) => setTile(level, { x: 2, y: 2 }, goal));
+        document = { ...document, goals: [...document.goals, { kind: 'deliver_all' }] };
 
-        level = clearTile(level, { x: 1, y: 1 });
-        expect(level.goals).toHaveLength(2);
+        document = edit(document, 0, (level) => clearTile(level, { x: 1, y: 1 }));
+        expect(document.goals).toHaveLength(2);
 
-        level = setTile(level, { x: 2, y: 2 }, { kind: 'wall' });
-        expect(level.goals).toEqual([{ kind: 'deliver_all' }]);
+        document = edit(document, 0, (level) => setTile(level, { x: 2, y: 2 }, { kind: 'wall' }));
+        expect(document.goals).toEqual([{ kind: 'deliver_all' }]);
     });
 
     it('does not re-add a goal removed by hand while a goal tile stands', () => {
-        let level = setTile(base(), { x: 1, y: 1 }, goal);
-        level = removeGoal(level, 0);
-        level = setTile(level, { x: 2, y: 2 }, goal);
-        level = setTile(level, { x: 3, y: 3 }, { kind: 'wall' });
-        expect(level.goals).toEqual([]);
+        let document = edit(doc(), 0, (level) => setTile(level, { x: 1, y: 1 }, goal));
+        document = { ...document, goals: [] };
+        document = edit(document, 0, (level) => setTile(level, { x: 2, y: 2 }, goal));
+        document = edit(document, 0, (level) => setTile(level, { x: 3, y: 3 }, { kind: 'wall' }));
+        expect(document.goals).toEqual([]);
     });
 
     it('drops the goal when a resize cuts off the last goal tile', () => {
-        const level = setTile(base(), { x: 7, y: 7 }, goal);
-        expect(resize(level, 4, 4).goals).toEqual([]);
+        const document = edit(doc(), 0, (level) => setTile(level, { x: 7, y: 7 }, goal));
+        expect(resizeDocument(document, 4, 4).goals).toEqual([]);
+    });
+
+    it('keeps the goal while another variant still has a goal tile', () => {
+        let document = edit(doc(), 0, (level) => setTile(level, { x: 1, y: 1 }, goal));
+        document = addVariant(document, 0);
+
+        document = edit(document, 1, (level) => clearTile(level, { x: 1, y: 1 }));
+        expect(document.goals).toEqual([{ kind: 'reach_goal' }]);
+
+        document = edit(document, 0, (level) => clearTile(level, { x: 1, y: 1 }));
+        expect(document.goals).toEqual([]);
+    });
+
+    it('drops the goal when the last variant with a goal tile is removed', () => {
+        let document = addVariant(doc(), 0);
+        document = edit(document, 1, (level) => setTile(level, { x: 1, y: 1 }, goal));
+        expect(document.goals).toEqual([{ kind: 'reach_goal' }]);
+
+        expect(removeVariant(document, 1).goals).toEqual([]);
+    });
+});
+
+describe('variants', () => {
+    const doc = () => singleVariant(base());
+
+    it('adds a copy of a variant under a fresh id', () => {
+        let document = replaceVariant(doc(), 0, setTile(base(), { x: 1, y: 1 }, { kind: 'wall' }));
+        document = addVariant(document, 0);
+
+        expect(document.variants.map((variant) => variant.id)).toEqual(['v1', 'v2']);
+        expect(document.variants[1].tiles).toEqual({ '1,1': { kind: 'wall' } });
+    });
+
+    it('stops adding at MAX_VARIANTS', () => {
+        let document = doc();
+        for (let i = 0; i < MAX_VARIANTS + 3; i++) document = addVariant(document, 0);
+        expect(document.variants).toHaveLength(MAX_VARIANTS);
+        expect(addVariant(document, 0)).toBe(document);
+    });
+
+    it('reuses the lowest free id', () => {
+        let document = addVariant(addVariant(doc(), 0), 0);
+        document = removeVariant(document, 1);
+        expect(nextVariantId(document)).toBe('v2');
+        expect(addVariant(document, 0).variants.map((variant) => variant.id)).toEqual(['v1', 'v3', 'v2']);
+    });
+
+    it('never removes the last variant', () => {
+        const document = doc();
+        expect(removeVariant(document, 0)).toBe(document);
+        expect(removeVariant(addVariant(document, 0), 7).variants).toHaveLength(2);
+    });
+
+    it('returns the same document when a layout did not change', () => {
+        const document = doc();
+        expect(replaceVariant(document, 0, variantLevel(document, 0))).toBe(document);
+    });
+
+    it('writes only settings that changed', () => {
+        const document = doc();
+        expect(withSettings(document, { name: document.name })).toBe(document);
+
+        const renamed = withSettings(document, { name: 'Neu' });
+        expect(renamed.name).toBe('Neu');
+        expect(renamed.variants).toBe(document.variants);
+        expect(renamed.goals).toBe(document.goals);
+    });
+
+    it('resizes every variant at once', () => {
+        let document = replaceVariant(doc(), 0, setTile(base(), { x: 6, y: 6 }, { kind: 'wall' }));
+        document = addVariant(document, 0);
+        document = replaceVariant(document, 1, setRobot(variantLevel(document, 1), { x: 7, y: 7 }, 'north'));
+
+        const small = resizeDocument(document, 4, 5);
+        expect([small.width, small.height]).toEqual([4, 5]);
+        expect(small.variants[0].tiles).toEqual({});
+        expect(small.variants[1].robot.position).toEqual({ x: 3, y: 4 });
+        expect(resizeDocument(small, 4, 5)).toBe(small);
+    });
+
+    it('measures a bay override against the variant with the most bays', () => {
+        const bay = { kind: 'drop_off', color: 'red' } as const;
+        let document = replaceVariant(doc(), 0, setTile(base(), { x: 1, y: 1 }, bay));
+        document = addVariant(document, 0);
+        document = replaceVariant(
+            document,
+            1,
+            setTile(setTile(variantLevel(document, 1), { x: 2, y: 2 }, bay), { x: 3, y: 3 }, bay),
+        );
+
+        // Two of the three bays variant 2 has. Variant 1 has only one, so it
+        // still asks for one — the override clamps per variant.
+        document = setDocumentBayGoal(document, 'red', 2);
+        expect(document.goals).toEqual([{ kind: 'deliver_bays', color: 'red', count: 2 }]);
+        expect(effectiveGoals(variantLevel(document, 0))).toEqual([
+            { kind: 'deliver_bays', color: 'red', count: 1 },
+        ]);
+        expect(effectiveGoals(variantLevel(document, 1))).toEqual([
+            { kind: 'deliver_bays', color: 'red', count: 2 },
+        ]);
+
+        // All three is no override at all.
+        expect(setDocumentBayGoal(document, 'red', 3).goals).toEqual([]);
     });
 });

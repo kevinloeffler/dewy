@@ -18,7 +18,9 @@ export { default as Select }      from './Select.svelte';
 export { default as StatusDot }   from './StatusDot.svelte';
 export { default as StudentRoster } from './StudentRoster.svelte';
 export { default as Topbar }      from './Topbar.svelte';
+export { default as VariantChips } from './VariantChips.svelte';
 
 export type { LogEntry, LogKind } from './Console.svelte';
 export type { Credential } from './CredentialsSheet.svelte';
 export type { SelectOption } from './Select.svelte';
+export type { VariantOutcome } from './VariantChips.svelte';

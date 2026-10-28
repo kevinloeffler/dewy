@@ -18,7 +18,7 @@ import { parseLevel } from '$lib/game/editor/parse';
 import { reindex, transfer } from '$lib/ordering';
 import { Forbidden, type Actor } from '$lib/server/users';
 import { isStaff, roleOf } from '$lib/roles';
-import type { Level } from '$lib/game/level';
+import type { LevelDocument } from '$lib/game/level';
 import introBody from './starter/einfuehrung.md?raw';
 
 /**
@@ -98,7 +98,7 @@ export type ItemContext = {
 	stage: { id: string; title: string };
 	item: StageItemView;
 	/** Parsed from the blob for a level item; `null` for theory. */
-	level: Level | null;
+	level: LevelDocument | null;
 	prevItemId: string | null;
 	nextItemId: string | null;
 	/** 1-based across the whole course. */
@@ -1094,7 +1094,7 @@ export async function findItem(courseId: string, itemId: string): Promise<ItemCo
 
 	const { item, stage: owningStage } = flat[index];
 
-	let level: Level | null = null;
+	let level: LevelDocument | null = null;
 	if (item.kind === 'level') {
 		const [row] = await db
 			.select({ data: levelTable.data })

@@ -8,19 +8,21 @@ import type {
     GoalCondition,
     Item,
     LanguageStage,
-    Level,
+    LevelDocument,
     LevelOptions,
+    LevelVariant,
     MotionSensor,
     Tile,
     TileKey,
 } from '$lib/game/level';
+import { MAX_VARIANTS } from '$lib/game/level';
 
 /**
  * The trust boundary between the browser and the database.
  *
- * A `Level` is a compile-time type, so anything arriving as JSON — a form
- * action's payload, a pasted file — is `unknown` until it has been walked.
- * This walks it.
+ * A `LevelDocument` is a compile-time type, so anything arriving as JSON — a
+ * form action's payload, a pasted file — is `unknown` until it has been
+ * walked. This walks it: the shared settings, then every variant's layout.
  *
  * Two rules matter more than the rest:
  *
@@ -36,7 +38,7 @@ import type {
  */
 
 export type ParseResult =
-    | { ok: true; level: Level }
+    | { ok: true; level: LevelDocument }
     | { ok: false; errors: string[] };
 
 class ParseError extends Error {
@@ -47,7 +49,7 @@ class ParseError extends Error {
 
 export function parseLevel(value: unknown): ParseResult {
     try {
-        return { ok: true, level: level(value, 'level') };
+        return { ok: true, level: levelDocument(value, 'level') };
     } catch (error) {
         if (error instanceof ParseError) return { ok: false, errors: [error.message] };
         throw error;
@@ -379,30 +381,13 @@ function goal(value: unknown, path: string): GoalCondition {
     }
 }
 
-function level(value: unknown, path: string): Level {
+function variant(value: unknown, path: string): LevelVariant {
     const source = object(value, path);
 
     const robotSource = object(field(source, 'robot', path), `${path}.robot`);
 
     return {
         id: string(field(source, 'id', path), `${path}.id`),
-        name: string(field(source, 'name', path), `${path}.name`),
-        description: nullable(
-            field(source, 'description', path),
-            `${path}.description`,
-            string,
-        ),
-        // Tolerant read, like `decorations`: a level stored before
-        // instructions existed has no key and means none.
-        instructions: optional(
-            source,
-            'instructions',
-            path,
-            (value, at) => nullable(value, at, string),
-            null,
-        ),
-        width: positiveInteger(field(source, 'width', path), `${path}.width`),
-        height: positiveInteger(field(source, 'height', path), `${path}.height`),
         tiles: tiles(field(source, 'tiles', path), `${path}.tiles`),
         items: array(field(source, 'items', path), `${path}.items`).map(
             (entry, i) => item(entry, `${path}.items[${i}]`),
@@ -430,9 +415,51 @@ function level(value: unknown, path: string): Level {
                 `${path}.robot.facing`,
             ),
         },
+    };
+}
+
+function variants(value: unknown, path: string): LevelVariant[] {
+    const entries = array(value, path);
+    if (entries.length < 1) throw new ParseError(path, 'must hold at least one variant');
+    if (entries.length > MAX_VARIANTS) {
+        throw new ParseError(path, `must hold at most ${MAX_VARIANTS} variants`);
+    }
+
+    const parsed = entries.map((entry, i) => variant(entry, `${path}[${i}]`));
+    const ids = new Set<string>();
+    for (const [i, entry] of parsed.entries()) {
+        if (ids.has(entry.id)) throw new ParseError(`${path}[${i}].id`, `repeats "${entry.id}"`);
+        ids.add(entry.id);
+    }
+    return parsed;
+}
+
+function levelDocument(value: unknown, path: string): LevelDocument {
+    const source = object(value, path);
+
+    return {
+        id: string(field(source, 'id', path), `${path}.id`),
+        name: string(field(source, 'name', path), `${path}.name`),
+        description: nullable(
+            field(source, 'description', path),
+            `${path}.description`,
+            string,
+        ),
+        // Tolerant read, like `decorations`: a level stored before
+        // instructions existed has no key and means none.
+        instructions: optional(
+            source,
+            'instructions',
+            path,
+            (value, at) => nullable(value, at, string),
+            null,
+        ),
+        width: positiveInteger(field(source, 'width', path), `${path}.width`),
+        height: positiveInteger(field(source, 'height', path), `${path}.height`),
         options: options(field(source, 'options', path), `${path}.options`),
         goals: array(field(source, 'goals', path), `${path}.goals`).map(
             (entry, i) => goal(entry, `${path}.goals[${i}]`),
         ),
+        variants: variants(field(source, 'variants', path), `${path}.variants`),
     };
 }

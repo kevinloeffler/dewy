@@ -1,10 +1,11 @@
 <script lang="ts">
 	import { untrack } from 'svelte';
-	import { clampSize, MAX_SIZE, MIN_SIZE, resize, setMeta, setOptions } from '$lib/game/editor/operations';
+	import { clampSize, MAX_SIZE, MIN_SIZE, setMeta, setOptions } from '$lib/game/editor/operations';
 	import type { LevelDraft } from '$lib/game/editor/draft.svelte';
 	import type { LanguageStage } from '$lib/game/level';
 	import { decorationTiles } from '$lib/game/decorations';
 	import { inBounds } from '$lib/game/grid';
+	import { variantLevels } from '$lib/game/variants';
 	import { Button, MarkdownEditor, Modal } from '$lib/components/index.js';
 
 	interface Props {
@@ -40,26 +41,30 @@
 	let nextHeight = $derived(clampSize(height));
 	let sizeChanged = $derived(nextWidth !== level.width || nextHeight !== level.height);
 
+	// Counted over every variant: the grid is shared, so a resize crops them all.
 	let wouldDrop = $derived.by(() => {
 		if (!sizeChanged) return 0;
-		const bounds = { ...level, width: nextWidth, height: nextHeight };
-		const tiles = Object.keys(level.tiles).filter((key) => {
-			const [x, y] = key.split(',').map(Number);
-			return !inBounds(bounds, { x, y });
-		}).length;
-		const items = level.items.filter((item) => !inBounds(bounds, item.position)).length;
-		// A piece goes whole: half a shelf hanging off the grid is not a level.
-		const decorations = level.decorations.filter(
-			(decoration) => !decorationTiles(decoration).every((coord) => inBounds(bounds, coord))
-		).length;
-		return tiles + items + decorations;
+		let dropped = 0;
+		for (const variant of variantLevels(draft.document)) {
+			const bounds = { ...variant, width: nextWidth, height: nextHeight };
+			dropped += Object.keys(variant.tiles).filter((key) => {
+				const [x, y] = key.split(',').map(Number);
+				return !inBounds(bounds, { x, y });
+			}).length;
+			dropped += variant.items.filter((item) => !inBounds(bounds, item.position)).length;
+			// A piece goes whole: half a shelf hanging off the grid is not a level.
+			dropped += variant.decorations.filter(
+				(decoration) => !decorationTiles(decoration).every((coord) => inBounds(bounds, coord))
+			).length;
+		}
+		return dropped;
 	});
 
 	let energyOn = $derived(level.options.energy !== null);
 	let memoryOn = $derived(level.options.memory !== null);
 
 	function applySize() {
-		draft.edit((current) => resize(current, nextWidth, nextHeight));
+		draft.resize(nextWidth, nextHeight);
 	}
 
 	// The modal edits a copy and hands it to the draft once, on "Übernehmen" —

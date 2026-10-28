@@ -24,7 +24,7 @@ export type BayGoal = {
 };
 
 /** Bay colours in palette order, plain bays last — the designer's row order. */
-const BAY_ORDER: (CrateColor | null)[] = [...DELIVERY_COLORS, null];
+export const BAY_ORDER: (CrateColor | null)[] = [...DELIVERY_COLORS, null];
 
 /** One entry per colour of bay the level has, including those set to 0. */
 export function bayGoals(level: Level): BayGoal[] {
@@ -49,9 +49,16 @@ export function bayGoals(level: Level): BayGoal[] {
 /**
  * The goals a run is judged against: the stored level-wide goals in their
  * authored order, then one resolved `deliver_bays` per colour still required.
+ * Resolved against this world's tiles, so each variant of a level gets its own.
  */
 export function effectiveGoals(level: Level): GoalCondition[] {
-    const stored = level.goals.filter((goal) => goal.kind !== 'deliver_bays');
+    // `reach_goal` follows the goal tiles the way delivery goals follow the
+    // bays: stored once for the whole level, it only asks something of a
+    // variant that has a goal tile to reach.
+    const reachable = Object.values(level.tiles).some((tile) => tile?.kind === 'goal');
+    const stored = level.goals.filter(
+        (goal) => goal.kind !== 'deliver_bays' && (goal.kind !== 'reach_goal' || reachable),
+    );
     const bays: GoalCondition[] = bayGoals(level)
         .filter((bay) => bay.count > 0)
         .map((bay) => ({ kind: 'deliver_bays', color: bay.color, count: bay.count }));

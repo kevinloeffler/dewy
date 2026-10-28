@@ -3,15 +3,16 @@ import { db } from '$lib/server/db';
 import { course, level as levelTable, stage, stageItem, user } from '$lib/server/db/schema';
 import { emptyLevel } from '$lib/game/editor/operations';
 import { parseLevel } from '$lib/game/editor/parse';
-import { validateLevel } from '$lib/game/rules';
+import { validateDocument } from '$lib/game/rules';
+import { singleVariant } from '$lib/game/variants';
 import { roleOf } from '$lib/roles';
 import type { Actor } from '$lib/server/users';
-import type { LanguageStage, Level } from '$lib/game/level';
+import type { LanguageStage, LevelDocument } from '$lib/game/level';
 
 /**
  * Reading and writing authored levels.
  *
- * Everything that writes goes through `parseLevel` first: `Level` is a
+ * Everything that writes goes through `parseLevel` first: `LevelDocument` is a
  * compile-time type, and the payload arriving from `/designer` is just a JSON
  * string in a form field until something walks it.
  */
@@ -48,7 +49,7 @@ export type LevelOwner = {
 
 /**
  * What a course outline shows beside a level's name: its options, and whether
- * the designer would flag it. `problems` are `validateLevel`'s warnings — or,
+ * the designer would flag it. `problems` are `validateDocument`'s warnings — or,
  * for a row that no longer parses, the parse errors, with the options unknown.
  */
 export type LevelMetadata = {
@@ -65,14 +66,14 @@ export class InvalidLevel extends Error {
 }
 
 /**
- * The `Level` a new row starts from.
+ * The document a new row starts from: one empty variant.
  *
  * Split out of `createLevel` because `courses.ts` builds a level inside a
  * `db.transaction`, and better-sqlite3 transactions are synchronous — nothing
  * in there can `await`.
  */
-export function buildEmptyLevel(id: string, name: string): Level {
-    return emptyLevel(id, name.trim() || 'Level ohne Namen');
+export function buildEmptyLevel(id: string, name: string): LevelDocument {
+    return singleVariant(emptyLevel(id, name.trim() || 'Level ohne Namen'));
 }
 
 /**
@@ -133,7 +134,7 @@ export async function createPlayground(actor: Actor, name: string): Promise<stri
     return id;
 }
 
-export async function findLevel(id: string): Promise<Level | null> {
+export async function findLevel(id: string): Promise<LevelDocument | null> {
     const [row] = await db.select().from(levelTable).where(eq(levelTable.id, id)).limit(1);
     if (!row) return null;
 
@@ -160,7 +161,7 @@ export async function findLevelMetadata(ids: string[]): Promise<Record<string, L
                   languageStage: result.level.options.languageStage,
                   energy: result.level.options.energy,
                   memory: result.level.options.memory,
-                  problems: validateLevel(result.level)
+                  problems: validateDocument(result.level)
               }
             : { languageStage: null, energy: null, memory: null, problems: result.errors };
     }
@@ -188,12 +189,12 @@ export async function findLevelOwner(levelId: string): Promise<LevelOwner | null
 }
 
 /** Overwrites the level at `id`. Throws `InvalidLevel` if the payload is malformed. */
-export async function saveLevel(id: string, value: unknown): Promise<Level> {
+export async function saveLevel(id: string, value: unknown): Promise<LevelDocument> {
     const result = parseLevel(value);
     if (!result.ok) throw new InvalidLevel(result.errors);
 
     // The row id wins — the client must not be able to move a level.
-    const data: Level = { ...result.level, id };
+    const data: LevelDocument = { ...result.level, id };
 
     await db
         .update(levelTable)

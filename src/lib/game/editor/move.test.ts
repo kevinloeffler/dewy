@@ -9,6 +9,7 @@ import {
     type SensorTemplate,
 } from './operations';
 import { createLevelDraft } from './draft.svelte';
+import { singleVariant } from '../variants';
 import { selectAt } from './selection';
 import type { Coord, Level } from '../level';
 
@@ -114,7 +115,7 @@ describe('moveSelection', () => {
 describe('draft gestures', () => {
     it('records a whole drag as a single history entry', () => {
         const start = placeItem(base(), { x: 3, y: 3 }, { kind: 'crate_grey' });
-        const draft = createLevelDraft(start);
+        const draft = createLevelDraft(singleVariant(start));
         const crate = pick(start, { x: 3, y: 3 });
 
         const origin = draft.begin();
@@ -124,19 +125,19 @@ describe('draft gestures', () => {
 
         expect(draft.level.items[0].position).toEqual({ x: 5, y: 3 });
         draft.undo();
-        expect(draft.level).toBe(start);
+        expect(draft.level).toEqual(start);
         expect(draft.canUndo).toBe(false);
     });
 
     it('puts everything back on cancel and records nothing', () => {
         const start = placeItem(base(), { x: 3, y: 3 }, { kind: 'crate_grey' });
-        const draft = createLevelDraft(start);
+        const draft = createLevelDraft(singleVariant(start));
 
         const origin = draft.begin();
         draft.preview(moveSelection(origin, pick(start, { x: 3, y: 3 }), 1, 0)!);
         draft.cancel();
 
-        expect(draft.level).toBe(start);
+        expect(draft.level).toEqual(start);
         expect(draft.canUndo).toBe(false);
     });
 });

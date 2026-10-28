@@ -16,13 +16,14 @@ import {
 import { buildBrush, defaultBrushOptions, sensorOptions } from './brush';
 import { selectAt } from './selection';
 import { parseLevel } from './parse';
+import { singleVariant } from '../variants';
 import { validateLevel } from '../rules';
 import { clampSensorSize, sensorZone } from '../sensors';
 import type { Level } from '../level';
 
 const base = () => emptyLevel('test', 'Test', 8, 8);
 const template: SensorTemplate = { kind: 'sensor', width: 3, depth: 3, initiallyActive: true };
-const roundTrip = (level: Level) => JSON.parse(JSON.stringify(level));
+const roundTrip = (level: unknown) => JSON.parse(JSON.stringify(level));
 
 /** A level with one 3×3 sensor at 4,4 — clear of the robot's corner. */
 const withSensor = () => placeSensor(base(), { x: 4, y: 4 }, template);
@@ -186,24 +187,24 @@ describe('the option controls', () => {
 
 describe('parsing', () => {
     it('round-trips a sensor', () => {
-        const level = withSensor();
-        const result = parseLevel(roundTrip(level));
+        const document = singleVariant(withSensor());
+        const result = parseLevel(roundTrip(document));
         expect(result.ok).toBe(true);
-        if (result.ok) expect(result.level).toEqual(level);
+        if (result.ok) expect(result.level).toEqual(document);
     });
 
     it('rejects an even, zero or missing size', () => {
         for (const patch of [{ width: 2 }, { depth: 0 }, { width: undefined }]) {
-            const level = roundTrip(withSensor());
-            Object.assign(level.motionSensors[0], patch);
-            expect(parseLevel(roundTrip(level)).ok).toBe(false);
+            const document = roundTrip(singleVariant(withSensor()));
+            Object.assign(document.variants[0].motionSensors[0], patch);
+            expect(parseLevel(roundTrip(document)).ok).toBe(false);
         }
     });
 
     it('rejects the old forbiddenTiles shape', () => {
-        const level = roundTrip(base());
-        level.motionSensors = [{ sensorId: 's', forbiddenTiles: [], initiallyActive: true }];
-        expect(parseLevel(level).ok).toBe(false);
+        const document = roundTrip(singleVariant(base()));
+        document.variants[0].motionSensors = [{ sensorId: 's', forbiddenTiles: [], initiallyActive: true }];
+        expect(parseLevel(document).ok).toBe(false);
     });
 });
 

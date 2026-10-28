@@ -322,7 +322,13 @@ export type GoalCondition =
 // ============================================================
 
 /**
- * Immutable, serializable level definition — this is what the database stores.
+ * Immutable, serializable definition of one playable world — what the engine,
+ * the renderer and every editor operation take.
+ *
+ * The database stores a `LevelDocument` instead: these same settings plus up
+ * to `MAX_VARIANTS` layouts. A `Level` is one of them flattened back in, by
+ * `variantLevel` in `./variants`, so nothing that plays a world needs to know
+ * a level can have more than one.
  *
  * Optional fields are typed `| null` rather than `| undefined` on purpose:
  * `JSON.stringify` drops keys whose value is `undefined`, so a round-trip
@@ -353,4 +359,50 @@ export type Level = {
     robot: RobotConfig;
     options: LevelOptions;
     goals: GoalCondition[];
+};
+
+
+// ============================================================
+// Variants
+//
+// One level, several worlds. The student writes one program and it has to
+// solve every variant, which is what makes counting tiles stop working: a
+// sensor is the only thing that answers the same way in each of them.
+// ============================================================
+
+/** Most variants a level can have — one numbered chip per variant, 1 to 9. */
+export const MAX_VARIANTS = 9;
+
+/** The parts of a `Level` that differ between variants: its layout. */
+export type LayoutKey = 'tiles' | 'items' | 'decorations' | 'motionSensors' | 'robot';
+
+export const LAYOUT_KEYS = [
+    'tiles', 'items', 'decorations', 'motionSensors', 'robot',
+] as const satisfies readonly LayoutKey[];
+
+/** Everything every variant shares: texts, grid size, options and goals. */
+export type LevelSettings = Omit<Level, LayoutKey>;
+
+export type LevelLayout = Pick<Level, LayoutKey>;
+
+/**
+ * One world of a level.
+ *
+ * `id` is stable for the variant's lifetime — the designer keys a variant's
+ * undo history by it, so deleting variant 2 does not hand its history to
+ * variant 3. Ids inside the layout (doors, belts, items) are per variant:
+ * the engine only ever sees one, and a duplicated variant keeps its copy's.
+ */
+export type LevelVariant = LevelLayout & {
+    id: string;
+};
+
+/**
+ * What the database stores: the shared settings plus 1 to `MAX_VARIANTS`
+ * layouts. Goals are stored once, but resolved against each variant's own
+ * tiles — a red bay placed only in variant 1 is a goal only there — and a
+ * level is solved when every variant is.
+ */
+export type LevelDocument = LevelSettings & {
+    variants: LevelVariant[];
 };

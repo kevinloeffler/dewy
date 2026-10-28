@@ -1,7 +1,8 @@
 <script lang="ts">
 	import { CRATE_COLORS, CRATE_COLOR_NAMES } from '$lib/game/crate-color';
-	import { addGoal, removeGoal, setBayGoal } from '$lib/game/editor/operations';
-	import { bayGoals, type BayGoal } from '$lib/game/goals';
+	import { addGoal, removeGoal, setDocumentBayGoal } from '$lib/game/editor/operations';
+	import type { BayGoal } from '$lib/game/goals';
+	import { documentBayGoals } from '$lib/game/variants';
 	import type { LevelDraft } from '$lib/game/editor/draft.svelte';
 	import type { GoalCondition } from '$lib/game/level';
 
@@ -13,7 +14,8 @@
 
 
 	let level = $derived(draft.level);
-	let bays = $derived(bayGoals(level));
+	// Every colour any variant has: the goals are shared, so this list is too.
+	let bays = $derived(documentBayGoals(draft.document));
 	/** Level-wide goals only; per-colour bay goals have their own rows below. */
 	let stored = $derived(
 		level.goals.flatMap((goal, index) => (goal.kind === 'deliver_bays' ? [] : [{ goal, index }])),
@@ -37,7 +39,7 @@
 	}
 
 	function step(bay: BayGoal, delta: number) {
-		draft.edit((current) => setBayGoal(current, bay.color, bay.count + delta));
+		draft.editDocument((current) => setDocumentBayGoal(current, bay.color, bay.count + delta));
 	}
 </script>
 

@@ -15,6 +15,7 @@ import {
 } from './brush';
 import { applyBrush, emptyLevel, setTile } from './operations';
 import { parseLevel } from './parse';
+import { singleVariant } from '../variants';
 import { validateLevel } from '../rules';
 import { linkLabel } from '../level';
 
@@ -47,7 +48,7 @@ describe('buildBrush', () => {
             const brush = buildBrush(id, options);
             const level = applyBrush(emptyLevel('x', 'X'), brush, { x: 1, y: 1 });
 
-            const result = parseLevel(JSON.parse(JSON.stringify(level)));
+            const result = parseLevel(JSON.parse(JSON.stringify(singleVariant(level))));
             expect(result.ok, `${id} produced an unparseable level`).toBe(true);
         }
     });

@@ -15,8 +15,25 @@ The renderer, the editor and the engine all read it through there.
 the tile it hangs over plus an odd width and depth, and this is the one place that
 turns that into the tiles it watches. Engine, renderer and editor all read it.
 
-`level.ts` is an immutable serializable type definition. This information is stored in the database.
+`level.ts` is an immutable serializable type definition. A `Level` is **one
+playable world**; the database stores a `LevelDocument` — the shared settings
+(texts, size, options, goals) plus 1 to 9 `variants`, each a layout (tiles,
+items, decorations, sensors, robot). `variants.ts` turns one back into the
+other: `variantLevel(document, i)` is the only way a variant becomes playable,
+so the engine, the renderer and every editor operation keep working on a single
+world. Goals are stored once but resolved per world by `effectiveGoals`, so
+each variant asks only for the bays and goal tile it has.
 `level-state.ts` holds the runtime state of the game and is not persisted.
+
+`run.ts` runs a program headless on one world — the same engine and
+interpreter with `nullPlayer` — which is how the player checks the variants
+that are not on screen.
+
+`editor/history.ts` is the designer's undo history: one stack per variant plus
+one for the shared settings, so nothing is undone out of sight. It is pure;
+`editor/draft.svelte.ts` only keeps the current state in a rune. Document-level
+edits — `syncReachGoal`, `addVariant`, `resizeDocument`, `setDocumentBayGoal` —
+live in `editor/operations.ts` beside the per-world ones.
 
 `environment.ts` plans the world around a level — the two backdrop walls and
 what hangs on them, the yard behind them, and the street of facades that ends

@@ -2,7 +2,7 @@
 	import { untrack } from 'svelte';
 	import { beforeNavigate, goto } from '$app/navigation';
 	import { enhance } from '$app/forms';
-	import { Button, Callout, Modal, Panel, Topbar } from '$lib/components/index.js';
+	import { Button, Callout, Modal, Panel, Topbar, VariantChips } from '$lib/components/index.js';
 	import DesignerCanvas from '$lib/components/designer/DesignerCanvas.svelte';
 	import GoalEditor from '$lib/components/designer/GoalEditor.svelte';
 	import LevelInspector from '$lib/components/designer/LevelInspector.svelte';
@@ -25,7 +25,7 @@
 		setSelectionOption
 	} from '$lib/game/editor/operations';
 	import { selectAt } from '$lib/game/editor/selection';
-	import { validateLevel } from '$lib/game/rules';
+	import { validateDocument } from '$lib/game/rules';
 	import type { Coord } from '$lib/game/level';
 	import type { PageServerData } from './$types';
 
@@ -89,7 +89,34 @@
 		draft.edit((level) => deleteSelection(level, doomed));
 	}
 
-	let problems = $derived(validateLevel(draft.level));
+	let problems = $derived(validateDocument(draft.document));
+
+	/**
+	 * Open another variant. The selection is a tile in the old one, so it goes;
+	 * the palette re-arms its ids against the variant now on screen.
+	 */
+	function selectVariant(index: number) {
+		seed = null;
+		draft.select(index);
+		armBrush();
+	}
+
+	function addVariant() {
+		seed = null;
+		draft.addVariant();
+		armBrush();
+	}
+
+	// Removing a variant is not an undo step, so it asks first.
+	let doomedVariant = $state<number | null>(null);
+
+	function removeVariant() {
+		if (doomedVariant === null) return;
+		seed = null;
+		draft.removeVariant(doomedVariant);
+		doomedVariant = null;
+		armBrush();
+	}
 
 	let canvas: ReturnType<typeof DesignerCanvas>;
 
@@ -274,8 +301,8 @@
 				action="?/save"
 				use:enhance={({ formData }) => {
 					// The level lives in a rune, not in form fields — this is
-					// the only place it becomes a payload.
-					const submitted = draft.level;
+					// the only place it becomes a payload. Every variant goes.
+					const submitted = draft.document;
 					formData.set('level', JSON.stringify(submitted));
 					saving = true;
 					saveError = null;
@@ -343,6 +370,13 @@
 				onmove={(coord) => (seed = coord)}
 				editable={canEdit}
 			/>
+			<VariantChips
+				count={draft.document.variants.length}
+				active={draft.activeIndex}
+				onselect={selectVariant}
+				onadd={canEdit ? addVariant : undefined}
+				ondelete={canEdit ? (index) => (doomedVariant = index) : undefined}
+			/>
 			<OptionsSheet
 				level={draft.level}
 				{selected}
@@ -386,6 +420,22 @@
 		<Button variant="ghost" onclick={() => (pendingLeave = null)}>Bleiben</Button>
 		<Button variant="ghost" onclick={() => pendingLeave && leave(pendingLeave)}>Verwerfen</Button>
 		<Button onclick={saveAndLeave}>Speichern und verlassen</Button>
+	{/snippet}
+</Modal>
+
+<Modal
+	open={doomedVariant !== null}
+	title="Variante {(doomedVariant ?? 0) + 1} löschen?"
+	onclose={() => (doomedVariant = null)}
+>
+	<p class="share-note">
+		Die Variante und ihr Verlauf werden gelöscht — das lässt sich nicht rückgängig machen. Die
+		übrigen Varianten rücken nach.
+	</p>
+
+	{#snippet actions()}
+		<Button variant="ghost" onclick={() => (doomedVariant = null)}>Abbrechen</Button>
+		<button class="btn btn-danger" type="button" onclick={removeVariant}>Löschen</button>
 	{/snippet}
 </Modal>
 

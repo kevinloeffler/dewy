@@ -32,11 +32,23 @@ import type {
     GoalCondition,
     Item,
     Level,
+    LevelDocument,
+    LevelLayout,
     LevelOptions,
+    LevelSettings,
+    LevelVariant,
     MotionSensor,
     Tile,
     TileKey,
 } from '$lib/game/level';
+import { MAX_VARIANTS } from '$lib/game/level';
+import {
+    documentBayGoals,
+    hasGoalTile,
+    layoutOf,
+    sameLayout,
+    variantLevel,
+} from '$lib/game/variants';
 
 /**
  * Every edit the designer can make, as pure `(level, …) => Level` functions.
@@ -104,32 +116,11 @@ export function setTile(level: Level, coord: Coord, tile: Tile): Level {
         if (current === undefined) return level;
         const tiles = { ...level.tiles };
         delete tiles[key];
-        return syncReachGoal(level, { ...level, tiles });
+        return { ...level, tiles };
     }
 
     if (current && sameTile(current, tile)) return level;
-    return syncReachGoal(level, { ...level, tiles: { ...level.tiles, [key]: tile } });
-}
-
-function hasGoalTile(level: Level): boolean {
-    return Object.values(level.tiles).some((tile) => tile?.kind === 'goal');
-}
-
-/**
- * Keep `reach_goal` in step with the goal tiles, the way delivery goals
- * follow the bays: the first goal tile placed adds it, and removing the last
- * one drops it. Only the transition does anything, so a designer who removes
- * the goal by hand while a goal tile stands is not overruled on the next edit.
- */
-function syncReachGoal(before: Level, after: Level): Level {
-    const had = hasGoalTile(before);
-    const has = hasGoalTile(after);
-    if (!had && has) return addGoal(after, { kind: 'reach_goal' });
-    if (had && !has) {
-        const goals = after.goals.filter((goal) => goal.kind !== 'reach_goal');
-        return goals.length === after.goals.length ? after : { ...after, goals };
-    }
-    return after;
+    return { ...level, tiles: { ...level.tiles, [key]: tile } };
 }
 
 export function clearTile(level: Level, coord: Coord): Level {
@@ -848,7 +839,7 @@ export function resize(level: Level, width: number, height: number): Level {
         if (within(parseTileKey(key as TileKey))) tiles[key as TileKey] = tile;
     }
 
-    return syncReachGoal(level, {
+    return {
         ...level,
         width: w,
         height: h,
@@ -869,7 +860,7 @@ export function resize(level: Level, width: number, height: number): Level {
         // A device off the grid goes; one still on it keeps its size, and the
         // part of its zone past the new edge simply watches nothing.
         motionSensors: level.motionSensors.filter((sensor) => within(sensor.position)),
-    });
+    };
 }
 
 /** `reach_goal` and `deliver_all` are level-wide, so adding a second is a no-op. */
@@ -885,14 +876,23 @@ export function addGoal(level: Level, goal: GoalCondition): Level {
  */
 export function setBayGoal(level: Level, color: CrateColor | null, count: number): Level {
     const total = bayGoals(level).find((bay) => bay.color === color)?.total ?? 0;
-    const others = level.goals.filter(
+    return { ...level, goals: withBayGoal(level.goals, color, count, total) };
+}
+
+/** `goals` with the override for `color` set to `count`, out of `total` bays. */
+function withBayGoal(
+    goals: GoalCondition[],
+    color: CrateColor | null,
+    count: number,
+    total: number,
+): GoalCondition[] {
+    const others = goals.filter(
         (goal) => goal.kind !== 'deliver_bays' || goal.color !== color,
     );
     const clamped = Math.max(0, Math.min(count, total));
-    const goals: GoalCondition[] = clamped >= total
+    return clamped >= total
         ? others
         : [...others, { kind: 'deliver_bays', color, count: clamped }];
-    return { ...level, goals };
 }
 
 export function removeGoal(level: Level, index: number): Level {
@@ -930,4 +930,128 @@ export function emptyLevel(
         options: { energy: null, memory: null, showInventory: false, languageStage: 5 },
         goals: [],
     };
+}
+
+
+// ============================================================
+// Variants
+//
+// Everything above edits one world. The designer edits a variant by
+// flattening it with `variantLevel`, running one of those operations and
+// writing the result back with `replaceVariant` / `withSettings`; what
+// follows are the edits that are about the stored document itself.
+// ============================================================
+
+/**
+ * Keep `reach_goal` in step with the goal tiles, the way delivery goals
+ * follow the bays: the first goal tile placed in any variant adds it, and
+ * removing the last one from every variant drops it. Only the transition does
+ * anything, so a designer who removes the goal by hand while a goal tile
+ * stands is not overruled on the next edit.
+ *
+ * Asked of the whole document, never of one variant: deleting variant 2's
+ * goal tile must not take the goal away from variant 1.
+ */
+export function syncReachGoal(before: LevelDocument, after: LevelDocument): LevelDocument {
+    const had = before.variants.some(hasGoalTile);
+    const has = after.variants.some(hasGoalTile);
+    if (!had && has) {
+        if (after.goals.some((goal) => goal.kind === 'reach_goal')) return after;
+        return { ...after, goals: [...after.goals, { kind: 'reach_goal' }] };
+    }
+    if (had && !has) {
+        const goals = after.goals.filter((goal) => goal.kind !== 'reach_goal');
+        return goals.length === after.goals.length ? after : { ...after, goals };
+    }
+    return after;
+}
+
+/**
+ * Write a layout into variant `index`, keeping the variant's id. The same
+ * document comes back when nothing changed, as with every operation here.
+ */
+export function replaceVariant(
+    document: LevelDocument,
+    index: number,
+    layout: LevelLayout,
+): LevelDocument {
+    const variant = document.variants[index];
+    if (!variant || sameLayout(variant, layout)) return document;
+    const variants = document.variants.map((entry, i) =>
+        i === index ? { id: entry.id, ...layoutOf(layout) } : entry,
+    );
+    return syncReachGoal(document, { ...document, variants });
+}
+
+/**
+ * Write shared settings onto the document. A field keeps its reference unless
+ * it really changed, so the draft can tell a rename from a layout edit.
+ */
+export function withSettings(
+    document: LevelDocument,
+    patch: Partial<Omit<LevelSettings, 'id' | 'width' | 'height'>>,
+): LevelDocument {
+    const changed = (Object.keys(patch) as (keyof typeof patch)[]).filter(
+        (key) => patch[key] !== undefined && patch[key] !== document[key],
+    );
+    if (changed.length === 0) return document;
+    return { ...document, ...Object.fromEntries(changed.map((key) => [key, patch[key]])) };
+}
+
+/** `v1`, `v2`, … — the lowest one no variant is using. */
+export function nextVariantId(document: LevelDocument): string {
+    const used = new Set(document.variants.map((variant) => variant.id));
+    let n = 1;
+    while (used.has(`v${n}`)) n++;
+    return `v${n}`;
+}
+
+/**
+ * A copy of variant `from`, added at the end. A new variant starts as a copy
+ * because "the same warehouse, with that crate somewhere else" is what a
+ * variant nearly always is. A no-op once the level has `MAX_VARIANTS`.
+ */
+export function addVariant(document: LevelDocument, from: number): LevelDocument {
+    const source = document.variants[from];
+    if (!source || document.variants.length >= MAX_VARIANTS) return document;
+    const copy: LevelVariant = { ...source, id: nextVariantId(document) };
+    return { ...document, variants: [...document.variants, copy] };
+}
+
+/** Drops variant `index`. A level always keeps at least one. */
+export function removeVariant(document: LevelDocument, index: number): LevelDocument {
+    if (document.variants.length <= 1 || !document.variants[index]) return document;
+    const variants = document.variants.filter((_, i) => i !== index);
+    return syncReachGoal(document, { ...document, variants });
+}
+
+/**
+ * `resize` applied to every variant: the grid size is shared, so it can only
+ * change for all of them at once.
+ */
+export function resizeDocument(document: LevelDocument, width: number, height: number): LevelDocument {
+    const w = clampSize(width);
+    const h = clampSize(height);
+    if (w === document.width && h === document.height) return document;
+
+    const variants = document.variants.map((variant, index) => ({
+        id: variant.id,
+        ...layoutOf(resize(variantLevel(document, index), w, h)),
+    }));
+    return syncReachGoal(document, { ...document, width: w, height: h, variants });
+}
+
+/**
+ * `setBayGoal` for the whole level. The override is shared, so it is measured
+ * against the variant with the most bays of that colour; each variant still
+ * clamps it to its own count when it is played.
+ */
+export function setDocumentBayGoal(
+    document: LevelDocument,
+    color: CrateColor | null,
+    count: number,
+): LevelDocument {
+    const total = documentBayGoals(document).find((bay) => bay.color === color)?.total ?? 0;
+    const goals = withBayGoal(document.goals, color, count, total);
+    return { ...document, goals };
 }

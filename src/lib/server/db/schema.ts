@@ -10,7 +10,7 @@ import {
 } from 'drizzle-orm/sqlite-core';
 import { sql } from 'drizzle-orm';
 import { user } from './auth.schema';
-import type { Level } from '$lib/game/level';
+import type { LevelDocument } from '$lib/game/level';
 
 export const task = sqliteTable('task', {
 	id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
@@ -139,7 +139,8 @@ export const stageItem = sqliteTable(
 /**
  * Levels authored in `/designer`.
  *
- * `data` is the whole `Level` object — it is already immutable and
+ * `data` is the whole `LevelDocument` — the shared settings and every
+ * variant's layout. It is already immutable and
  * serializable by design, so there is nothing to gain from shredding it into
  * columns. `name` and `description` are mirrored out of it purely so the
  * level list does not have to parse every blob, and `saveLevel` keeps
@@ -179,7 +180,7 @@ export const level = sqliteTable('level', {
 	ownerId: text('owner_id').references(() => user.id, { onDelete: 'set null' }),
 	name: text('name').notNull(),
 	description: text('description'),
-	data: text('data', { mode: 'json' }).$type<Level>().notNull(),
+	data: text('data', { mode: 'json' }).$type<LevelDocument>().notNull(),
 	createdAt: integer('created_at', { mode: 'timestamp' }).notNull().$defaultFn(() => new Date()),
 	updatedAt: integer('updated_at', { mode: 'timestamp' }).notNull().$defaultFn(() => new Date())
 });

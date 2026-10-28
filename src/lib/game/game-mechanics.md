@@ -192,6 +192,32 @@ crash here would punish something the student had no way to check for.
 
 ---
 
+## Variants
+
+A level can have up to **9 variants**: the same level — name, texts, grid
+size, battery, memory, goals — with a different layout in each. The student
+writes **one** program, and it has to solve every variant. That is what makes
+counting tiles stop working: a program that asks its sensors answers the same
+way in each world, and one that counts does not.
+
+- **Goals are stored once and resolved per variant**, against that variant's
+  own tiles. A red bay placed only in variant 1 is a goal only there; a goal
+  tile placed only in variant 2 makes "reach the goal" a goal only there. A
+  bay-count override is clamped per variant, exactly as it is per level.
+- **A level is solved when every variant is.** Start runs the program on the
+  variant on screen, animated, and on every other variant at once, unseen.
+  Each variant's chip in the world's top-right corner shows ✓ or ✗; the one on
+  screen keeps its mark back until its animation has played out. Solving the
+  visible variant while another fails says so instead of celebrating.
+- **Switching variants never replays.** The chosen variant opens as authored
+  and keeps its mark; Start runs everything again. Editing the code fades the
+  marks, since they belong to the program that ran.
+- A program that does not parse gets no marks — it fails everywhere for the
+  same reason, and the editor already says which.
+- A level with one variant shows no chips and plays exactly as before.
+
+---
+
 ## Optional & Adaptive UI
 
 | Feature | Behaviour |

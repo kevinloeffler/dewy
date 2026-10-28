@@ -5,19 +5,22 @@
 	import { createWorldState } from '$lib/game/worldState.svelte';
 	import { GameEngine } from '$lib/game/engine';
 	import { createRobotApi, type RobotApi } from '$lib/game/robot-api';
-	import { measureMemory, runScript, type RunResult } from '$lib/game/script';
+	import { measureMemory, parseScript, runScript, ScriptError, type RunResult } from '$lib/game/script';
+	import { runHeadless } from '$lib/game/run';
 	import type { CrateColor } from '$lib/game/crate-color';
-	import type { Coord, GoalCondition, Level } from '$lib/game/level';
+	import type { Coord, GoalCondition, Level, LevelDocument } from '$lib/game/level';
+	import { variantLevel } from '$lib/game/variants';
 	import { effectiveGoals } from '$lib/game/goals';
 	import { linksAt } from '$lib/game/editor/selection';
 	import { sameCoord } from '$lib/game/grid';
 	import { CodeMirrorEditor, Kbd, Topbar } from '$lib/components/index.js';
+	import VariantChips, { type VariantOutcome } from '$lib/components/VariantChips.svelte';
 	import RunControls from './RunControls.svelte';
 	import LevelInstructions from './LevelInstructions.svelte';
 	import LevelComplete from './LevelComplete.svelte';
 
 	interface Props {
-		level: Level;
+		level: LevelDocument;
 		/**
 		 * Whose draft this is. Drafts live in `localStorage`, and a school
 		 * computer is shared: keyed by level alone, the next student to sign in
@@ -53,11 +56,17 @@
 	// same component across a param change — `/courses/[id]/items/[itemId]`
 	// stepping to the next item — MUST wrap it in `{#key}`, or the student will
 	// navigate to a new item and keep playing the previous level.
-	const level = untrack(() => props.level);
+	const levelDocument = untrack(() => props.level);
+	/**
+	 * The variant on screen. Every variant shares the settings — name, texts,
+	 * options — so only the world and its goals change with it.
+	 */
+	let visible = $state(0);
+	const level = $derived(variantLevel(levelDocument, visible));
 	/** What the run is judged against — the same list the engine builds. */
-	const goals = effectiveGoals(level);
+	const goals = $derived(effectiveGoals(level));
 	const storageKey = untrack(() =>
-		props.userId ? `dewy:${props.userId}:level:${level.id}:code` : `dewy:level:${level.id}:code`
+		props.userId ? `dewy:${props.userId}:level:${levelDocument.id}:code` : `dewy:level:${levelDocument.id}:code`
 	);
 	const savedCode = untrack(() => props.savedCode);
 
@@ -75,6 +84,25 @@
 	let activeLine = $state<number | null>(null);
 	let running = $state(false);
 	let outcome = $state<RunResult | null>(null);
+	/** Every variant solved by the last run — what "Gelöst" and the sheet wait for. */
+	let solved = $state(false);
+
+	/**
+	 * How the last run went on each variant, for the chips. Each run checks
+	 * every variant headless the moment it starts; the one on screen keeps its
+	 * mark back until its animation has played out, so the chip does not give
+	 * away the ending the student is watching.
+	 */
+	let results = $state<(VariantOutcome | null)[]>(levelDocument.variants.map(() => null));
+	/** The program those results belong to. Once the code changes, they fade. */
+	let resultsCode = $state<string | null>(null);
+	let withheld = $state<number | null>(null);
+	const shownResults = $derived(results.map((result, index) => (index === withheld ? null : result)));
+	const stale = $derived(resultsCode !== null && resultsCode !== code);
+	/** The headless runs of the run under way, so its verdict can wait for them. */
+	let checking: Promise<RunResult[]> | null = null;
+	/** Bumped per run, so a slow check from an earlier run cannot overwrite a newer one. */
+	let checkRun = 0;
 
 	/**
 	 * The one place anything goes wrong out loud — the toast over the editor.
@@ -87,7 +115,7 @@
 	// Only what the UI still reads: the world itself shows the robot's pose.
 	let hud = $state({
 		/** One flag per entry of `goals`, in order. */
-		goals: goals.map(() => false),
+		goals: untrack(() => goals.map(() => false)),
 		steps: 0,
 	});
 
@@ -101,12 +129,19 @@
 
 	onMount(() => {
 		const instance = new World(canvas, view);
-		const game = new GameEngine(level, { energy: level.options.energy });
-
 		world = instance;
+		mount(untrack(() => level));
+		return () => instance.destroy();
+	});
+
+	/** A fresh engine and scene for one variant — on load, and on every switch. */
+	function mount(target: Level) {
+		if (!world) return;
+		const game = new GameEngine(target, { energy: target.options.energy });
+
 		engine = game;
 		robot = synced(
-			createRobotApi(game, instance, {
+			createRobotApi(game, world, {
 				onFumble: (reason) => {
 					notice = {
 						kind: 'warning',
@@ -118,11 +153,51 @@
 
 		// The engine has already settled its derived state, so snapping the
 		// scene from it is enough — no need to animate `initialize()`.
-		instance.loadLevel(level, game.state);
+		world.loadLevel(target, game.state);
 		sync();
+	}
 
-		return () => instance.destroy();
-	});
+	/**
+	 * Open another variant. Whatever was running stops, and the new variant
+	 * starts as authored — it does not replay the last run; Start does that.
+	 * The chips keep their marks, so the student can go straight to a red one.
+	 */
+	async function select(index: number) {
+		if (index === visible || starting) return;
+		playing = false;
+		await reset();
+		visible = index;
+		mount(variantLevel(levelDocument, index));
+	}
+
+	/**
+	 * Start checking every variant headless, for the chips and the verdict.
+	 * A program that does not even parse is reported by the animated run as
+	 * today, with no marks: it would fail everywhere for the same reason.
+	 */
+	function checkVariants(source: string): Promise<RunResult[]> | null {
+		if (levelDocument.variants.length === 1) return null;
+		try {
+			parseScript(source, { stage: level.options.languageStage });
+		} catch (error) {
+			if (!(error instanceof ScriptError)) throw error;
+			results = levelDocument.variants.map(() => null);
+			resultsCode = null;
+			return null;
+		}
+
+		const run = ++checkRun;
+		results = levelDocument.variants.map(() => null);
+		resultsCode = source;
+		withheld = visible;
+		return Promise.all(
+			levelDocument.variants.map(async (_, index) => {
+				const result = await runHeadless(variantLevel(levelDocument, index), source);
+				if (run === checkRun) results[index] = result.status === 'complete' ? 'pass' : 'fail';
+				return result;
+			})
+		);
+	}
 
 	/**
 	 * The tile under the pointer. Over a switch, plate or sensor, the world
@@ -236,6 +311,7 @@
 			starting = false;
 		}
 
+		checking = checkVariants(code);
 		active = execute();
 	}
 
@@ -256,8 +332,11 @@
 		world.reset(engine.state);
 		activeLine = null;
 		outcome = null;
+		solved = false;
 		notice = null;
 		celebrating = false;
+		// A run cut short keeps no secrets: its variant's mark shows now.
+		withheld = null;
 		sync();
 	}
 
@@ -285,20 +364,39 @@
 		active = null;
 
 		sync();
-		report(result);
+		// The verdict is about every variant, so it waits for the headless runs
+		// — long finished, nearly always, by the time an animation is.
+		const all = result.status === 'cancelled' || !checking ? null : await checking;
+		checking = null;
+		withheld = null;
+		report(result, all);
 		outcome = result;
 	}
 
-	/** Settles the UI after a run: the toast or the sheet, the line marker. */
-	function report(result: RunResult) {
+	/**
+	 * Settles the UI after a run: the toast or the sheet, the line marker.
+	 * `all` holds every variant's result, or `null` for a level with only one.
+	 */
+	function report(result: RunResult, all: RunResult[] | null) {
 		switch (result.status) {
-			case 'complete':
+			case 'complete': {
+				// Solving the variant on screen is not solving the level.
+				const missing = all ? all.filter((other) => other.status !== 'complete').length : 0;
+				if (missing > 0) {
+					notice = {
+						kind: 'warning',
+						text: `Variante ${visible + 1} geschafft – ${missing === 1 ? 'eine Variante klappt' : `${missing} Varianten klappen`} noch nicht.`,
+					};
+					break;
+				}
+				solved = true;
 				celebrating = true;
 				// Fires on every completion, not once per mount: recording it is
 				// idempotent, and a student who resets and solves it again should
 				// not silently stop counting.
 				props.oncomplete?.({ code, steps: engine?.state.steps ?? 0 });
 				break;
+			}
 			case 'crash':
 				activeLine = result.line;
 				notice = { kind: 'error', text: result.reason.message };
@@ -354,17 +452,17 @@
 	// ========================================================
 
 	function loadCode(): string {
-		if (!browser) return savedCode ?? starterCode(level);
+		if (!browser) return savedCode ?? starterCode(levelDocument);
 		let draft: string | null = null;
 		try {
 			draft = localStorage.getItem(storageKey);
 		} catch {
 			// Storage blocked: fall through to what the server remembers.
 		}
-		return draft ?? savedCode ?? starterCode(level);
+		return draft ?? savedCode ?? starterCode(levelDocument);
 	}
 
-	function starterCode(target: Level): string {
+	function starterCode(target: LevelDocument): string {
 		const lines = [`// ${target.name}`];
 		if (target.description) lines.push(`// ${target.description}`);
 		lines.push('//', '// Schreib dein Programm hier unten und drück dann auf Start.', '');
@@ -419,7 +517,7 @@
 		{/snippet}
 
 		{#snippet right()}
-			{#if props.solved || outcome?.status === 'complete'}
+			{#if props.solved || solved}
 				<span class="pill is-solved">Gelöst</span>
 			{/if}
 			{@render props.actions?.()}
@@ -475,6 +573,13 @@
 					onpointermove={hover}
 					onpointerleave={() => hover(null)}
 				></canvas>
+				<VariantChips
+					count={levelDocument.variants.length}
+					active={visible}
+					results={shownResults}
+					{stale}
+					onselect={select}
+				/>
 			</div>
 
 			<ul class="goals panel">

@@ -1,4 +1,4 @@
-import type { Coord, DecorationKind, Direction, DropOffTile, Level } from './level';
+import type { Coord, DecorationKind, Direction, DropOffTile, Level, LevelDocument } from './level';
 import type { CrateState, KeycardState, LevelState } from './level-state';
 import { coordKey, opposite, sameCoord, tileAt } from './grid';
 import { isCrate, linkNames } from './level';
@@ -11,6 +11,7 @@ import {
 import { CRATE_COLOR_NAMES, type CrateColor } from './crate-color';
 import { sensorCovers } from './sensors';
 import { bayGoals, effectiveGoals } from './goals';
+import { hasGoalTile, variantLevels } from './variants';
 
 /**
  * Pure predicates over `Level` + `LevelState`.
@@ -218,9 +219,34 @@ export function sensorForbidding(level: Level, state: LevelState, coord: Coord):
  * mistakes a visual editor makes easy to commit.
  */
 export function validateLevel(level: Level): string[] {
+    return worldProblems(level, true);
+}
+
+/**
+ * `validateLevel` for every variant of a stored level. With more than one,
+ * each problem names the variant it was found in.
+ *
+ * "`reach_goal` but no goal tile" is the one check made for the level as a
+ * whole: the goal is stored once and applies wherever a goal tile stands, so
+ * a variant without one is a variant without that goal, not a mistake.
+ */
+export function validateDocument(document: LevelDocument): string[] {
+    const many = document.variants.length > 1;
+    const problems = variantLevels(document).flatMap((level, index) =>
+        worldProblems(level, false).map((problem) => (many ? `Variante ${index + 1}: ${problem}` : problem)),
+    );
+
+    const reach = document.goals.some((goal) => goal.kind === 'reach_goal');
+    if (reach && !document.variants.some(hasGoalTile)) {
+        problems.push('Ziel „reach_goal“, aber das Level hat kein Zielfeld');
+    }
+    return problems;
+}
+
+function worldProblems(level: Level, checkReachGoal: boolean): string[] {
     const problems: string[] = [];
 
-    const hasGoalTile = Object.values(level.tiles).some((tile) => tile?.kind === 'goal');
+    const goalTile = hasGoalTile(level);
     const doorIds = new Set<string>();
     // What a switch or a plate may point at. Three namespaces share one
     // `targetId` field, so a typo is otherwise a control that silently does
@@ -362,7 +388,7 @@ export function validateLevel(level: Level): string[] {
     }
 
     for (const goal of level.goals) {
-        if (goal.kind === 'reach_goal' && !hasGoalTile) {
+        if (checkReachGoal && goal.kind === 'reach_goal' && !goalTile) {
             problems.push('Ziel „reach_goal“, aber das Level hat kein Zielfeld');
         }
     }
