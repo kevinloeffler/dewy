@@ -86,9 +86,17 @@
 
 	// Rebuild the scene whenever the draft changes. `draft.level` is raw state,
 	// so this hands Three.js the real object with no snapshot in between.
+	// Opening another variant plays the world's wave instead of a plain
+	// rebuild, so the switch reads as one; an ordinary edit stays instant.
+	let shownVariant: string | null = null;
 	$effect(() => {
 		const level = draft.level;
-		world?.loadLevel(level, createLevelState(level));
+		const variant = draft.document.variants[draft.activeIndex]?.id ?? null;
+		const switched = shownVariant !== null && variant !== shownVariant;
+		if (!world) return;
+		shownVariant = variant;
+		if (switched) world.transitionTo(level, createLevelState(level));
+		else world.loadLevel(level, createLevelState(level));
 	});
 
 	// The editor overlay outlives `loadLevel`, so the selection is pushed

@@ -134,8 +134,11 @@
 		return () => instance.destroy();
 	});
 
-	/** A fresh engine and scene for one variant — on load, and on every switch. */
-	function mount(target: Level) {
+	/**
+	 * A fresh engine and scene for one variant — on load, and on every switch.
+	 * A switch plays the world's wave, so the student sees the world change.
+	 */
+	function mount(target: Level, switched = false) {
 		if (!world) return;
 		const game = new GameEngine(target, { energy: target.options.energy });
 
@@ -153,7 +156,8 @@
 
 		// The engine has already settled its derived state, so snapping the
 		// scene from it is enough — no need to animate `initialize()`.
-		world.loadLevel(target, game.state);
+		if (switched) world.transitionTo(target, game.state);
+		else world.loadLevel(target, game.state);
 		sync();
 	}
 
@@ -167,7 +171,7 @@
 		playing = false;
 		await reset();
 		visible = index;
-		mount(variantLevel(levelDocument, index));
+		mount(variantLevel(levelDocument, index), true);
 	}
 
 	/**

@@ -8,6 +8,7 @@ import { footprintOf, railConnections } from './decorations'
 import {
     AnimationQueue,
     easeInOutCubic,
+    easeOutBack,
     easeOutCubic,
     hold,
     instant,
@@ -36,6 +37,21 @@ import { buildEnvironment } from '$lib/game/models/environment'
 import { environmentKey, planEnvironment } from './environment'
 import { isGap, wallShape } from './partitions'
 
+
+/**
+ * The variant-switch wave, in seconds: how long one object takes to shrink
+ * away and to pop back up, how far behind the old one the new one starts, and
+ * the delay per tile of distance from the robot — capped so that the wave
+ * crosses any grid in at most `WAVE_SPREAD`.
+ */
+const WAVE_OUT = 0.18
+const WAVE_IN = 0.32
+const WAVE_OVERLAP = 0.14
+const WAVE_STEP = 0.06
+const WAVE_SPREAD = 0.45
+
+/** Never quite zero: a singular matrix upsets the normal matrix and the lighting. */
+const WAVE_MIN_SCALE = 0.001
 
 /**
  * Tug is authored wide and squat — 0.88 across the tracks at scale 1, against
@@ -289,6 +305,14 @@ export class World implements EventPlayer {
      */
     private environmentRoot = new THREE.Group()
     private environmentKey = ''
+    /**
+     * The layout a variant switch is replacing, shrinking away while the new
+     * one pops up — see `transitionTo`. Out of every lookup and every raycast;
+     * disposed as soon as the wave is over.
+     */
+    private outgoingRoot = new THREE.Group()
+    /** The wave under way, ticked by `tick` and never by the run's queue. */
+    private transition: Animation[] = []
     private highlight: THREE.LineSegments | null = null
     /** The brush preview under the pointer, and what it was built from. */
     private ghost: THREE.Object3D | null = null
@@ -326,7 +350,7 @@ export class World implements EventPlayer {
         this.lastZoom = view.zoom
 
         this.scene = new THREE.Scene()
-        this.scene.add(this.tileRoot, this.itemRoot, this.actorRoot, this.editorRoot, this.environmentRoot)
+        this.scene.add(this.tileRoot, this.itemRoot, this.actorRoot, this.editorRoot, this.environmentRoot, this.outgoingRoot)
 
         this.camera = this.createCamera()
         this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true })
@@ -362,6 +386,60 @@ export class World implements EventPlayer {
 
     /** Tear down whatever is rendered and build `level` from scratch. */
     loadLevel(level: Level, state: LevelState) {
+        this.finishTransition()
+        this.build(level, state)
+    }
+
+    /**
+     * `loadLevel` for a switch to another variant of the same level: the old
+     * layout shrinks into the floor and the new one pops up, tile by tile, in
+     * a wave running outward from the robot — so a student sees that the world
+     * changed, not just that a number did. The scenery around the level is
+     * shared by every variant and stays put.
+     *
+     * Purely visual and short. Anything that needs the world settled — a run,
+     * a reset, an edit — finishes it first, and with reduced motion asked for
+     * it is a plain `loadLevel`.
+     */
+    transitionTo(level: Level, state: LevelState) {
+        this.finishTransition()
+        if (!this.level || prefersReducedMotion()) {
+            this.build(level, state)
+            return
+        }
+
+        // The robot is rebuilt rather than kept: `disposeLevel` disposes it,
+        // and the wave starts where it stands anyway.
+        for (const object of [...this.tileRoot.children, ...this.itemRoot.children]) {
+            this.outgoingRoot.add(object)
+        }
+        this.build(level, state)
+
+        const origin = state.robot.position
+        const distance = (object: THREE.Object3D) =>
+            Math.abs(object.position.x - origin.x) + Math.abs(object.position.z - origin.y)
+        const incoming = [...this.tileRoot.children, ...this.itemRoot.children, ...this.actorRoot.children]
+        const outgoing = [...this.outgoingRoot.children]
+        const farthest = Math.max(1, ...incoming.map(distance), ...outgoing.map(distance))
+        // However big the grid, the whole wave crosses it in the same time.
+        const step = Math.min(WAVE_STEP, WAVE_SPREAD / farthest)
+
+        this.transition = [
+            ...outgoing.map((object) => scaleWave(object, distance(object) * step, WAVE_OUT, 1, 0, (t) => t * t)),
+            ...incoming.map((object) =>
+                scaleWave(object, distance(object) * step + WAVE_OVERLAP, WAVE_IN, 0, 1, easeOutBack),
+            ),
+        ]
+    }
+
+    /** Snap a wave under way to its end and drop what it was replacing. */
+    private finishTransition() {
+        for (const animation of this.transition) animation.finish()
+        this.transition = []
+        clearGroup(this.outgoingRoot, this.tiles.shared())
+    }
+
+    private build(level: Level, state: LevelState) {
         this.queue.cancel()
         this.disposeLevel()
         this.level = level
@@ -431,6 +509,7 @@ export class World implements EventPlayer {
      * interpreter parked in a `while` loop — then re-apply a fresh state.
      */
     reset(state: LevelState) {
+        this.finishTransition()
         this.queue.finishAll()
         this.applyState(state)
     }
@@ -454,6 +533,8 @@ export class World implements EventPlayer {
      * successive calls run in order. Resolves when the step is done.
      */
     play(events: WorldEvent[]): Promise<void> {
+        // A run moves the very objects a variant switch is scaling.
+        this.finishTransition()
         // Built lazily: an animation's start values are only known once the
         // preceding step has actually finished.
         return this.queue.play(() => events.flatMap((event) => this.animate(event)))
@@ -484,6 +565,10 @@ export class World implements EventPlayer {
 
         // Ambient motion runs even while paused, so the robot never looks dead.
         this.roboter?.update(delta)
+        if (this.transition.length > 0) {
+            for (const animation of this.transition) animation.update(delta)
+            if (this.transition.every((animation) => animation.done)) this.finishTransition()
+        }
         this.scrollBelts(delta)
 
         this.renderer.render(this.scene, this.camera)
@@ -504,6 +589,7 @@ export class World implements EventPlayer {
         this.scene.remove(this.base)
         disposeObject(this.base)
         clearGroup(this.environmentRoot)
+        this.finishTransition()
         this.disposeLevel()
         this.tiles.dispose()
         this.renderer.dispose()
@@ -1376,3 +1462,37 @@ const lerp = (a: number, b: number, t: number) => a + (b - a) * t
 
 /** Grid coord → scene position. `y` is the row, and becomes Three.js Z. */
 const vec = (c: Coord) => new THREE.Vector3(c.x, 0, c.y)
+
+
+function prefersReducedMotion(): boolean {
+    return typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches
+}
+
+/**
+ * Scale `object` from `from` to `to` times its own scale, starting `delay`
+ * seconds in. Scales about the object's origin, which for every tile, crate
+ * and the robot is the floor in the middle of its tile — so it grows up out
+ * of the floor and shrinks back down into it.
+ */
+function scaleWave(
+    object: THREE.Object3D,
+    delay: number,
+    duration: number,
+    from: number,
+    to: number,
+    ease: (t: number) => number,
+): Animation {
+    const base = object.scale.clone()
+    const apply = (factor: number) =>
+        object.scale.copy(base).multiplyScalar(Math.max(WAVE_MIN_SCALE, factor))
+    apply(from)
+
+    const total = delay + duration
+    return tween({
+        durationSeconds: total,
+        onUpdate: (progress) => {
+            const local = Math.min(Math.max((progress * total - delay) / duration, 0), 1)
+            apply(from + (to - from) * ease(local))
+        },
+    })
+}
