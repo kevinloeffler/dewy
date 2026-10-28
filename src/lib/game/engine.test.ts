@@ -1627,6 +1627,40 @@ describe('goals', () => {
 });
 
 
+describe('wait', () => {
+    it('stands still and costs no energy', () => {
+        const engine = new GameEngine(makeLevel());
+        const outcome = engine.wait();
+
+        expect(outcome.status).toBe('ok');
+        expect(shape(outcome)).toEqual([['wait']]);
+        expect(at(engine)).toEqual({ x: 1, y: 1 });
+        expect(engine.state.robot.facing).toBe('east');
+        expect(engine.state.steps).toBe(0);
+    });
+
+    it('lets a belt carry the robot', () => {
+        const engine = new GameEngine(makeLevel({ tiles: { '1,1': belt('east') } }));
+        expect(shape(engine.wait())).toEqual([['wait'], ['conveyRobot']]);
+        expect(at(engine)).toEqual({ x: 2, y: 1 });
+    });
+
+    it('still works on an empty battery', () => {
+        const engine = new GameEngine(makeLevel(), { energy: 1 });
+        engine.turnLeft();
+        expect(engine.wait().status).toBe('ok');
+        expect(engine.turnLeft().reason?.code).toBe('out_of_energy');
+    });
+
+    it('stops a loop of nothing but waiting', () => {
+        const engine = new GameEngine(makeLevel(), { energy: 10 });
+        let outcome = engine.wait();
+        while (outcome.status === 'ok') outcome = engine.wait();
+        expect(outcome.reason?.code).toBe('runaway');
+        expect(engine.state.commands).toBe(511);
+    });
+});
+
 describe('lifecycle', () => {
     it('refuses to act once the run has ended', () => {
         const engine = new GameEngine(makeLevel({ tiles: { '2,1': { kind: 'wall' } } }));

@@ -50,6 +50,8 @@ export type WorldEvent =
     /** A delivered crate pushed or picked back off its bay. */
     | { kind: 'crateUndelivered'; crateId: string }
     | { kind: 'bump';        at: Coord; toward: Coord }
+    /** `wait()`: nothing moves, the step only holds for a beat. */
+    | { kind: 'wait';        at: Coord }
     /**
      * `sensorId` is set only for a motion-sensor crash — the one that saw
      * Dewy, so the renderer can sound its alarm.

@@ -70,6 +70,13 @@ export const ROBOT_API: readonly RobotApiEntry[] = [
 		info: 'Betätigt den Schalter auf dem Feld davor.',
 		stage: 1,
 	},
+	{
+		label: 'wait',
+		detail: '()',
+		type: 'function',
+		info: 'Bleibt einen Takt stehen. Kostet keine Energie; ein Förderband fährt dabei weiter.',
+		stage: 1,
+	},
 
 	// ── Stage 2 — loops ──────────────────────────────────────────────────
 	{

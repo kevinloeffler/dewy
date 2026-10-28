@@ -45,6 +45,7 @@ export interface RobotActions {
     drop(): Promise<void>;
     open(): Promise<void>;
     toggle(): Promise<void>;
+    wait(): Promise<void>;
 }
 
 export interface RobotSensors {
@@ -91,6 +92,7 @@ export function createRobotApi(engine: GameEngine, player: EventPlayer, options:
         drop:        () => run(engine.drop()),
         open:        () => run(engine.open()),
         toggle:      () => run(engine.toggle()),
+        wait:        () => run(engine.wait()),
 
         isBlocked:   () => engine.isBlocked(),
         isCrate:     () => engine.isCrate(),

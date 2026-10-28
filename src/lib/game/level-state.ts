@@ -144,6 +144,11 @@ export type LevelState = {
     goals: GoalConditionState[];
     /** Commands run, i.e. energy spent. Cleared by reset for free. */
     steps: number;
+    /**
+     * Every command run, free ones (`wait()`) included — what the runaway cap
+     * counts, and what says the world has moved since its reset.
+     */
+    commands: number;
     failed: boolean;
     failReason: string | null;
     completed: boolean;
@@ -241,6 +246,7 @@ export function createLevelState(level: Level): LevelState {
         })),
         goals: effectiveGoals(level).map((condition) => ({ condition, satisfied: false })),
         steps: 0,
+        commands: 0,
         failed: false,
         failReason: null,
         completed: false,

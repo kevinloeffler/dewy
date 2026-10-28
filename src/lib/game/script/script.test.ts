@@ -21,6 +21,7 @@ function stubApi(overrides: Partial<RobotApi> = {}) {
         drop: action('drop'),
         open: action('open'),
         toggle: action('toggle'),
+        wait: action('wait'),
         isBlocked: () => false,
         isCrate: () => false,
         isCarrying: () => false,

@@ -12,6 +12,7 @@ The robot's current tile is always just the robot — it never shares a tile wit
 | `drop()` | Tile ahead |
 | `open()` | Tile ahead |
 | `toggle()` | Tile ahead |
+| `wait()` | — |
 | All sensing functions | Tile ahead |
 
 ---
@@ -50,6 +51,14 @@ Rotate 90° counter-clockwise. Robot stays on its current tile.
 
 ### `turnRight()`
 Rotate 90° clockwise. Robot stays on its current tile.
+
+---
+
+### `wait()`
+Stand still for one tick. Nothing in front of the robot is touched, but the
+world still ticks: standing on a running belt, the robot rides it, exactly as
+after a turn. Unlike every other command it costs **no energy** — only the
+memory of its statement.
 
 ---
 

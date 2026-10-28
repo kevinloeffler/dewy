@@ -468,6 +468,7 @@ const NATIVES: Record<keyof RobotApi, (api: RobotApi) => unknown | Promise<unkno
     drop: (api) => api.drop(),
     open: (api) => api.open(),
     toggle: (api) => api.toggle(),
+    wait: (api) => api.wait(),
 
     isBlocked: (api) => api.isBlocked(),
     isCrate: (api) => api.isCrate(),

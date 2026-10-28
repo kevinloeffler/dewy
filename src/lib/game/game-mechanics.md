@@ -26,7 +26,8 @@
 A belt carries whatever is standing on it **to the end of the belt** — tile
 after tile, until the rider runs off the far end or something stops it. The
 whole ride costs nothing beyond the one command that put the robot on the
-belt in the first place, and `turnLeft()` on a belt is enough to set it off.
+belt in the first place, and `turnLeft()` — or `wait()` — on a belt is enough
+to set it off.
 Sensing does not move belts at all.
 
 The ride is not a teleport: the world ticks once per tile. Doors, plates and
@@ -222,13 +223,15 @@ way in each world, and one that counts does not.
 
 | Feature | Behaviour |
 |---------|-----------|
-| Battery / energy | How many commands the robot can run. One robot command — `moveForward`, `turnLeft`, `turnRight`, `pick`, `drop`, `open`, `toggle` — costs one energy; sensing is free. Running out crashes the robot mid-run |
+| Battery / energy | How many commands the robot can run. One robot command — `moveForward`, `turnLeft`, `turnRight`, `pick`, `drop`, `open`, `toggle` — costs one energy; sensing and `wait` are free. Running out crashes the robot mid-run |
 | Memory | How many statements the program may contain. Blank lines and comments are free, and a block costs one plus its body, so `repeat(4) { moveForward(); }` is 2. Checked before the run — an over-budget program can be typed but not run, which pushes students toward loops and functions |
 | Inventory | Shown automatically when the level contains keycards — not a manual designer toggle |
 
-A level may set either limit, both, or neither. With no energy set, a runaway
-loop still stops at a safety cap of 500 commands — a different message, since
-that is a bug in the program rather than a budget the level chose.
+A level may set either limit, both, or neither. A runaway loop still stops at
+a safety cap of 500 commands beyond the battery (500 in all with no energy set)
+— a different message, since that is a bug in the program rather than a budget
+the level chose. The cap counts `wait()` too, which is what stops a loop of
+nothing but waiting on a battery level.
 
 ---
 

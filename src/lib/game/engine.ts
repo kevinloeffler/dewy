@@ -33,9 +33,10 @@ import {
  */
 
 /**
- * Safety net, not a game rule: how far an *unbudgeted* run may go before we
- * call it a runaway loop. A level that authors `energy` bounds itself, so
- * this only applies when it does not.
+ * Safety net, not a game rule: how many commands past its battery a run may
+ * go before we call it a runaway loop. Without free commands a level that
+ * authors `energy` would bound itself, but `wait()` costs nothing, so the cap
+ * counts every command and sits on top of whatever the battery allows.
  */
 const RUNAWAY_ACTION_CAP = 500;
 
@@ -315,6 +316,18 @@ export class GameEngine {
         return this.finish([[{ kind: 'switch', position: { ...target }, on: lever.on }]]);
     }
 
+    /**
+     * Stand still for one tick. The world still ticks — a robot on a belt
+     * rides it, a plate settles — so it is how a program lets the world move
+     * without turning on the spot. Free: it costs memory, never energy.
+     */
+    wait(): StepOutcome {
+        const halted = this.beginAction(false);
+        if (halted) return halted;
+
+        return this.finish([[{ kind: 'wait', at: { ...this.levelState.robot.position } }]]);
+    }
+
 
     // ========================================================
     // Sensing — synchronous, no mutation, no events, no step cost
@@ -402,17 +415,17 @@ export class GameEngine {
     // The shared postlude
     // ========================================================
 
-    private beginAction(): StepOutcome | null {
+    private beginAction(spendsEnergy = true): StepOutcome | null {
         const state = this.levelState;
         if (state.failed) return { status: 'crash', reason: null, events: [] };
         if (state.completed) return { status: 'complete', reason: null, events: [] };
 
-        state.steps++;
-        if (this.energy !== null) {
-            if (state.steps > this.energy) return this.fail([], crash('out_of_energy'));
-        } else if (state.steps > RUNAWAY_ACTION_CAP) {
-            return this.fail([], crash('runaway'));
+        state.commands++;
+        if (spendsEnergy) {
+            state.steps++;
+            if (this.energy !== null && state.steps > this.energy) return this.fail([], crash('out_of_energy'));
         }
+        if (state.commands > (this.energy ?? 0) + RUNAWAY_ACTION_CAP) return this.fail([], crash('runaway'));
         return null;
     }
 

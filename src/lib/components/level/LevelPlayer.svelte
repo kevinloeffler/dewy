@@ -310,7 +310,7 @@
 
 		try {
 			const state = engine.state;
-			if (state.steps > 0 || state.failed || state.completed) await reset();
+			if (state.commands > 0 || state.failed || state.completed) await reset();
 		} finally {
 			starting = false;
 		}
@@ -421,7 +421,7 @@
 	 * interpreter stays unaware of any of it.
 	 */
 	function synced(api: RobotApi): RobotApi {
-		const actions = ['moveForward', 'turnLeft', 'turnRight', 'pick', 'drop', 'open', 'toggle'] as const;
+		const actions = ['moveForward', 'turnLeft', 'turnRight', 'pick', 'drop', 'open', 'toggle', 'wait'] as const;
 
 		const wrapped = { ...api };
 		for (const name of actions) {

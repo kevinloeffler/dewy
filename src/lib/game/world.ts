@@ -131,6 +131,7 @@ const DURATIONS: Record<WorldEventKind, number> = {
     crateDelivered: 0.35,
     crateUndelivered: 0,
     bump:        0.25,
+    wait:        0.30,
     // Unused: a crash or fumble holds for its own reaction's length (REACTION_DURATIONS).
     crash:       0,
     fumble:      0,
@@ -1342,6 +1343,9 @@ export class World implements EventPlayer {
                 }
                 return animations
             }
+
+            case 'wait':
+                return [hold(seconds)]
 
             case 'fumble':
                 // Same body language as a crash, but the reaction is not
