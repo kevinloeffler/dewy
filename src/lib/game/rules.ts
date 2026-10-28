@@ -387,10 +387,12 @@ function worldProblems(level: Level, checkReachGoal: boolean): string[] {
         problems.push('Das Level hat keine Ziele und lässt sich nicht abschliessen');
     }
 
-    for (const goal of level.goals) {
-        if (checkReachGoal && goal.kind === 'reach_goal' && !goalTile) {
-            problems.push('Ziel „reach_goal“, aber das Level hat kein Zielfeld');
-        }
+    // Not a loop with the flag inside: Rolldown drops the `if` when every
+    // caller passes `false` and leaves a `for` with no body — a syntax error
+    // in the server build that only shows up once deployed.
+    const reachGoal = level.goals.some((goal) => goal.kind === 'reach_goal');
+    if (checkReachGoal && reachGoal && !goalTile) {
+        problems.push('Ziel „reach_goal“, aber das Level hat kein Zielfeld');
     }
 
     // Enough crates for the bays. A colour bay needs its own colour; a plain
