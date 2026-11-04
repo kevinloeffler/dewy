@@ -50,3 +50,7 @@ written counts, not how often it runs, and declaring a name satisfies a name
 rule. A `violated` rule (over a `max`/`eq`) blocks Start; an `unmet` one
 (short of a `min`/`eq`, or a missing name) only blocks completion.
 `constraintProblems` feeds the designer's warnings via `validateDocument`.
+Value rules (`count === 5`) are the one exception: judged on the top-level
+variables as each run ended (`RunOptions.onEnd`), per variant. A level whose
+only task is a value rule has no world goal, so the player counts a run that
+*finishes* with every rule met as solved.

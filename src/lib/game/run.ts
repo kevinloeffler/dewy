@@ -1,7 +1,7 @@
 import { GameEngine } from './engine';
 import { nullPlayer } from './events';
 import { createRobotApi } from './robot-api';
-import { runScript, type RunResult } from './script';
+import { runScript, type RunResult, type ScriptValue } from './script';
 import type { Level } from './level';
 
 /**
@@ -16,10 +16,15 @@ import type { Level } from './level';
  * interpreter yields to the browser as it goes, so even nine of them at once
  * never freeze the tab.
  */
-export function runHeadless(level: Level, code: string): Promise<RunResult> {
+export function runHeadless(
+    level: Level,
+    code: string,
+    onEnd?: (variables: ReadonlyMap<string, ScriptValue>) => void,
+): Promise<RunResult> {
     const engine = new GameEngine(level, { energy: level.options.energy });
     return runScript(code, {
         api: createRobotApi(engine, nullPlayer),
         stage: level.options.languageStage,
+        onEnd,
     });
 }

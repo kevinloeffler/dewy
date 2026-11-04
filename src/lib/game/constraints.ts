@@ -5,7 +5,10 @@ import type {
     CountConstraint,
     LanguageStage,
     LevelSettings,
+    ValueConstraint,
+    ValueOperator,
 } from './level';
+import type { ScriptValue } from './script/interpreter';
 import type { RobotActions, RobotSensors } from './robot-api';
 import type { Block, Expr, Program, Stmt } from './script/ast';
 import { FEATURE_STAGE } from './script/parser';
@@ -22,6 +25,9 @@ import { KEYWORDS } from './script/lexer';
  *    counts once however often the function is called, and code that can
  *    never run counts like any other. Declaring a name is enough to satisfy a
  *    name rule, used or not.
+ *  - **Value rules are the exception**: `count === 5` asks about the run, so
+ *    it is judged on the top-level variables as the run ended, and every
+ *    variant's run must satisfy it. Before a run it is simply not met yet.
  *  - **Going over blocks the run; falling short only blocks completion.** A
  *    program with a forbidden `repeat` is already disqualified, so running it
  *    teaches nothing. A program that does not yet use the required `if` may
@@ -64,6 +70,8 @@ export const CODE_CONSTRUCTS = [
 ] as const satisfies readonly CodeConstruct[];
 
 export const CONSTRAINT_OPERATORS = ['min', 'max', 'eq'] as const;
+
+export const VALUE_OPERATORS = ['===', '!==', '<', '<=', '>', '>='] as const satisfies readonly ValueOperator[];
 
 /** The stage a construct is first legal at, from the parser's own table. */
 const CONSTRUCT_STAGE: Record<CodeConstruct, LanguageStage> = {
@@ -211,10 +219,64 @@ export function countOf(census: CodeCensus, target: ConstraintTarget): number {
  * met by an empty program, so the player never shows it as "done".
  */
 export function isRequirement(constraint: CodeConstraint): boolean {
-    return constraint.kind === 'name' || (constraint.operator !== 'max' && constraint.count > 0);
+    return constraint.kind !== 'count' || (constraint.operator !== 'max' && constraint.count > 0);
 }
 
-export function constraintStatus(constraint: CodeConstraint, census: CodeCensus): ConstraintStatus {
+/** A run's top-level variables as it ended — see `RunOptions.onEnd`. */
+export type RunVariables = ReadonlyMap<string, ScriptValue>;
+
+/**
+ * Whether a value rule holds. Equality is strict, as in the student's own
+ * `===`; an ordering only ever holds between numbers, so `"10" > 5` is false
+ * rather than whatever coercion would make of it. A variable the run never
+ * declared holds nothing.
+ */
+export function valueHolds(constraint: ValueConstraint, variables: RunVariables): boolean {
+    if (!variables.has(constraint.name)) return false;
+    const actual = variables.get(constraint.name);
+    const expected = constraint.value;
+    switch (constraint.operator) {
+        case '===':
+            return actual === expected;
+        case '!==':
+            return actual !== expected;
+    }
+    if (typeof actual !== 'number' || typeof expected !== 'number') return false;
+    switch (constraint.operator) {
+        case '<':
+            return actual < expected;
+        case '<=':
+            return actual <= expected;
+        case '>':
+            return actual > expected;
+        case '>=':
+            return actual >= expected;
+    }
+}
+
+/** Every value rule holds on this run. True when there are none. */
+export function valuesHold(constraints: CodeConstraint[], variables: RunVariables | null): boolean {
+    return constraints.every(
+        (constraint) => constraint.kind !== 'value' || (variables !== null && valueHolds(constraint, variables)),
+    );
+}
+
+export function hasValueRules(constraints: CodeConstraint[]): boolean {
+    return constraints.some((constraint) => constraint.kind === 'value');
+}
+
+/**
+ * `variables` is the last run of this exact program, or `null` when there
+ * has been none — then a value rule is simply not met yet.
+ */
+export function constraintStatus(
+    constraint: CodeConstraint,
+    census: CodeCensus,
+    variables: RunVariables | null = null,
+): ConstraintStatus {
+    if (constraint.kind === 'value') {
+        return variables !== null && valueHolds(constraint, variables) ? 'met' : 'unmet';
+    }
     if (constraint.kind === 'name') {
         const declared = constraint.declaration === 'variable' ? census.variables : census.functions;
         return declared.has(constraint.name) ? 'met' : 'unmet';
@@ -226,11 +288,15 @@ export function constraintStatus(constraint: CodeConstraint, census: CodeCensus)
     return 'met';
 }
 
-export function checkConstraints(constraints: CodeConstraint[], program: Program): ConstraintCheck[] {
+export function checkConstraints(
+    constraints: CodeConstraint[],
+    program: Program,
+    variables: RunVariables | null = null,
+): ConstraintCheck[] {
     const census = censusOf(program);
     return constraints.map((constraint) => ({
         constraint,
-        status: constraintStatus(constraint, census),
+        status: constraintStatus(constraint, census, variables),
         label: constraintMessage(constraint),
     }));
 }
@@ -240,15 +306,24 @@ export function checkConstraints(constraints: CodeConstraint[], program: Program
 // Labels
 // ============================================================
 
-type Wording = { one: string; many: string; none: string };
+/**
+ * `use` follows "Verwende" for a plain requirement, `none` stands alone for
+ * a ban ("Kein `repeat`"), `one` / `many` follow a count.
+ */
+type Wording = { use: string; one: string; many: string; none: string };
 
 const CONSTRUCT_WORDING: Record<CodeConstruct, Wording> = {
-    if: { one: 'ein `if`', many: '`if`', none: 'kein `if`' },
-    else: { one: 'ein `else`', many: '`else`', none: 'kein `else`' },
-    while: { one: 'ein `while`', many: '`while`', none: 'kein `while`' },
-    repeat: { one: 'ein `repeat`', many: '`repeat`', none: 'kein `repeat`' },
-    function: { one: 'eine eigene Funktion', many: 'eigene Funktionen', none: 'keine eigene Funktion' },
-    variable: { one: 'eine Variable', many: 'Variablen', none: 'keine Variable' },
+    if: { use: '`if`', one: 'ein `if`', many: '`if`', none: 'Kein `if`' },
+    else: { use: '`else`', one: 'ein `else`', many: '`else`', none: 'Kein `else`' },
+    while: { use: '`while`', one: 'ein `while`', many: '`while`', none: 'Kein `while`' },
+    repeat: { use: '`repeat`', one: 'ein `repeat`', many: '`repeat`', none: 'Kein `repeat`' },
+    function: {
+        use: 'eine eigene Funktion',
+        one: 'eine eigene Funktion',
+        many: 'eigene Funktionen',
+        none: 'Keine eigene Funktion',
+    },
+    variable: { use: 'eine Variable', one: 'eine Variable', many: 'Variablen', none: 'Keine Variable' },
 };
 
 /** What the designer's picker calls a construct. */
@@ -264,7 +339,7 @@ export const CONSTRUCT_NAME: Record<CodeConstruct, string> = {
 function wording(target: ConstraintTarget): Wording {
     if (target.kind === 'construct') return CONSTRUCT_WORDING[target.construct];
     const call = `\`${target.name}()\``;
-    return { one: call, many: call, none: `kein ${call}` };
+    return { use: call, one: call, many: call, none: `Kein ${call}` };
 }
 
 function amount(target: ConstraintTarget, n: number): string {
@@ -273,20 +348,28 @@ function amount(target: ConstraintTarget, n: number): string {
     return target.kind === 'call' ? `${n}× ${words.many}` : `${n} ${words.many}`;
 }
 
-/** The generated sentence for a rule, e.g. "Verwende keine `repeat`-Schleife". */
+/** A value as the student would write it: strings quoted, the rest as is. */
+export function formatValue(value: number | string | boolean): string {
+    return typeof value === 'string' ? JSON.stringify(value) : String(value);
+}
+
+/** The generated sentence for a rule, e.g. "Kein `repeat`" or "`count === 5`". */
 export function constraintLabel(constraint: CodeConstraint): string {
+    if (constraint.kind === 'value') {
+        const name = constraint.name.trim() || '…';
+        return `\`${name} ${constraint.operator} ${formatValue(constraint.value)}\``;
+    }
     if (constraint.kind === 'name') {
-        const name = constraint.name.trim() ? ` \`${constraint.name}\`` : '';
-        return constraint.declaration === 'variable'
-            ? `Lege eine Variable${name} an`
-            : `Schreibe eine Funktion${name}`;
+        // Without a name yet, say what kind of name is wanted.
+        if (constraint.name.trim()) return `Verwende \`${constraint.name}\``;
+        return constraint.declaration === 'variable' ? 'Verwende eine Variable' : 'Verwende eine Funktion';
     }
 
     const { target, operator, count } = constraint;
-    if (count === 0 && operator !== 'min') return `Verwende ${wording(target).none}`;
+    if (count === 0 && operator !== 'min') return wording(target).none;
     switch (operator) {
         case 'min':
-            return count <= 1 ? `Verwende ${wording(target).one}` : `Verwende mindestens ${amount(target, count)}`;
+            return count <= 1 ? `Verwende ${wording(target).use}` : `Verwende mindestens ${amount(target, count)}`;
         case 'max':
             return `Verwende höchstens ${amount(target, count)}`;
         case 'eq':
@@ -334,6 +417,24 @@ export function constraintProblems(settings: Pick<LevelSettings, 'options' | 'co
 
     for (const constraint of constraints) {
         const label = `Regel „${constraintLabel(constraint)}“`;
+
+        if (constraint.kind === 'value') {
+            if (!constraint.name.trim()) {
+                problems.push(`${label} braucht noch einen Variablennamen`);
+            } else if (!isDeclarableName(constraint.name)) {
+                problems.push(`${label}: „${constraint.name}“ ist kein gültiger Name`);
+            } else if (stage < FEATURE_STAGE.variable) {
+                problems.push(`${label} ist auf Stufe ${stage} nicht erfüllbar (erst ab Stufe ${FEATURE_STAGE.variable})`);
+            }
+            if (
+                constraint.operator !== '===' && constraint.operator !== '!=='
+                && typeof constraint.value !== 'number'
+            ) {
+                problems.push(`${label} vergleicht mit ${constraint.operator} keine Zahl und ist nie erfüllt`);
+            }
+            declared.variable.add(constraint.name);
+            continue;
+        }
 
         if (constraint.kind === 'name') {
             const needs = constraint.declaration === 'variable' ? FEATURE_STAGE.variable : FEATURE_STAGE.function;

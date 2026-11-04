@@ -1,22 +1,46 @@
 <script lang="ts" module>
-	import type { CodeConstraint, CodeConstruct, ConstraintOperator } from '$lib/game/level';
+	import type {
+		CodeConstraint,
+		CodeConstruct,
+		ConstraintOperator,
+		ValueOperator
+	} from '$lib/game/level';
+	import { formatValue } from '$lib/game/constraints';
 
 	/**
-	 * One row as the designer edits it. The stored shape is just `count` or
-	 * `name`; "Muss verwenden" and "Darf nicht verwenden" are `count` rules
+	 * One row as the designer edits it. The stored shape is `count`, `name` or
+	 * `value`; "Muss verwenden" and "Darf nicht verwenden" are `count` rules
 	 * with `min 1` and `max 0`, kept as their own mode so switching a row to
 	 * "Anzahl" does not snap straight back.
 	 */
 	export type ConstraintRow = {
-		mode: 'use' | 'forbid' | 'count' | 'name';
+		mode: 'use' | 'forbid' | 'count' | 'name' | 'value';
 		/** `construct:<name>` or `call:<name>`. */
 		target: string;
 		operator: ConstraintOperator;
 		count: number;
 		declaration: 'variable' | 'function';
 		name: string;
+		valueOperator: ValueOperator;
+		/** As typed: `5`, `true`, `"Dewy"`. Read by `parseValue`. */
+		value: string;
 		message: string;
 	};
+
+	/**
+	 * What a teacher types, as the value it means: a number, `true` / `false`,
+	 * or text — with or without quotes. Empty means 0.
+	 */
+	export function parseValue(text: string): number | string | boolean {
+		const trimmed = text.trim();
+		if (trimmed === '') return 0;
+		if (trimmed === 'true') return true;
+		if (trimmed === 'false') return false;
+		const number = Number(trimmed);
+		if (Number.isFinite(number)) return number;
+		const quoted = /^(["'])(.*)\1$/.exec(trimmed);
+		return quoted ? quoted[2] : trimmed;
+	}
 
 	export function toRow(constraint: CodeConstraint): ConstraintRow {
 		const row: ConstraintRow = {
@@ -26,8 +50,19 @@
 			count: 1,
 			declaration: 'variable',
 			name: '',
+			valueOperator: '===',
+			value: '',
 			message: constraint.message ?? ''
 		};
+		if (constraint.kind === 'value') {
+			return {
+				...row,
+				mode: 'value',
+				name: constraint.name,
+				valueOperator: constraint.operator,
+				value: formatValue(constraint.value)
+			};
+		}
 		if (constraint.kind === 'name') {
 			return { ...row, mode: 'name', declaration: constraint.declaration, name: constraint.name };
 		}
@@ -40,6 +75,15 @@
 
 	export function fromRow(row: ConstraintRow): CodeConstraint {
 		const message = row.message.trim() || null;
+		if (row.mode === 'value') {
+			return {
+				kind: 'value',
+				name: row.name.trim(),
+				operator: row.valueOperator,
+				value: parseValue(row.value),
+				message
+			};
+		}
 		if (row.mode === 'name') {
 			return { kind: 'name', declaration: row.declaration, name: row.name.trim(), message };
 		}
@@ -75,7 +119,8 @@
 		CONSTRAINT_SENSORS,
 		CONSTRUCT_NAME,
 		constraintLabel,
-		constraintProblems
+		constraintProblems,
+		VALUE_OPERATORS
 	} from '$lib/game/constraints';
 	import type { LevelOptions } from '$lib/game/level';
 	import CodeText from '$lib/components/CodeText.svelte';
@@ -97,6 +142,16 @@
 		eq: 'genau'
 	};
 
+	/** How the designer shows a comparison; the student reads the `===` form. */
+	const VALUE_OPERATOR_LABEL: Record<ValueOperator, string> = {
+		'===': '=',
+		'!==': '≠',
+		'<': '<',
+		'<=': '≤',
+		'>': '>',
+		'>=': '≥'
+	};
+
 	function remove(index: number) {
 		rows = rows.filter((_, i) => i !== index);
 	}
@@ -106,7 +161,8 @@
 	<p class="intro">
 		Regeln dazu, <em>womit</em> das Programm geschrieben ist. Gezählt wird, was im Code steht – nicht,
 		wie oft es läuft. Verbote und Höchstzahlen sperren den Start; Pflichten müssen erst zum Lösen
-		erfüllt sein.
+		erfüllt sein. Ein geprüfter Wert gilt für die Variable, wie sie am Ende des Laufs steht – in jeder
+		Variante.
 	</p>
 
 	{#if rows.length === 0}
@@ -122,9 +178,28 @@
 								<option value="forbid">Darf nicht verwenden</option>
 								<option value="count">Anzahl</option>
 								<option value="name">Name existiert</option>
+								<option value="value">Wert prüfen</option>
 							</select>
 
-							{#if row.mode === 'name'}
+							{#if row.mode === 'value'}
+								<input
+									class="name"
+									bind:value={row.name}
+									placeholder="Variable"
+									aria-label="Variable"
+								/>
+								<select bind:value={row.valueOperator} aria-label="Vergleich">
+									{#each VALUE_OPERATORS as operator (operator)}
+										<option value={operator}>{VALUE_OPERATOR_LABEL[operator]}</option>
+									{/each}
+								</select>
+								<input
+									class="value"
+									bind:value={row.value}
+									placeholder="5"
+									aria-label="Wert"
+								/>
+							{:else if row.mode === 'name'}
 								<select bind:value={row.declaration} aria-label="Was deklariert wird">
 									<option value="variable">Variable</option>
 									<option value="function">Funktion</option>
@@ -267,6 +342,11 @@
 	.name {
 		flex: 1;
 		min-width: 120px;
+		font-family: var(--font-code);
+	}
+
+	.value {
+		width: 120px;
 		font-family: var(--font-code);
 	}
 

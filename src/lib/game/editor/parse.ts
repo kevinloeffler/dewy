@@ -1,5 +1,5 @@
 import { CRATE_COLORS, type CrateColor } from '$lib/game/crate-color';
-import { CODE_CONSTRUCTS, CONSTRAINT_CALLS, CONSTRAINT_OPERATORS } from '$lib/game/constraints';
+import { CODE_CONSTRUCTS, CONSTRAINT_CALLS, CONSTRAINT_OPERATORS, VALUE_OPERATORS } from '$lib/game/constraints';
 import type {
     BeltControl,
     CodeConstraint,
@@ -409,6 +409,12 @@ function constraintTarget(value: unknown, path: string): ConstraintTarget {
     }
 }
 
+function constraintValue(value: unknown, path: string): number | string | boolean {
+    if (typeof value === 'number' && Number.isFinite(value)) return value;
+    if (typeof value === 'string' || typeof value === 'boolean') return value;
+    throw new ParseError(path, 'must be a number, a string or a boolean');
+}
+
 /**
  * Structure only. A name that is not a valid identifier, or a rule the stage
  * cannot satisfy, is a designer warning (`constraintProblems`), not an error.
@@ -436,6 +442,14 @@ function constraint(value: unknown, path: string): CodeConstraint {
                     ['variable', 'function'] as const,
                 ),
                 name: string(field(source, 'name', path), `${path}.name`),
+                message,
+            };
+        case 'value':
+            return {
+                kind,
+                name: string(field(source, 'name', path), `${path}.name`),
+                operator: literal(field(source, 'operator', path), `${path}.operator`, VALUE_OPERATORS),
+                value: constraintValue(field(source, 'value', path), `${path}.value`),
                 message,
             };
         default:

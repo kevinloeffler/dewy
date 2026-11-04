@@ -6,9 +6,22 @@ import {
     constraintMessage,
     constraintProblems,
     constraintStatus,
+    valueHolds,
+    valuesHold,
 } from './constraints';
-import type { CodeConstraint, CodeConstruct, ConstraintOperator, LevelOptions } from './level';
-import { parseScript } from './script';
+import type {
+    CodeConstraint,
+    CodeConstruct,
+    ConstraintOperator,
+    LevelOptions,
+    ValueConstraint,
+    ValueOperator,
+} from './level';
+import { parseScript, runScript, type ScriptValue } from './script';
+import { createRobotApi } from './robot-api';
+import { GameEngine } from './engine';
+import { nullPlayer } from './events';
+import { emptyLevel } from './editor/operations';
 
 const census = (source: string) => censusOf(parseScript(source));
 
@@ -114,22 +127,22 @@ describe('constraintStatus', () => {
 
 describe('labels', () => {
     it('reads naturally for each operator', () => {
-        expect(constraintLabel(construct('if', 'min', 1))).toBe('Verwende ein `if`');
-        expect(constraintLabel(construct('repeat', 'max', 0))).toBe('Verwende kein `repeat`');
+        expect(constraintLabel(construct('if', 'min', 1))).toBe('Verwende `if`');
+        expect(constraintLabel(construct('repeat', 'max', 0))).toBe('Kein `repeat`');
         expect(constraintLabel(construct('variable', 'eq', 5))).toBe('Verwende genau 5 Variablen');
         expect(constraintLabel(call('turnLeft', 'max', 2))).toBe('Verwende höchstens 2× `turnLeft()`');
-        expect(constraintLabel(named('function', 'turnAround'))).toBe('Schreibe eine Funktion `turnAround`');
+        expect(constraintLabel(named('function', 'turnAround'))).toBe('Verwende `turnAround`');
     });
 
     it('prefers the author message', () => {
         expect(constraintMessage({ ...construct('if', 'min', 1), message: 'Entscheide mit if!' })).toBe('Entscheide mit if!');
-        expect(constraintMessage({ ...construct('if', 'min', 1), message: '  ' })).toBe('Verwende ein `if`');
+        expect(constraintMessage({ ...construct('if', 'min', 1), message: '  ' })).toBe('Verwende `if`');
     });
 
     it('checkConstraints pairs each rule with its status and label', () => {
         const checks = checkConstraints([construct('if', 'min', 1)], parseScript('moveForward();'));
         expect(checks).toEqual([
-            { constraint: construct('if', 'min', 1), status: 'unmet', label: 'Verwende ein `if`' },
+            { constraint: construct('if', 'min', 1), status: 'unmet', label: 'Verwende `if`' },
         ]);
     });
 });
@@ -171,5 +184,73 @@ describe('constraintProblems', () => {
         const constraints = [construct('repeat', 'min', 2), call('moveForward', 'min', 2), named('variable', 'x')];
         expect(constraintProblems({ options: options({ memory: 5 }), constraints })).toEqual([]);
         expect(constraintProblems({ options: options({ memory: 4 }), constraints })).toHaveLength(1);
+    });
+});
+
+const value = (name: string, operator: ValueOperator, expected: number | string | boolean): ValueConstraint => ({
+    kind: 'value',
+    name,
+    operator,
+    value: expected,
+    message: null,
+});
+
+/** The top-level variables `source` ends with, run on an empty level. */
+async function variablesAfter(source: string): Promise<ReadonlyMap<string, ScriptValue>> {
+    const engine = new GameEngine(emptyLevel('v', 'V'), { energy: null });
+    let variables: ReadonlyMap<string, ScriptValue> = new Map();
+    await runScript(source, { api: createRobotApi(engine, nullPlayer), onEnd: (ended) => (variables = ended) });
+    return variables;
+}
+
+describe('value rules', () => {
+    it('reads the top-level variables as the run ended', async () => {
+        const variables = await variablesAfter('let count = 0; repeat(5) { count = count + 1; } function f() { let inner = 1; } f();');
+        expect(variables.get('count')).toBe(5);
+        expect(variables.has('inner')).toBe(false);
+        // Functions are not values a rule can ask about.
+        expect(variables.has('f')).toBe(false);
+    });
+
+    it('reads them even when the run stops on an error', async () => {
+        const variables = await variablesAfter('let count = 3; count = count / 0;');
+        expect(variables.get('count')).toBe(3);
+    });
+
+    it('compares strictly, and orders only numbers', () => {
+        const variables = new Map<string, ScriptValue>([['count', 5], ['age', 19], ['name', 'Dewy'], ['done', true], ['text', '20']]);
+        expect(valueHolds(value('count', '===', 5), variables)).toBe(true);
+        expect(valueHolds(value('count', '===', '5'), variables)).toBe(false);
+        expect(valueHolds(value('age', '>', 18), variables)).toBe(true);
+        expect(valueHolds(value('age', '<=', 18), variables)).toBe(false);
+        expect(valueHolds(value('name', '===', 'Dewy'), variables)).toBe(true);
+        expect(valueHolds(value('done', '!==', false), variables)).toBe(true);
+        expect(valueHolds(value('text', '>', 18), variables)).toBe(false);
+        expect(valueHolds(value('missing', '!==', 1), variables)).toBe(false);
+    });
+
+    it('is not met before any run', () => {
+        const program = census('let count = 5;');
+        expect(constraintStatus(value('count', '===', 5), program, null)).toBe('unmet');
+        expect(constraintStatus(value('count', '===', 5), program, new Map([['count', 5]]))).toBe('met');
+        expect(valuesHold([value('count', '===', 5)], null)).toBe(false);
+        expect(valuesHold([construct('if', 'min', 1)], null)).toBe(true);
+    });
+
+    it('labels in the student language', () => {
+        expect(constraintLabel(value('count', '===', 5))).toBe('`count === 5`');
+        expect(constraintLabel(value('name', '!==', 'Dewy'))).toBe('`name !== "Dewy"`');
+    });
+
+    it('warns about rules no run can meet', () => {
+        expect(constraintProblems({ options: options({ languageStage: 3 }), constraints: [value('count', '===', 5)] }))
+            .toHaveLength(1);
+        expect(constraintProblems({ options: options(), constraints: [value('name', '>', 'a')] })).toHaveLength(1);
+        expect(constraintProblems({ options: options(), constraints: [value('', '===', 1)] })).toHaveLength(1);
+        expect(constraintProblems({
+            options: options(),
+            constraints: [value('count', '===', 5), construct('variable', 'max', 0)],
+        })).toHaveLength(1);
+        expect(constraintProblems({ options: options(), constraints: [value('count', '>=', 5)] })).toEqual([]);
     });
 });

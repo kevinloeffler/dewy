@@ -53,6 +53,12 @@ export type RunOptions = {
     signal?: AbortSignal;
     maxLoopIterations?: number;
     maxCallDepth?: number;
+    /**
+     * Called once the run is over, however it ended, with the program's
+     * top-level variables as they stood — what value rules are judged on.
+     * Functions are left out; they are not values a rule can ask about.
+     */
+    onEnd?: (variables: ReadonlyMap<string, ScriptValue>) => void;
 };
 
 /** A loop with no action in it spends no energy, so it needs its own stop. */
@@ -97,6 +103,11 @@ class Scope {
         this.values.set(name, value);
     }
 
+    /** This scope's own names, not its parents'. */
+    own(): Map<string, ScriptValue> {
+        return new Map(this.values);
+    }
+
     has(name: string): boolean {
         return this.values.has(name) || (this.parent?.has(name) ?? false);
     }
@@ -123,6 +134,7 @@ class Interpreter {
     private readonly signal: AbortSignal | undefined;
     private readonly maxLoopIterations: number;
     private readonly maxCallDepth: number;
+    private readonly onEnd: ((variables: ReadonlyMap<string, ScriptValue>) => void) | undefined;
 
     /** The line last reported, so a crash can be blamed on the right one. */
     private currentLine = 1;
@@ -136,11 +148,24 @@ class Interpreter {
         this.signal = options.signal;
         this.maxLoopIterations = options.maxLoopIterations ?? DEFAULT_MAX_LOOP_ITERATIONS;
         this.maxCallDepth = options.maxCallDepth ?? DEFAULT_MAX_CALL_DEPTH;
+        this.onEnd = options.onEnd;
     }
 
     async run(program: Program): Promise<RunResult> {
         const global = new Scope();
 
+        try {
+            return await this.runIn(program, global);
+        } finally {
+            const variables = global.own();
+            for (const [name, value] of variables) {
+                if (typeof value === 'object' && value !== null) variables.delete(name);
+            }
+            this.onEnd?.(variables);
+        }
+    }
+
+    private async runIn(program: Program, global: Scope): Promise<RunResult> {
         try {
             await this.executeStatements(program.body, global);
             return { status: 'finished' };

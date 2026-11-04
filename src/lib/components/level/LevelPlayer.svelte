@@ -13,7 +13,14 @@
 		type Program,
 		type RunResult
 	} from '$lib/game/script';
-	import { checkConstraints, constraintMessage, isRequirement } from '$lib/game/constraints';
+	import {
+		checkConstraints,
+		constraintMessage,
+		hasValueRules,
+		isRequirement,
+		valuesHold,
+		type RunVariables
+	} from '$lib/game/constraints';
 	import { runHeadless } from '$lib/game/run';
 	import type { CrateColor } from '$lib/game/crate-color';
 	import type { Coord, GoalCondition, Level, LevelDocument } from '$lib/game/level';
@@ -109,7 +116,7 @@
 	const shownResults = $derived(results.map((result, index) => (index === withheld ? null : result)));
 	const stale = $derived(resultsCode !== null && resultsCode !== code);
 	/** The headless runs of the run under way, so its verdict can wait for them. */
-	let checking: Promise<RunResult[]> | null = null;
+	let checking: Promise<boolean[]> | null = null;
 	/** Bumped per run, so a slow check from an earlier run cannot overwrite a newer one. */
 	let checkRun = 0;
 
@@ -139,7 +146,29 @@
 		level.options.memory !== null && memoryUsed !== null && memoryUsed > level.options.memory
 	);
 	/** One per code rule, in order — `null` while the program does not parse. */
-	const checks = $derived(program ? checkConstraints(level.constraints, program) : null);
+	/**
+	 * The top-level variables the last run on screen ended with, and the
+	 * program that run was. Value rules are judged on them — only while the
+	 * code is still that program, so editing it puts them back to "not yet".
+	 */
+	let ran = $state<{ code: string; variables: RunVariables } | null>(null);
+	const ranVariables = $derived(ran && ran.code === code ? ran.variables : null);
+	const checks = $derived(
+		program ? checkConstraints(level.constraints, program, ranVariables) : null
+	);
+	/**
+	 * A level whose only task is a value rule — "set `count` to 5" — has no
+	 * world goal to reach, so finishing the program is what solves it.
+	 */
+	const goalless = (target: Level) =>
+		effectiveGoals(target).length === 0 && hasValueRules(target.constraints);
+
+	/** Whether one run solved its world: the goals reached, and every value rule true. */
+	function solvedBy(target: Level, result: RunResult, variables: RunVariables | null): boolean {
+		const reached =
+			result.status === 'complete' || (result.status === 'finished' && goalless(target));
+		return reached && valuesHold(target.constraints, variables);
+	}
 	/** Over a limit: the program may not run. See `$lib/game/constraints`. */
 	const violated = $derived(checks?.find((check) => check.status === 'violated') ?? null);
 
@@ -204,7 +233,7 @@
 	 * A program that does not even parse is reported by the animated run as
 	 * today, with no marks: it would fail everywhere for the same reason.
 	 */
-	function checkVariants(source: string): Promise<RunResult[]> | null {
+	function checkVariants(source: string): Promise<boolean[]> | null {
 		if (levelDocument.variants.length === 1) return null;
 		try {
 			parseScript(source, { stage: level.options.languageStage });
@@ -221,9 +250,12 @@
 		withheld = visible;
 		return Promise.all(
 			levelDocument.variants.map(async (_, index) => {
-				const result = await runHeadless(variantLevel(levelDocument, index), source);
-				if (run === checkRun) results[index] = result.status === 'complete' ? 'pass' : 'fail';
-				return result;
+				const target = variantLevel(levelDocument, index);
+				let variables: RunVariables | null = null;
+				const result = await runHeadless(target, source, (ended) => (variables = ended));
+				const ok = solvedBy(target, result, variables);
+				if (run === checkRun) results[index] = ok ? 'pass' : 'fail';
+				return ok;
 			})
 		);
 	}
@@ -367,6 +399,7 @@
 		activeLine = null;
 		outcome = null;
 		solved = false;
+		ran = null;
 		notice = null;
 		celebrating = false;
 		// A run cut short keeps no secrets: its variant's mark shows now.
@@ -382,13 +415,18 @@
 		outcome = null;
 		notice = null;
 
-		const result = await runScript(code, {
+		const source = code;
+		let variables: RunVariables | null = null;
+		const result = await runScript(source, {
 			api: robot,
 			stage: level.options.languageStage,
 			signal: controller.signal,
 			onLine: (line) => (activeLine = line),
 			onStatement: gate,
+			onEnd: (ended) => (variables = ended),
 		});
+		// Before the verdict: `checks` reads it to judge the value rules.
+		if (result.status !== 'cancelled' && variables) ran = { code: source, variables };
 
 		running = false;
 		playing = false;
@@ -409,25 +447,39 @@
 
 	/**
 	 * Settles the UI after a run: the toast or the sheet, the line marker.
-	 * `all` holds every variant's result, or `null` for a level with only one.
+	 * `all` says, per variant, whether it was solved — or is `null` for a
+	 * level with only one.
 	 */
-	function report(result: RunResult, all: RunResult[] | null) {
+	function report(result: RunResult, all: boolean[] | null) {
 		switch (result.status) {
+			case 'finished':
 			case 'complete': {
+				const free = goalless(level);
+				if (result.status === 'finished' && !free) {
+					// Ran out of program short of the goal: no message, just body language.
+					world?.shrug();
+					break;
+				}
+				// The world on screen is done, but a rule is not met: the program
+				// works, it is just not the one this level asks for.
+				const unmet = checks?.find((check) => check.status !== 'met');
+				if (unmet) {
+					notice = {
+						kind: 'warning',
+						text: free
+							? `Noch nicht erfüllt: ${plain(unmet.label)}`
+							: `Geschafft – aber diese Regel fehlt noch: ${plain(unmet.label)}`,
+					};
+					if (free) world?.shrug();
+					break;
+				}
 				// Solving the variant on screen is not solving the level.
-				const missing = all ? all.filter((other) => other.status !== 'complete').length : 0;
+				const missing = all ? all.filter((ok) => !ok).length : 0;
 				if (missing > 0) {
 					notice = {
 						kind: 'warning',
 						text: `Variante ${visible + 1} geschafft – ${missing === 1 ? 'eine Variante klappt' : `${missing} Varianten klappen`} noch nicht.`,
 					};
-					break;
-				}
-				// Every world solved, but a required construct is still missing:
-				// the program works, it is just not the one this level asks for.
-				const unmet = checks?.find((check) => check.status !== 'met');
-				if (unmet) {
-					notice = { kind: 'warning', text: `Geschafft – aber diese Regel fehlt noch: ${plain(unmet.label)}` };
 					break;
 				}
 				solved = true;
@@ -445,10 +497,6 @@
 			case 'error':
 				activeLine = result.line;
 				notice = { kind: 'error', text: `Zeile ${result.line}: ${result.message}` };
-				break;
-			case 'finished':
-				// Ran out of program short of the goal: no message, just body language.
-				world?.shrug();
 				break;
 		}
 	}

@@ -83,6 +83,8 @@ describe('parseLevel', () => {
                 { kind: 'count', target: { kind: 'construct', construct: 'if' }, operator: 'min', count: 1, message: null },
                 { kind: 'count', target: { kind: 'call', name: 'turnLeft' }, operator: 'max', count: 0, message: 'Nur rechts!' },
                 { kind: 'name', declaration: 'function', name: 'turnAround', message: null },
+                { kind: 'value', name: 'count', operator: '===', value: 5, message: null },
+                { kind: 'value', name: 'name', operator: '!==', value: 'Dewy', message: null },
             ],
         };
         const result = parseLevel(roundTrip(document));

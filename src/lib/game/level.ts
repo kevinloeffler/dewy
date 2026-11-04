@@ -374,7 +374,23 @@ export type NameConstraint = {
     message: string | null;
 };
 
-export type CodeConstraint = CountConstraint | NameConstraint;
+export type ValueOperator = '===' | '!==' | '<' | '<=' | '>' | '>=';
+
+/**
+ * A top-level variable holds a value when the run ends — `count === 5`,
+ * `age > 18`. The only rule judged on the run rather than the source, and
+ * judged per variant: every variant's run must end with it true. "Ends" is
+ * when the program runs out or the level is solved, whichever comes first.
+ */
+export type ValueConstraint = {
+    kind: 'value';
+    name: string;
+    operator: ValueOperator;
+    value: number | string | boolean;
+    message: string | null;
+};
+
+export type CodeConstraint = CountConstraint | NameConstraint | ValueConstraint;
 
 
 // ============================================================
