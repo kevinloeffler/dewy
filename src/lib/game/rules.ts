@@ -1,3 +1,4 @@
+import { constraintProblems } from './constraints';
 import type { Coord, DecorationKind, Direction, DropOffTile, Level, LevelDocument } from './level';
 import type { CrateState, KeycardState, LevelState } from './level-state';
 import { coordKey, opposite, sameCoord, tileAt } from './grid';
@@ -256,6 +257,7 @@ export function validateDocument(document: LevelDocument): string[] {
     if (reach && !document.variants.some(hasGoalTile)) {
         problems.push('Ziel „reach_goal“, aber das Level hat kein Zielfeld');
     }
+    problems.push(...constraintProblems(document));
     return problems;
 }
 

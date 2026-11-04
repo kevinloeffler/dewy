@@ -1,6 +1,9 @@
 import { CRATE_COLORS, type CrateColor } from '$lib/game/crate-color';
+import { CODE_CONSTRUCTS, CONSTRAINT_CALLS, CONSTRAINT_OPERATORS } from '$lib/game/constraints';
 import type {
     BeltControl,
+    CodeConstraint,
+    ConstraintTarget,
     Coord,
     Decoration,
     DecorationKind,
@@ -390,6 +393,56 @@ function goal(value: unknown, path: string): GoalCondition {
     }
 }
 
+function constraintTarget(value: unknown, path: string): ConstraintTarget {
+    const source = object(value, path);
+    const kind = string(field(source, 'kind', path), `${path}.kind`);
+    switch (kind) {
+        case 'construct':
+            return {
+                kind,
+                construct: literal(field(source, 'construct', path), `${path}.construct`, CODE_CONSTRUCTS),
+            };
+        case 'call':
+            return { kind, name: literal(field(source, 'name', path), `${path}.name`, CONSTRAINT_CALLS) };
+        default:
+            throw new ParseError(`${path}.kind`, `is not a constraint target ("${kind}")`);
+    }
+}
+
+/**
+ * Structure only. A name that is not a valid identifier, or a rule the stage
+ * cannot satisfy, is a designer warning (`constraintProblems`), not an error.
+ */
+function constraint(value: unknown, path: string): CodeConstraint {
+    const source = object(value, path);
+    const kind = string(field(source, 'kind', path), `${path}.kind`);
+    const message = nullable(field(source, 'message', path), `${path}.message`, string);
+
+    switch (kind) {
+        case 'count':
+            return {
+                kind,
+                target: constraintTarget(field(source, 'target', path), `${path}.target`),
+                operator: literal(field(source, 'operator', path), `${path}.operator`, CONSTRAINT_OPERATORS),
+                count: nonNegativeInteger(field(source, 'count', path), `${path}.count`),
+                message,
+            };
+        case 'name':
+            return {
+                kind,
+                declaration: literal(
+                    field(source, 'declaration', path),
+                    `${path}.declaration`,
+                    ['variable', 'function'] as const,
+                ),
+                name: string(field(source, 'name', path), `${path}.name`),
+                message,
+            };
+        default:
+            throw new ParseError(`${path}.kind`, `is not a constraint kind ("${kind}")`);
+    }
+}
+
 function variant(value: unknown, path: string): LevelVariant {
     const source = object(value, path);
 
@@ -468,6 +521,14 @@ function levelDocument(value: unknown, path: string): LevelDocument {
         options: options(field(source, 'options', path), `${path}.options`),
         goals: array(field(source, 'goals', path), `${path}.goals`).map(
             (entry, i) => goal(entry, `${path}.goals[${i}]`),
+        ),
+        // Tolerant read: a level stored before constraints existed has none.
+        constraints: optional(
+            source,
+            'constraints',
+            path,
+            (value, at) => array(value, at).map((entry, i) => constraint(entry, `${at}[${i}]`)),
+            [],
         ),
         variants: variants(field(source, 'variants', path), `${path}.variants`),
     };

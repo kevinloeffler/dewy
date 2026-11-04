@@ -67,6 +67,43 @@ describe('parseLevel', () => {
         if (result.ok) expect(result.level).toEqual(document);
     });
 
+    it('reads a level stored before constraints existed as having none', () => {
+        const document = blank('old');
+        delete document.constraints;
+        const result = parseLevel(document);
+
+        expect(result.ok).toBe(true);
+        if (result.ok) expect(result.level.constraints).toEqual([]);
+    });
+
+    it('round-trips constraints', () => {
+        const document = {
+            ...blank('rules'),
+            constraints: [
+                { kind: 'count', target: { kind: 'construct', construct: 'if' }, operator: 'min', count: 1, message: null },
+                { kind: 'count', target: { kind: 'call', name: 'turnLeft' }, operator: 'max', count: 0, message: 'Nur rechts!' },
+                { kind: 'name', declaration: 'function', name: 'turnAround', message: null },
+            ],
+        };
+        const result = parseLevel(roundTrip(document));
+
+        expect(result.ok).toBe(true);
+        if (result.ok) expect(result.level).toEqual(document);
+    });
+
+    it('rejects a constraint on an unknown command or operator', () => {
+        const unknownCall = {
+            ...blank(),
+            constraints: [{ kind: 'count', target: { kind: 'call', name: 'fly' }, operator: 'min', count: 1, message: null }],
+        };
+        const badOperator = {
+            ...blank(),
+            constraints: [{ kind: 'count', target: { kind: 'construct', construct: 'if' }, operator: 'gt', count: 1, message: null }],
+        };
+        expect(parseLevel(unknownCall).ok).toBe(false);
+        expect(parseLevel(badOperator).ok).toBe(false);
+    });
+
     it('accepts every tile kind', () => {
         const document = withLayout({
             tiles: {

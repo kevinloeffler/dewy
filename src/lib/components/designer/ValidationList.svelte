@@ -1,4 +1,6 @@
 <script lang="ts">
+	import CodeText from '$lib/components/CodeText.svelte';
+
 	interface Props {
 		problems: string[];
 	}
@@ -10,8 +12,8 @@
 	<p class="ok">Keine Probleme — dieses Level ist in Ordnung.</p>
 {:else}
 	<ul>
-		{#each problems as problem (problem)}
-			<li>{problem}</li>
+		{#each problems as problem, index (index)}
+			<li><CodeText text={problem} /></li>
 		{/each}
 	</ul>
 {/if}

@@ -18,7 +18,7 @@ import type { RobotSensors } from '../robot-api';
  */
 
 /** Which stage each construct becomes legal at. Mirrors the table in `robot.md`. */
-const FEATURE_STAGE = {
+export const FEATURE_STAGE = {
     repeat: 2,
     conditional: 3,
     loop: 4,

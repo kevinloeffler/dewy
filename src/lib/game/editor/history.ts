@@ -38,7 +38,7 @@ import {
 const HISTORY_LIMIT = 50;
 
 /** The settings a settings entry can restore. Size goes through `resize`. */
-const SETTINGS_KEYS = ['name', 'description', 'instructions', 'options', 'goals'] as const;
+const SETTINGS_KEYS = ['name', 'description', 'instructions', 'options', 'goals', 'constraints'] as const;
 
 type SettingsKey = (typeof SETTINGS_KEYS)[number];
 type SettingsPatch = Partial<Pick<LevelSettings, SettingsKey>>;

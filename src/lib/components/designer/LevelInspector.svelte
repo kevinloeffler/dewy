@@ -1,12 +1,20 @@
 <script lang="ts">
 	import { untrack } from 'svelte';
-	import { clampSize, MAX_SIZE, MIN_SIZE, setMeta, setOptions } from '$lib/game/editor/operations';
+	import {
+		clampSize,
+		MAX_SIZE,
+		MIN_SIZE,
+		setConstraints,
+		setMeta,
+		setOptions
+	} from '$lib/game/editor/operations';
 	import type { LevelDraft } from '$lib/game/editor/draft.svelte';
 	import type { LanguageStage } from '$lib/game/level';
 	import { decorationTiles } from '$lib/game/decorations';
 	import { inBounds } from '$lib/game/grid';
 	import { variantLevels } from '$lib/game/variants';
 	import { Button, MarkdownEditor, Modal } from '$lib/components/index.js';
+	import ConstraintEditor, { fromRow, toRow, type ConstraintRow } from './ConstraintEditor.svelte';
 
 	interface Props {
 		draft: LevelDraft;
@@ -81,6 +89,23 @@
 		draft.edit((current) => setMeta(current, { instructions: next }));
 		instructionsOpen = false;
 	}
+
+	// Code rules work the same way: edited as rows, applied as one undo step.
+	let constraintsOpen = $state(false);
+	let constraintRows = $state<ConstraintRow[]>([]);
+
+	function editConstraints() {
+		constraintRows = level.constraints.map(toRow);
+		constraintsOpen = true;
+	}
+
+	function applyConstraints() {
+		const next = constraintRows.map(fromRow);
+		draft.edit((current) => setConstraints(current, next));
+		constraintsOpen = false;
+	}
+
+	let constraintCount = $derived(level.constraints.length);
 </script>
 
 <div class="inspector">
@@ -112,6 +137,18 @@
 				{level.instructions ? 'Anleitung bearbeiten' : 'Anleitung hinzufügen'}
 			</button>
 			<span class="muted">{level.instructions ? 'vorhanden' : 'keine'}</span>
+		</div>
+	</div>
+
+	<div class="field">
+		Code-Regeln
+		<div class="instructions">
+			<button class="btn btn-ghost small" type="button" onclick={editConstraints}>
+				{constraintCount > 0 ? 'Regeln bearbeiten' : 'Regeln hinzufügen'}
+			</button>
+			<span class="muted">
+				{constraintCount === 0 ? 'keine' : constraintCount === 1 ? '1 Regel' : `${constraintCount} Regeln`}
+			</span>
 		</div>
 	</div>
 
@@ -264,6 +301,16 @@
 		<Button onclick={() => applyInstructions(instructions.trim() || null)}>
 			Übernehmen
 		</Button>
+	{/snippet}
+</Modal>
+
+<Modal bind:open={constraintsOpen} size="wide" title="Code-Regeln">
+	<ConstraintEditor bind:rows={constraintRows} options={level.options} />
+
+	{#snippet actions()}
+		<span class="spacer"></span>
+		<Button variant="ghost" onclick={() => (constraintsOpen = false)}>Abbrechen</Button>
+		<Button onclick={applyConstraints}>Übernehmen</Button>
 	{/snippet}
 </Modal>
 

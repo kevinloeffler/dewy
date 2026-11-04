@@ -12,7 +12,9 @@
 		memory: number | null;
 		/** Statements in the current program, or `null` while it does not parse. */
 		memoryUsed: number | null;
-		/** Over the memory cap — Run and Step are refused until it fits. */
+		/** Over the memory cap — the gauge turns red. */
+		overMemory: boolean;
+		/** Run and Step are refused — over memory, or breaking a code rule. */
 		blocked: boolean;
 		speed: number;
 		onrun: () => void;
@@ -27,6 +29,7 @@
 		energy,
 		memory,
 		memoryUsed,
+		overMemory,
 		blocked,
 		speed = $bindable(),
 		onrun,
@@ -223,7 +226,7 @@
 		{#if memory !== null}
 			<span
 				class="gauge"
-				class:is-over={blocked}
+				class:is-over={overMemory}
 				title="Speicher — Anweisungen, die der Roboter fasst"
 			>
 				{memoryUsed ?? '—'}/{memory}

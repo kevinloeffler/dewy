@@ -51,6 +51,7 @@ export function settingsOf(source: Level | LevelDocument): LevelSettings {
         height: source.height,
         options: source.options,
         goals: source.goals,
+        constraints: source.constraints,
     };
 }
 

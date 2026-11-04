@@ -5,7 +5,15 @@
 	import { createWorldState } from '$lib/game/worldState.svelte';
 	import { GameEngine } from '$lib/game/engine';
 	import { createRobotApi, type RobotApi } from '$lib/game/robot-api';
-	import { measureMemory, parseScript, runScript, ScriptError, type RunResult } from '$lib/game/script';
+	import {
+		countStatements,
+		parseScript,
+		runScript,
+		ScriptError,
+		type Program,
+		type RunResult
+	} from '$lib/game/script';
+	import { checkConstraints, constraintMessage, isRequirement } from '$lib/game/constraints';
 	import { runHeadless } from '$lib/game/run';
 	import type { CrateColor } from '$lib/game/crate-color';
 	import type { Coord, GoalCondition, Level, LevelDocument } from '$lib/game/level';
@@ -15,6 +23,7 @@
 	import { sameCoord } from '$lib/game/grid';
 	import { CodeMirrorEditor, Kbd, Topbar } from '$lib/components/index.js';
 	import VariantChips, { type VariantOutcome } from '$lib/components/VariantChips.svelte';
+	import CodeText from '$lib/components/CodeText.svelte';
 	import RunControls from './RunControls.svelte';
 	import LevelInstructions from './LevelInstructions.svelte';
 	import LevelComplete from './LevelComplete.svelte';
@@ -119,13 +128,29 @@
 		steps: 0,
 	});
 
-	// Memory is a property of the source, not of the run, so it is measured
-	// straight from `code`. Programs are a few dozen statements at most, so
-	// re-parsing on every keystroke costs nothing worth saving.
-	const memoryUsed = $derived(measureMemory(code, level.options.languageStage));
+	// Memory and code rules are properties of the source, not of the run, so
+	// they are judged straight from `code`. Programs are a few dozen
+	// statements at most, so re-parsing on every keystroke costs nothing
+	// worth saving. A program that does not parse has neither — the parse
+	// error is reported when it runs.
+	const program = $derived(tryParse(code));
+	const memoryUsed = $derived(program ? countStatements(program) : null);
 	const overMemory = $derived(
 		level.options.memory !== null && memoryUsed !== null && memoryUsed > level.options.memory
 	);
+	/** One per code rule, in order — `null` while the program does not parse. */
+	const checks = $derived(program ? checkConstraints(level.constraints, program) : null);
+	/** Over a limit: the program may not run. See `$lib/game/constraints`. */
+	const violated = $derived(checks?.find((check) => check.status === 'violated') ?? null);
+
+	function tryParse(source: string): Program | null {
+		try {
+			return parseScript(source, { stage: level.options.languageStage });
+		} catch (error) {
+			if (error instanceof ScriptError) return null;
+			throw error;
+		}
+	}
 
 	onMount(() => {
 		const instance = new World(canvas, view);
@@ -302,6 +327,11 @@
 			playing = false;
 			return;
 		}
+		if (violated) {
+			notice = { kind: 'error', text: `Diese Regel ist verletzt: ${plain(violated.label)}` };
+			playing = false;
+			return;
+		}
 
 		// `running` only goes up once `execute` is under way, and the reset
 		// below yields before that — so a second click needs its own guard.
@@ -393,6 +423,13 @@
 					};
 					break;
 				}
+				// Every world solved, but a required construct is still missing:
+				// the program works, it is just not the one this level asks for.
+				const unmet = checks?.find((check) => check.status !== 'met');
+				if (unmet) {
+					notice = { kind: 'warning', text: `Geschafft – aber diese Regel fehlt noch: ${plain(unmet.label)}` };
+					break;
+				}
 				solved = true;
 				celebrating = true;
 				// Fires on every completion, not once per mount: recording it is
@@ -471,6 +508,11 @@
 		if (target.description) lines.push(`// ${target.description}`);
 		lines.push('//', '// Schreib dein Programm hier unten und drück dann auf Start.', '');
 		return lines.join('\n');
+	}
+
+	/** Labels mark code with backticks; a toast shows them as plain text. */
+	function plain(label: string): string {
+		return label.replaceAll('`', '');
 	}
 
 	const CRATE_COLOR_LABEL: Record<CrateColor, string> = {
@@ -560,7 +602,8 @@
 					energy={level.options.energy}
 					memory={level.options.memory}
 					{memoryUsed}
-					blocked={overMemory}
+					{overMemory}
+					blocked={overMemory || violated !== null}
 					bind:speed={view.speed}
 					onrun={run}
 					onstep={step}
@@ -591,6 +634,18 @@
 					<li class="goal" class:is-done={hud.goals[index]}>
 						<span class="goal-mark" aria-hidden="true"></span>
 						{goalLabel(goal)}
+					</li>
+				{/each}
+				{#each level.constraints as constraint, index (index)}
+					{@const check = checks?.[index] ?? null}
+					<li
+						class="goal is-rule"
+						class:is-limit={!isRequirement(constraint)}
+						class:is-done={check?.status === 'met'}
+						class:is-violated={check?.status === 'violated'}
+					>
+						<span class="goal-mark" aria-hidden="true"></span>
+						<CodeText text={check?.label ?? constraintMessage(constraint)} />
 					</li>
 				{/each}
 			</ul>
@@ -798,6 +853,36 @@
 	.goal.is-done .goal-mark {
 		background: var(--success);
 		border-color: var(--success);
+	}
+
+	/* A code rule: a square, not a diamond — it is about the program, not the world. */
+	.goal.is-rule .goal-mark {
+		rotate: none;
+		border-radius: 4px;
+	}
+
+	/* A rule is never struck through — it stays in force while the student types. */
+	.goal.is-rule.is-done {
+		text-decoration: none;
+	}
+
+	/* A limit is met by doing nothing, so it never fills: a green outline
+	   says "within the limit", a red fill says "over it". */
+	.goal.is-limit.is-done {
+		color: var(--text);
+	}
+
+	.goal.is-limit.is-done .goal-mark {
+		background: none;
+	}
+
+	.goal.is-violated {
+		color: var(--danger);
+	}
+
+	.goal.is-violated .goal-mark {
+		background: var(--danger);
+		border-color: var(--danger);
 	}
 
 	/* ── Footer ─────────────────────────────────────────────── */

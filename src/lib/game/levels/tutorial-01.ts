@@ -54,4 +54,5 @@ export const tutorial01: Level = {
     options: { energy: 15, memory: null, showInventory: false, languageStage: 1 },
     // The red bay's delivery goal is implicit — every bay must be filled.
     goals: [{ kind: 'reach_goal' }],
+    constraints: [],
 };

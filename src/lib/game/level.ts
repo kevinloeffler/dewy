@@ -333,6 +333,51 @@ export type GoalCondition =
 
 
 // ============================================================
+// Code constraints
+//
+// Rules about the student's *source*, not the run — "use an if", "no
+// repeat", "a variable called zaehler". Checked on the parsed program, like
+// memory. See `./constraints` for how they are counted and judged.
+// ============================================================
+
+/** A language construct a rule can count. `variable` is a `let`. */
+export type CodeConstruct = 'if' | 'else' | 'while' | 'repeat' | 'function' | 'variable';
+
+/**
+ * What a count rule counts: a construct, or the call sites of one robot
+ * command or sensor by name (`turnLeft`, `isBlocked`).
+ */
+export type ConstraintTarget =
+    | { kind: 'construct'; construct: CodeConstruct }
+    | { kind: 'call'; name: string };
+
+/**
+ * `min` is a requirement, `max` a prohibition, `eq` both. "Use an `if`" is
+ * `min 1`; "no `repeat`" is `max 0`.
+ */
+export type ConstraintOperator = 'eq' | 'min' | 'max';
+
+export type CountConstraint = {
+    kind: 'count';
+    target: ConstraintTarget;
+    operator: ConstraintOperator;
+    count: number;
+    /** What the student reads instead of the generated label. `null` uses the label. */
+    message: string | null;
+};
+
+/** A variable or function with this exact name is declared somewhere. */
+export type NameConstraint = {
+    kind: 'name';
+    declaration: 'variable' | 'function';
+    name: string;
+    message: string | null;
+};
+
+export type CodeConstraint = CountConstraint | NameConstraint;
+
+
+// ============================================================
 // Level
 // ============================================================
 
@@ -374,6 +419,11 @@ export type Level = {
     robot: RobotConfig;
     options: LevelOptions;
     goals: GoalCondition[];
+    /**
+     * Rules about the program, shared by every variant. Levels stored before
+     * constraints existed have no key and read as none — see `parse.ts`.
+     */
+    constraints: CodeConstraint[];
 };
 
 

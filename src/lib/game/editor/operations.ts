@@ -31,6 +31,7 @@ import type {
     Direction,
     GoalCondition,
     Item,
+    CodeConstraint,
     Level,
     LevelDocument,
     LevelLayout,
@@ -794,6 +795,12 @@ export function setMeta(
     return { ...level, name, description, instructions };
 }
 
+/** Replaces the level's code constraints wholesale — the designer edits them as one list. */
+export function setConstraints(level: Level, constraints: CodeConstraint[]): Level {
+    if (JSON.stringify(constraints) === JSON.stringify(level.constraints)) return level;
+    return { ...level, constraints };
+}
+
 export function setOptions(level: Level, patch: Partial<LevelOptions>): Level {
     const options = { ...level.options, ...patch };
     const o = level.options;
@@ -930,6 +937,7 @@ export function emptyLevel(
         robot: { position: { x: 0, y: 0 }, facing: 'south' },
         options: { energy: null, memory: null, showInventory: false, languageStage: 5 },
         goals: [],
+        constraints: [],
     };
 }
 

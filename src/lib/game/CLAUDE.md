@@ -42,3 +42,11 @@ always looks the same and two levels look different; only `id`, `width` and
 `height` feed it. `models/environment.ts` turns a plan into meshes, merged by
 material with `mergeStatic`. `World` keeps it in its own root, out of the
 designer's picking, and rebuilds it only when `environmentKey` changes.
+
+`constraints.ts` judges `Level.constraints` — rules about the student's
+*source* ("use an `if`", "no `repeat`", "a function `turnAround`"). Like
+memory, they are checked on the parsed program, never the run: what is
+written counts, not how often it runs, and declaring a name satisfies a name
+rule. A `violated` rule (over a `max`/`eq`) blocks Start; an `unmet` one
+(short of a `min`/`eq`, or a missing name) only blocks completion.
+`constraintProblems` feeds the designer's warnings via `validateDocument`.

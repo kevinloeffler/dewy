@@ -42,6 +42,7 @@ function makeLevel(opts: {
         robot: opts.robot ?? { position: { x: 1, y: 1 }, facing: 'east' },
         options: { energy: null, memory: null, showInventory: false, languageStage: 5 },
         goals: opts.goals ?? [],
+        constraints: [],
     };
 }
 

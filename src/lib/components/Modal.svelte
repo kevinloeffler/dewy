@@ -13,8 +13,11 @@
 		 * boolean — "which stage am I adding to" — and so cannot be bound.
 		 */
 		onclose?: () => void;
-		/** `large` is for editors that need the room — most of the viewport. */
-		size?: 'default' | 'large';
+		/**
+		 * `wide` is for forms whose rows need more than one field side by side;
+		 * `large` is for editors that need the room — most of the viewport.
+		 */
+		size?: 'default' | 'wide' | 'large';
 	}
 
 	let {
@@ -70,6 +73,7 @@
 <dialog
 	bind:this={dialog}
 	class="modal"
+	class:wide={size === 'wide'}
 	class:large={size === 'large'}
 	onclose={close}
 	onmousedown={(event) => (pressedOutside = event.target === dialog)}
@@ -105,7 +109,14 @@
 		border-radius: var(--radius);
 		background: var(--panel);
 		color: var(--text);
+		/* Its own font: a dialog opened from inside a code-styled area (the
+		   designer's `.editor` shell) must not inherit the monospace face. */
+		font-family: var(--font-ui);
 		box-shadow: var(--panel-shadow);
+	}
+
+	.modal.wide {
+		width: min(640px, calc(100vw - 32px));
 	}
 
 	/* A column so a long body scrolls between a fixed head and footer. */
