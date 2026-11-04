@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { parseScript } from './parser';
-import { runScript } from './interpreter';
+import { MAX_OUTPUT_LINES, runScript, type RunRecord } from './interpreter';
 import { ScriptError } from './errors';
 import { GameEngine } from '../engine';
 import { createRobotApi, type RobotApi } from '../robot-api';
@@ -328,5 +328,83 @@ describe('onStatement', () => {
 
         resumeNext();
         expect(await finished).toEqual({ status: 'finished' });
+    });
+});
+
+// ============================================================
+// say
+// ============================================================
+
+describe('say', () => {
+    async function said(source: string, stage?: 1 | 2 | 3 | 4 | 5) {
+        const { api, calls } = stubApi();
+        const lines: { text: string; line: number }[] = [];
+        let record: RunRecord | null = null;
+        const result = await runScript(source, {
+            api,
+            stage,
+            onSay: (text, line) => lines.push({ text, line }),
+            onEnd: (ended) => (record = ended),
+        });
+        return { result, lines, calls, record: record as RunRecord | null };
+    }
+
+    it('streams each line with the line it was said on', async () => {
+        const { result, lines, record } = await said('say("Hallo");\nmoveForward();\nsay("Tschüss");');
+        expect(result).toEqual({ status: 'finished' });
+        expect(lines).toEqual([
+            { text: 'Hallo', line: 1 },
+            { text: 'Tschüss', line: 3 },
+        ]);
+        expect(record?.output).toEqual(['Hallo', 'Tschüss']);
+    });
+
+    it('writes values the way `+` joins them', async () => {
+        const { lines } = await said('say(3); say(true); say(null); say("a" + 1);');
+        expect(lines.map((entry) => entry.text)).toEqual(['3', 'true', 'nichts', 'a1']);
+    });
+
+    it('is open at stage 1', async () => {
+        const { result, lines } = await said('say("Hallo");', 1);
+        expect(result).toEqual({ status: 'finished' });
+        expect(lines).toHaveLength(1);
+    });
+
+    it('costs the robot nothing', async () => {
+        const { calls } = await said('say("x"); say("y");');
+        expect(calls).toEqual([]);
+    });
+
+    it('wants exactly one thing to say', async () => {
+        expect((await said('say();')).result).toMatchObject({ status: 'error', line: 1 });
+        expect((await said('\nsay("a", "b");')).result).toMatchObject({ status: 'error', line: 2 });
+    });
+
+    it('cannot be redefined', async () => {
+        expect((await said('function say(x) { }')).result).toMatchObject({ status: 'error' });
+        expect((await said('let say = 1;')).result).toMatchObject({ status: 'error' });
+    });
+
+    it(`keeps at most ${MAX_OUTPUT_LINES} lines and reports the cut once`, async () => {
+        const { api } = stubApi();
+        let full = 0;
+        let streamed = 0;
+        let record: RunRecord | null = null;
+        await runScript(`repeat(${MAX_OUTPUT_LINES + 50}) { say("x"); }`, {
+            api,
+            onSay: () => streamed++,
+            onOutputFull: () => full++,
+            onEnd: (ended) => (record = ended),
+        });
+        expect(streamed).toBe(MAX_OUTPUT_LINES);
+        expect(full).toBe(1);
+        expect((record as RunRecord | null)?.output).toHaveLength(MAX_OUTPUT_LINES);
+    });
+
+    it('hands the output to onEnd even when the run errors', async () => {
+        const { api } = stubApi();
+        let record: RunRecord | null = null;
+        await runScript('say("vorher"); let x = 1 / 0;', { api, onEnd: (ended) => (record = ended) });
+        expect((record as RunRecord | null)?.output).toEqual(['vorher']);
     });
 });

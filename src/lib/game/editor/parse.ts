@@ -1,5 +1,11 @@
 import { CRATE_COLORS, type CrateColor } from '$lib/game/crate-color';
-import { CODE_CONSTRUCTS, CONSTRAINT_CALLS, CONSTRAINT_OPERATORS, VALUE_OPERATORS } from '$lib/game/constraints';
+import {
+    CODE_CONSTRUCTS,
+    CONSTRAINT_CALLS,
+    CONSTRAINT_OPERATORS,
+    OUTPUT_OPERATORS,
+    VALUE_OPERATORS,
+} from '$lib/game/constraints';
 import type {
     BeltControl,
     CodeConstraint,
@@ -450,6 +456,13 @@ function constraint(value: unknown, path: string): CodeConstraint {
                 name: string(field(source, 'name', path), `${path}.name`),
                 operator: literal(field(source, 'operator', path), `${path}.operator`, VALUE_OPERATORS),
                 value: constraintValue(field(source, 'value', path), `${path}.value`),
+                message,
+            };
+        case 'output':
+            return {
+                kind,
+                operator: literal(field(source, 'operator', path), `${path}.operator`, OUTPUT_OPERATORS),
+                text: string(field(source, 'text', path), `${path}.text`),
                 message,
             };
         default:

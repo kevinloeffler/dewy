@@ -6,6 +6,9 @@
  * something readable. A block statement costs one for itself plus whatever
  * it contains, which is what makes `repeat` and functions worth reaching
  * for: three moves inside a `repeat` cost 2, not 3.
+ *
+ * A `say(…)` statement is free. Printing is how a student looks inside their
+ * program; charging memory for it would teach them to delete it to fit.
  */
 
 import type { Block, Program, Stmt } from './ast';
@@ -44,6 +47,7 @@ function countBlock(block: Block): number {
 function count(statement: Stmt): number {
     switch (statement.kind) {
         case 'expression':
+            return isSay(statement) ? 0 : 1;
         case 'let':
         case 'assign':
         case 'return':
@@ -59,4 +63,8 @@ function count(statement: Stmt): number {
         case 'function':
             return 1 + countBlock(statement.body);
     }
+}
+
+function isSay(statement: Stmt & { kind: 'expression' }): boolean {
+    return statement.expression.kind === 'call' && statement.expression.callee === 'say';
 }

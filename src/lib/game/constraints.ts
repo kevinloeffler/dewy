@@ -5,10 +5,12 @@ import type {
     CountConstraint,
     LanguageStage,
     LevelSettings,
+    OutputConstraint,
+    OutputOperator,
     ValueConstraint,
     ValueOperator,
 } from './level';
-import type { ScriptValue } from './script/interpreter';
+import { BUILTIN_NAMES, type Builtin, type RunRecord } from './script/interpreter';
 import type { RobotActions, RobotSensors } from './robot-api';
 import type { Block, Expr, Program, Stmt } from './script/ast';
 import { FEATURE_STAGE } from './script/parser';
@@ -25,9 +27,10 @@ import { KEYWORDS } from './script/lexer';
  *    counts once however often the function is called, and code that can
  *    never run counts like any other. Declaring a name is enough to satisfy a
  *    name rule, used or not.
- *  - **Value rules are the exception**: `count === 5` asks about the run, so
- *    it is judged on the top-level variables as the run ended, and every
- *    variant's run must satisfy it. Before a run it is simply not met yet.
+ *  - **Value and output rules are the exception**: `count === 5` and
+ *    "Gib „Hallo“ aus" ask about the run, so they are judged on how it ended
+ *    — its top-level variables and what it said — and every variant's run
+ *    must satisfy them. Before a run they are simply not met yet.
  *  - **Going over blocks the run; falling short only blocks completion.** A
  *    program with a forbidden `repeat` is already disqualified, so running it
  *    teaches nothing. A program that does not yet use the required `if` may
@@ -62,8 +65,14 @@ const SENSORS: Record<keyof RobotSensors, true> = {
 
 export const CONSTRAINT_ACTIONS = Object.keys(ACTIONS) as (keyof RobotActions)[];
 export const CONSTRAINT_SENSORS = Object.keys(SENSORS) as (keyof RobotSensors)[];
+/** Commands of the language rather than the robot — `say`. */
+export const CONSTRAINT_BUILTINS: readonly Builtin[] = BUILTIN_NAMES;
 /** Every name a call target may have. */
-export const CONSTRAINT_CALLS: readonly string[] = [...CONSTRAINT_ACTIONS, ...CONSTRAINT_SENSORS];
+export const CONSTRAINT_CALLS: readonly string[] = [
+    ...CONSTRAINT_ACTIONS,
+    ...CONSTRAINT_SENSORS,
+    ...CONSTRAINT_BUILTINS,
+];
 
 export const CODE_CONSTRUCTS = [
     'if', 'else', 'while', 'repeat', 'function', 'variable',
@@ -72,6 +81,8 @@ export const CODE_CONSTRUCTS = [
 export const CONSTRAINT_OPERATORS = ['min', 'max', 'eq'] as const;
 
 export const VALUE_OPERATORS = ['===', '!==', '<', '<=', '>', '>='] as const satisfies readonly ValueOperator[];
+
+export const OUTPUT_OPERATORS = ['contains', 'line', 'notContains'] as const satisfies readonly OutputOperator[];
 
 /** The stage a construct is first legal at, from the parser's own table. */
 const CONSTRUCT_STAGE: Record<CodeConstruct, LanguageStage> = {
@@ -219,11 +230,14 @@ export function countOf(census: CodeCensus, target: ConstraintTarget): number {
  * met by an empty program, so the player never shows it as "done".
  */
 export function isRequirement(constraint: CodeConstraint): boolean {
+    if (constraint.kind === 'output') return constraint.operator !== 'notContains';
     return constraint.kind !== 'count' || (constraint.operator !== 'max' && constraint.count > 0);
 }
 
+export type { RunRecord };
+
 /** A run's top-level variables as it ended — see `RunOptions.onEnd`. */
-export type RunVariables = ReadonlyMap<string, ScriptValue>;
+export type RunVariables = RunRecord['variables'];
 
 /**
  * Whether a value rule holds. Equality is strict, as in the student's own
@@ -254,28 +268,55 @@ export function valueHolds(constraint: ValueConstraint, variables: RunVariables)
     }
 }
 
-/** Every value rule holds on this run. True when there are none. */
-export function valuesHold(constraints: CodeConstraint[], variables: RunVariables | null): boolean {
+/**
+ * Whether an output rule holds. `contains` searches the lines joined by a
+ * newline, so a rule may span two of them; `line` wants one line exactly.
+ */
+export function outputHolds(constraint: OutputConstraint, output: readonly string[]): boolean {
+    switch (constraint.operator) {
+        case 'contains':
+            return output.join('\n').includes(constraint.text);
+        case 'line':
+            return output.includes(constraint.text);
+        case 'notContains':
+            return !output.join('\n').includes(constraint.text);
+    }
+}
+
+/** A rule judged on how the run ended rather than on the source. */
+export function isRunRule(constraint: CodeConstraint): constraint is ValueConstraint | OutputConstraint {
+    return constraint.kind === 'value' || constraint.kind === 'output';
+}
+
+function runRuleHolds(constraint: ValueConstraint | OutputConstraint, record: RunRecord): boolean {
+    return constraint.kind === 'value'
+        ? valueHolds(constraint, record.variables)
+        : outputHolds(constraint, record.output);
+}
+
+/** Every value and output rule holds on this run. True when there are none. */
+export function runRulesHold(constraints: CodeConstraint[], record: RunRecord | null): boolean {
     return constraints.every(
-        (constraint) => constraint.kind !== 'value' || (variables !== null && valueHolds(constraint, variables)),
+        (constraint) => !isRunRule(constraint) || (record !== null && runRuleHolds(constraint, record)),
     );
 }
 
-export function hasValueRules(constraints: CodeConstraint[]): boolean {
-    return constraints.some((constraint) => constraint.kind === 'value');
+/** Whether a rule about the run can be the level's task, in place of a world goal. */
+export function hasRunRules(constraints: CodeConstraint[]): boolean {
+    return constraints.some(isRunRule);
 }
 
 /**
- * `variables` is the last run of this exact program, or `null` when there
- * has been none — then a value rule is simply not met yet.
+ * `record` is the last run of this exact program, or `null` when there has
+ * been none — then a value or output rule is simply not met yet.
  */
 export function constraintStatus(
     constraint: CodeConstraint,
     census: CodeCensus,
-    variables: RunVariables | null = null,
+    record: RunRecord | null = null,
 ): ConstraintStatus {
-    if (constraint.kind === 'value') {
-        return variables !== null && valueHolds(constraint, variables) ? 'met' : 'unmet';
+    if (isRunRule(constraint)) {
+        return record !== null && runRuleHolds(constraint, record) ? 'met' : 'unmet';
     }
     if (constraint.kind === 'name') {
         const declared = constraint.declaration === 'variable' ? census.variables : census.functions;
@@ -291,12 +332,12 @@ export function constraintStatus(
 export function checkConstraints(
     constraints: CodeConstraint[],
     program: Program,
-    variables: RunVariables | null = null,
+    record: RunRecord | null = null,
 ): ConstraintCheck[] {
     const census = censusOf(program);
     return constraints.map((constraint) => ({
         constraint,
-        status: constraintStatus(constraint, census, variables),
+        status: constraintStatus(constraint, census, record),
         label: constraintMessage(constraint),
     }));
 }
@@ -355,6 +396,17 @@ export function formatValue(value: number | string | boolean): string {
 
 /** The generated sentence for a rule, e.g. "Kein `repeat`" or "`count === 5`". */
 export function constraintLabel(constraint: CodeConstraint): string {
+    if (constraint.kind === 'output') {
+        const text = constraint.text ? `„${constraint.text}“` : '…';
+        switch (constraint.operator) {
+            case 'contains':
+                return `Gib ${text} aus`;
+            case 'line':
+                return `Gib genau die Zeile ${text} aus`;
+            case 'notContains':
+                return `Gib nie ${text} aus`;
+        }
+    }
     if (constraint.kind === 'value') {
         const name = constraint.name.trim() || '…';
         return `\`${name} ${constraint.operator} ${formatValue(constraint.value)}\``;
@@ -414,9 +466,21 @@ export function constraintProblems(settings: Pick<LevelSettings, 'options' | 'co
     // A range per target: what every rule on it allows together.
     const ranges = new Map<string, { target: ConstraintTarget; low: number; high: number }>();
     const declared = { variable: new Set<string>(), function: new Set<string>() };
+    const output = { wanted: new Set<string>(), banned: new Set<string>() };
 
     for (const constraint of constraints) {
         const label = `Regel „${constraintLabel(constraint)}“`;
+
+        if (constraint.kind === 'output') {
+            if (!constraint.text) {
+                problems.push(`${label} braucht noch einen Text`);
+            } else if (constraint.operator === 'notContains') {
+                output.banned.add(constraint.text);
+            } else {
+                output.wanted.add(constraint.text);
+            }
+            continue;
+        }
 
         if (constraint.kind === 'value') {
             if (!constraint.name.trim()) {
@@ -466,6 +530,20 @@ export function constraintProblems(settings: Pick<LevelSettings, 'options' | 'co
             const name = target.kind === 'construct' ? CONSTRUCT_NAME[target.construct] : `\`${target.name}()\``;
             problems.push(`Die Regeln zu ${name} widersprechen sich`);
         }
+    }
+
+    // A wanted text that contains a banned one can never be written.
+    for (const wanted of output.wanted) {
+        for (const banned of output.banned) {
+            if (wanted.includes(banned)) {
+                problems.push(`Die Regeln verlangen „${wanted}“ und verbieten zugleich „${banned}“`);
+            }
+        }
+    }
+
+    // Output can only be written with `say`.
+    if (output.wanted.size > 0 && (ranges.get('call:say')?.high ?? Infinity) === 0) {
+        problems.push('Die Regeln verlangen eine Ausgabe, verbieten aber `say()`');
     }
 
     // Every `else` belongs to an `if`.

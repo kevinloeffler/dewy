@@ -1,4 +1,4 @@
-import { constraintProblems, hasValueRules } from './constraints';
+import { constraintProblems, hasRunRules } from './constraints';
 import type { Coord, DecorationKind, Direction, DropOffTile, Level, LevelDocument } from './level';
 import type { CrateState, KeycardState, LevelState } from './level-state';
 import { coordKey, opposite, sameCoord, tileAt } from './grid';
@@ -404,9 +404,9 @@ function worldProblems(level: Level, checkReachGoal: boolean): string[] {
     }
 
     // The engine never counts an empty goal list as won, so such a level can
-    // be played but never finished — unless a value rule is the task: then the
-    // player counts a run that finishes with every rule met as solved.
-    if (effectiveGoals(level).length === 0 && !hasValueRules(level.constraints)) {
+    // be played but never finished — unless a value or output rule is the
+    // task: then the player counts a run that finishes with every rule met as solved.
+    if (effectiveGoals(level).length === 0 && !hasRunRules(level.constraints)) {
         problems.push('Das Level hat keine Ziele und lässt sich nicht abschliessen');
     }
 

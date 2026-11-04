@@ -17,7 +17,10 @@ import type { RobotSensors } from '../robot-api';
  * Every error is a `ScriptError` carrying the line it happened on.
  */
 
-/** Which stage each construct becomes legal at. Mirrors the table in `robot.md`. */
+/**
+ * Which stage each construct becomes legal at. Mirrors the table in `robot.md`.
+ * The builtin `say` has no entry on purpose: printing is open from stage 1.
+ */
 export const FEATURE_STAGE = {
     repeat: 2,
     conditional: 3,

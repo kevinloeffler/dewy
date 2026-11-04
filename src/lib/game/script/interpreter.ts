@@ -30,6 +30,16 @@ type ScriptFunction = {
     closure: Scope;
 };
 
+/**
+ * How a run ended, for the rules judged on the run rather than the source:
+ * the top-level variables as they stood, and every line `say` wrote.
+ */
+export type RunRecord = {
+    /** Functions are left out; they are not values a rule can ask about. */
+    variables: ReadonlyMap<string, ScriptValue>;
+    output: readonly string[];
+};
+
 export type RunResult =
     /** Ran to the end without solving the level. */
     | { status: 'finished' }
@@ -54,11 +64,18 @@ export type RunOptions = {
     maxLoopIterations?: number;
     maxCallDepth?: number;
     /**
-     * Called once the run is over, however it ended, with the program's
-     * top-level variables as they stood — what value rules are judged on.
-     * Functions are left out; they are not values a rule can ask about.
+     * Called with every line `say` writes, as it writes it — what the
+     * console shows. A run nobody watches (`runHeadless`) leaves it out.
      */
-    onEnd?: (variables: ReadonlyMap<string, ScriptValue>) => void;
+    onSay?: (text: string, line: number) => void;
+    /** Called once, at the first line dropped for passing `MAX_OUTPUT_LINES`. */
+    onOutputFull?: () => void;
+    /**
+     * Called once the run is over, however it ended, with the program's
+     * top-level variables and its output — what value and output rules are
+     * judged on.
+     */
+    onEnd?: (record: RunRecord) => void;
 };
 
 /** A loop with no action in it spends no energy, so it needs its own stop. */
@@ -69,6 +86,13 @@ const DEFAULT_MAX_CALL_DEPTH = 64;
 
 /** Statements between yields back to the browser, so Stop stays clickable. */
 const YIELD_INTERVAL = 200;
+
+/**
+ * Lines of `say` output a run keeps. A `while` loop may say something ten
+ * thousand times before the loop limit stops it; past this, lines are
+ * dropped rather than kept, and `onOutputFull` reports that once.
+ */
+export const MAX_OUTPUT_LINES = 1000;
 
 export async function runScript(source: string, options: RunOptions): Promise<RunResult> {
     let program: Program;
@@ -134,7 +158,11 @@ class Interpreter {
     private readonly signal: AbortSignal | undefined;
     private readonly maxLoopIterations: number;
     private readonly maxCallDepth: number;
-    private readonly onEnd: ((variables: ReadonlyMap<string, ScriptValue>) => void) | undefined;
+    private readonly onSay: ((text: string, line: number) => void) | undefined;
+    private readonly onOutputFull: (() => void) | undefined;
+    private readonly onEnd: ((record: RunRecord) => void) | undefined;
+    private readonly output: string[] = [];
+    private outputFull = false;
 
     /** The line last reported, so a crash can be blamed on the right one. */
     private currentLine = 1;
@@ -148,6 +176,8 @@ class Interpreter {
         this.signal = options.signal;
         this.maxLoopIterations = options.maxLoopIterations ?? DEFAULT_MAX_LOOP_ITERATIONS;
         this.maxCallDepth = options.maxCallDepth ?? DEFAULT_MAX_CALL_DEPTH;
+        this.onSay = options.onSay;
+        this.onOutputFull = options.onOutputFull;
         this.onEnd = options.onEnd;
     }
 
@@ -161,7 +191,7 @@ class Interpreter {
             for (const [name, value] of variables) {
                 if (typeof value === 'object' && value !== null) variables.delete(name);
             }
-            this.onEnd?.(variables);
+            this.onEnd?.({ variables, output: this.output });
         }
     }
 
@@ -405,6 +435,15 @@ class Interpreter {
             return (((await native(this.api)) ?? null) as ScriptValue);
         }
 
+        const builtin = BUILTINS[expression.callee as Builtin] as
+            | ((interpreter: Interpreter, args: ScriptValue[], line: number) => ScriptValue)
+            | undefined;
+        if (builtin) {
+            this.currentLine = expression.line;
+            this.onLine?.(expression.line);
+            return builtin(this, args, expression.line);
+        }
+
         const target = scope.get(expression.callee);
         if (!target || typeof target !== 'object' || target.kind !== 'function') {
             throw new ScriptError(
@@ -442,6 +481,34 @@ class Interpreter {
         } finally {
             this.depth--;
         }
+    }
+
+    // ========================================================
+    // Builtins
+    // ========================================================
+
+    /** `say(x)`: one line of output. Free — the robot does nothing. */
+    say(args: ScriptValue[], line: number): ScriptValue {
+        if (args.length !== 1) {
+            throw new ScriptError(
+                args.length === 0
+                    ? '`say` braucht etwas zum Sagen, zum Beispiel `say("Hallo")`.'
+                    : '`say` sagt immer nur eine Sache — verbinde mehrere mit `+`.',
+                line,
+            );
+        }
+        if (this.output.length >= MAX_OUTPUT_LINES) {
+            if (!this.outputFull) {
+                this.outputFull = true;
+                this.onOutputFull?.();
+            }
+            return null;
+        }
+
+        const text = describe(args[0]);
+        this.output.push(text);
+        this.onSay?.(text, line);
+        return null;
     }
 
     // ========================================================
@@ -505,11 +572,28 @@ const NATIVES: Record<keyof RobotApi, (api: RobotApi) => unknown | Promise<unkno
 };
 
 /**
- * Robot commands always win over anything a student declares, so redefining
- * one would silently do nothing. Saying so is far kinder than letting the
- * level become unsolvable for a reason nothing on screen explains.
+ * Commands of the language itself rather than the robot. They cost no energy,
+ * no command and — see `measure.ts` — no memory: nothing in the world moves.
+ * Unlike robot commands they may take arguments, so each checks its own.
+ */
+const BUILTINS = {
+    say: (interpreter: Interpreter, args: ScriptValue[], line: number) => interpreter.say(args, line),
+} as const;
+
+export type Builtin = keyof typeof BUILTINS;
+
+/** The builtins by name, for the parser, constraints and completions. */
+export const BUILTIN_NAMES = Object.keys(BUILTINS) as Builtin[];
+
+/**
+ * Robot commands and builtins always win over anything a student declares,
+ * so redefining one would silently do nothing. Saying so is far kinder than
+ * letting the level become unsolvable for a reason nothing on screen explains.
  */
 function guardName(name: string, line: number): void {
+    if (name in BUILTINS) {
+        throw new ScriptError(`\`${name}\` ist ein eingebauter Befehl — nimm einen anderen Namen.`, line);
+    }
     if (!(name in NATIVES)) return;
     throw new ScriptError(`\`${name}\` ist ein Roboterbefehl — nimm einen anderen Namen.`, line);
 }

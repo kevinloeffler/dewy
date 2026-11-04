@@ -85,6 +85,9 @@ describe('parseLevel', () => {
                 { kind: 'name', declaration: 'function', name: 'turnAround', message: null },
                 { kind: 'value', name: 'count', operator: '===', value: 5, message: null },
                 { kind: 'value', name: 'name', operator: '!==', value: 'Dewy', message: null },
+                { kind: 'output', operator: 'contains', text: 'Hallo', message: null },
+                { kind: 'output', operator: 'notContains', text: 'Fehler', message: 'Kein Fehler!' },
+                { kind: 'count', target: { kind: 'call', name: 'say' }, operator: 'min', count: 1, message: null },
             ],
         };
         const result = parseLevel(roundTrip(document));
@@ -102,8 +105,18 @@ describe('parseLevel', () => {
             ...blank(),
             constraints: [{ kind: 'count', target: { kind: 'construct', construct: 'if' }, operator: 'gt', count: 1, message: null }],
         };
+        const badOutput = {
+            ...blank(),
+            constraints: [{ kind: 'output', operator: 'startsWith', text: 'x', message: null }],
+        };
+        const missingText = {
+            ...blank(),
+            constraints: [{ kind: 'output', operator: 'contains', message: null }],
+        };
         expect(parseLevel(unknownCall).ok).toBe(false);
         expect(parseLevel(badOperator).ok).toBe(false);
+        expect(parseLevel(badOutput).ok).toBe(false);
+        expect(parseLevel(missingText).ok).toBe(false);
     });
 
     it('accepts every tile kind', () => {

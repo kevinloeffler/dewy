@@ -6,14 +6,19 @@ import {
     constraintMessage,
     constraintProblems,
     constraintStatus,
+    hasRunRules,
+    outputHolds,
+    runRulesHold,
     valueHolds,
-    valuesHold,
+    type RunRecord,
 } from './constraints';
 import type {
     CodeConstraint,
     CodeConstruct,
     ConstraintOperator,
     LevelOptions,
+    OutputConstraint,
+    OutputOperator,
     ValueConstraint,
     ValueOperator,
 } from './level';
@@ -195,11 +200,16 @@ const value = (name: string, operator: ValueOperator, expected: number | string 
     message: null,
 });
 
+const record = (variables: Record<string, ScriptValue> = {}, output: string[] = []): RunRecord => ({
+    variables: new Map(Object.entries(variables)),
+    output,
+});
+
 /** The top-level variables `source` ends with, run on an empty level. */
 async function variablesAfter(source: string): Promise<ReadonlyMap<string, ScriptValue>> {
     const engine = new GameEngine(emptyLevel('v', 'V'), { energy: null });
     let variables: ReadonlyMap<string, ScriptValue> = new Map();
-    await runScript(source, { api: createRobotApi(engine, nullPlayer), onEnd: (ended) => (variables = ended) });
+    await runScript(source, { api: createRobotApi(engine, nullPlayer), onEnd: (ended) => (variables = ended.variables) });
     return variables;
 }
 
@@ -232,9 +242,9 @@ describe('value rules', () => {
     it('is not met before any run', () => {
         const program = census('let count = 5;');
         expect(constraintStatus(value('count', '===', 5), program, null)).toBe('unmet');
-        expect(constraintStatus(value('count', '===', 5), program, new Map([['count', 5]]))).toBe('met');
-        expect(valuesHold([value('count', '===', 5)], null)).toBe(false);
-        expect(valuesHold([construct('if', 'min', 1)], null)).toBe(true);
+        expect(constraintStatus(value('count', '===', 5), program, record({ count: 5 }))).toBe('met');
+        expect(runRulesHold([value('count', '===', 5)], null)).toBe(false);
+        expect(runRulesHold([construct('if', 'min', 1)], null)).toBe(true);
     });
 
     it('labels in the student language', () => {
@@ -252,5 +262,69 @@ describe('value rules', () => {
             constraints: [value('count', '===', 5), construct('variable', 'max', 0)],
         })).toHaveLength(1);
         expect(constraintProblems({ options: options(), constraints: [value('count', '>=', 5)] })).toEqual([]);
+    });
+});
+
+const output = (operator: OutputOperator, text: string): OutputConstraint => ({
+    kind: 'output',
+    operator,
+    text,
+    message: null,
+});
+
+describe('output rules', () => {
+    it('matches text anywhere, a whole line, or nowhere', () => {
+        const said = ['Hallo Welt', '42'];
+        expect(outputHolds(output('contains', 'Hallo'), said)).toBe(true);
+        expect(outputHolds(output('contains', 'Welt\n42'), said)).toBe(true);
+        expect(outputHolds(output('contains', 'hallo'), said)).toBe(false);
+        expect(outputHolds(output('line', 'Hallo'), said)).toBe(false);
+        expect(outputHolds(output('line', '42'), said)).toBe(true);
+        expect(outputHolds(output('notContains', 'Tschüss'), said)).toBe(true);
+        expect(outputHolds(output('notContains', 'Welt'), said)).toBe(false);
+    });
+
+    it('is not met before any run, not even a ban', () => {
+        const program = census('say("Hallo");');
+        expect(constraintStatus(output('contains', 'Hallo'), program, null)).toBe('unmet');
+        expect(constraintStatus(output('notContains', 'x'), program, null)).toBe('unmet');
+        expect(constraintStatus(output('contains', 'Hallo'), program, record({}, ['Hallo']))).toBe('met');
+        expect(runRulesHold([output('contains', 'Hallo')], record({}, ['Hallo']))).toBe(true);
+        expect(runRulesHold([output('contains', 'Hallo'), value('n', '===', 1)], record({}, ['Hallo']))).toBe(false);
+    });
+
+    it('can be a level\'s whole task', () => {
+        expect(hasRunRules([output('contains', 'Hallo')])).toBe(true);
+        expect(hasRunRules([construct('if', 'min', 1)])).toBe(false);
+    });
+
+    it('labels in plain words', () => {
+        expect(constraintLabel(output('contains', 'Hallo'))).toBe('Gib „Hallo“ aus');
+        expect(constraintLabel(output('line', 'Hallo'))).toBe('Gib genau die Zeile „Hallo“ aus');
+        expect(constraintLabel(output('notContains', 'Hallo'))).toBe('Gib nie „Hallo“ aus');
+    });
+
+    it('counts say like any other call', () => {
+        const sayRule: CodeConstraint = {
+            kind: 'count',
+            target: { kind: 'call', name: 'say' },
+            operator: 'min',
+            count: 1,
+            message: null,
+        };
+        expect(constraintStatus(sayRule, census('say("x");'))).toBe('met');
+        expect(constraintStatus(sayRule, census('moveForward();'))).toBe('unmet');
+    });
+
+    it('warns about rules no run can meet', () => {
+        const options = { languageStage: 1, memory: 0 } as LevelOptions;
+        const problems = (constraints: CodeConstraint[]) => constraintProblems({ options, constraints });
+        expect(problems([output('contains', 'Hallo')])).toEqual([]);
+        expect(problems([output('contains', '')])).toHaveLength(1);
+        expect(problems([output('line', 'Hallo Welt'), output('notContains', 'Welt')])).toHaveLength(1);
+        expect(problems([
+            output('contains', 'Hallo'),
+            { kind: 'count', target: { kind: 'call', name: 'say' }, operator: 'max', count: 0, message: null },
+        ])).toHaveLength(1);
     });
 });

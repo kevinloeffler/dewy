@@ -16,10 +16,10 @@
 	import {
 		checkConstraints,
 		constraintMessage,
-		hasValueRules,
+		hasRunRules,
 		isRequirement,
-		valuesHold,
-		type RunVariables
+		runRulesHold,
+		type RunRecord
 	} from '$lib/game/constraints';
 	import { runHeadless } from '$lib/game/run';
 	import type { CrateColor } from '$lib/game/crate-color';
@@ -34,6 +34,7 @@
 	import RunControls from './RunControls.svelte';
 	import LevelInstructions from './LevelInstructions.svelte';
 	import LevelComplete from './LevelComplete.svelte';
+	import ConsolePanel, { type ConsoleLine } from './ConsolePanel.svelte';
 
 	interface Props {
 		level: LevelDocument;
@@ -147,28 +148,46 @@
 	);
 	/** One per code rule, in order — `null` while the program does not parse. */
 	/**
-	 * The top-level variables the last run on screen ended with, and the
-	 * program that run was. Value rules are judged on them — only while the
-	 * code is still that program, so editing it puts them back to "not yet".
+	 * How the last run on screen ended — its top-level variables and output —
+	 * and the program that run was. Value and output rules are judged on it,
+	 * only while the code is still that program, so editing it puts them back
+	 * to "not yet".
 	 */
-	let ran = $state<{ code: string; variables: RunVariables } | null>(null);
-	const ranVariables = $derived(ran && ran.code === code ? ran.variables : null);
+	let ran = $state<{ code: string; record: RunRecord } | null>(null);
+	const ranRecord = $derived(ran && ran.code === code ? ran.record : null);
 	const checks = $derived(
-		program ? checkConstraints(level.constraints, program, ranVariables) : null
+		program ? checkConstraints(level.constraints, program, ranRecord) : null
 	);
 	/**
-	 * A level whose only task is a value rule — "set `count` to 5" — has no
-	 * world goal to reach, so finishing the program is what solves it.
+	 * A level whose only task is a rule about the run — "set `count` to 5",
+	 * "say Hallo" — has no world goal to reach, so finishing the program is
+	 * what solves it.
 	 */
 	const goalless = (target: Level) =>
-		effectiveGoals(target).length === 0 && hasValueRules(target.constraints);
+		effectiveGoals(target).length === 0 && hasRunRules(target.constraints);
 
-	/** Whether one run solved its world: the goals reached, and every value rule true. */
-	function solvedBy(target: Level, result: RunResult, variables: RunVariables | null): boolean {
+	/** Whether one run solved its world: the goals reached, and every run rule true. */
+	function solvedBy(target: Level, result: RunResult, record: RunRecord | null): boolean {
 		const reached =
 			result.status === 'complete' || (result.status === 'finished' && goalless(target));
-		return reached && valuesHold(target.constraints, variables);
+		return reached && runRulesHold(target.constraints, record);
 	}
+
+	/**
+	 * What `say` wrote during the run on screen. Hidden variants never write
+	 * here — their output only reaches the rules.
+	 */
+	let output = $state<ConsoleLine[]>([]);
+	/** The run passed `MAX_OUTPUT_LINES` and later lines were dropped. */
+	let outputFull = $state(false);
+	/**
+	 * Hidden until the first `say`, then kept for the session so the editor
+	 * does not change size from run to run. A level that checks output starts
+	 * with it — the console is where its task happens.
+	 */
+	let consoleShown = $state(
+		untrack(() => levelDocument.constraints.some((constraint) => constraint.kind === 'output'))
+	);
 	/** Over a limit: the program may not run. See `$lib/game/constraints`. */
 	const violated = $derived(checks?.find((check) => check.status === 'violated') ?? null);
 
@@ -251,9 +270,9 @@
 		return Promise.all(
 			levelDocument.variants.map(async (_, index) => {
 				const target = variantLevel(levelDocument, index);
-				let variables: RunVariables | null = null;
-				const result = await runHeadless(target, source, (ended) => (variables = ended));
-				const ok = solvedBy(target, result, variables);
+				let record: RunRecord | null = null;
+				const result = await runHeadless(target, source, (ended) => (record = ended));
+				const ok = solvedBy(target, result, record);
 				if (run === checkRun) results[index] = ok ? 'pass' : 'fail';
 				return ok;
 			})
@@ -400,6 +419,8 @@
 		outcome = null;
 		solved = false;
 		ran = null;
+		output = [];
+		outputFull = false;
 		notice = null;
 		celebrating = false;
 		// A run cut short keeps no secrets: its variant's mark shows now.
@@ -414,19 +435,26 @@
 		running = true;
 		outcome = null;
 		notice = null;
+		output = [];
+		outputFull = false;
 
 		const source = code;
-		let variables: RunVariables | null = null;
+		let record: RunRecord | null = null;
 		const result = await runScript(source, {
 			api: robot,
 			stage: level.options.languageStage,
 			signal: controller.signal,
 			onLine: (line) => (activeLine = line),
 			onStatement: gate,
-			onEnd: (ended) => (variables = ended),
+			onSay: (text, line) => {
+				output.push({ text, line });
+				consoleShown = true;
+			},
+			onOutputFull: () => (outputFull = true),
+			onEnd: (ended) => (record = ended),
 		});
-		// Before the verdict: `checks` reads it to judge the value rules.
-		if (result.status !== 'cancelled' && variables) ran = { code: source, variables };
+		// Before the verdict: `checks` reads it to judge the value and output rules.
+		if (result.status !== 'cancelled' && record) ran = { code: source, record };
 
 		running = false;
 		playing = false;
@@ -626,21 +654,27 @@
 				</div>
 			{/if}
 
-			<div class="editor">
-				<CodeMirrorEditor
-					{code}
-					{activeLine}
-					readonly={running}
-					stage={level.options.languageStage}
-					height="100%"
-					onchange={(next) => (code = next)}
-				/>
+			<div class="editor" class:has-console={consoleShown}>
+				<div class="code">
+					<CodeMirrorEditor
+						{code}
+						{activeLine}
+						readonly={running}
+						stage={level.options.languageStage}
+						height="100%"
+						onchange={(next) => (code = next)}
+					/>
 
-				<div class="notice" role="status" aria-live="polite">
-					{#if notice}
-						<p class="toast" class:is-warning={notice.kind === 'warning'}>{notice.text}</p>
-					{/if}
+					<div class="notice" role="status" aria-live="polite">
+						{#if notice}
+							<p class="toast" class:is-warning={notice.kind === 'warning'}>{notice.text}</p>
+						{/if}
+					</div>
 				</div>
+
+				{#if consoleShown}
+					<ConsolePanel lines={output} full={outputFull} />
+				{/if}
 			</div>
 
 			<div class="controls-cell">
@@ -798,10 +832,30 @@
 		flex-shrink: 0;
 	}
 
+	/*
+		The code and, once a run has said something, the console under it —
+		one panel, so the console takes its lines from the editor rather than
+		from the column.
+	*/
 	.editor {
+		flex: 1;
+		min-height: 0;
+		display: flex;
+		flex-direction: column;
+		border-radius: var(--radius);
+		overflow: hidden;
+	}
+
+	.code {
 		flex: 1;
 		position: relative;
 		min-height: 0;
+	}
+
+	/* The console continues the editor; the seam between them is square. */
+	.editor.has-console :global(.cm-wrap) {
+		border-bottom-left-radius: 0;
+		border-bottom-right-radius: 0;
 	}
 
 	.controls-cell {

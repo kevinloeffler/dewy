@@ -345,7 +345,7 @@ export type CodeConstruct = 'if' | 'else' | 'while' | 'repeat' | 'function' | 'v
 
 /**
  * What a count rule counts: a construct, or the call sites of one robot
- * command or sensor by name (`turnLeft`, `isBlocked`).
+ * command, sensor or builtin by name (`turnLeft`, `isBlocked`, `say`).
  */
 export type ConstraintTarget =
     | { kind: 'construct'; construct: CodeConstruct }
@@ -390,7 +390,25 @@ export type ValueConstraint = {
     message: string | null;
 };
 
-export type CodeConstraint = CountConstraint | NameConstraint | ValueConstraint;
+/**
+ * `contains` — the text appears anywhere in the output, across lines too.
+ * `line` — one line is exactly the text. `notContains` — it appears nowhere.
+ */
+export type OutputOperator = 'contains' | 'line' | 'notContains';
+
+/**
+ * What the program wrote with `say` — "Gib „Hallo“ aus". Like a value rule,
+ * judged on the run and per variant: every variant's run must satisfy it.
+ * Case-sensitive, as `===` is.
+ */
+export type OutputConstraint = {
+    kind: 'output';
+    operator: OutputOperator;
+    text: string;
+    message: string | null;
+};
+
+export type CodeConstraint = CountConstraint | NameConstraint | ValueConstraint | OutputConstraint;
 
 
 // ============================================================

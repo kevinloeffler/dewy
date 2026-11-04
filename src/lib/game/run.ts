@@ -1,7 +1,7 @@
 import { GameEngine } from './engine';
 import { nullPlayer } from './events';
 import { createRobotApi } from './robot-api';
-import { runScript, type RunResult, type ScriptValue } from './script';
+import { runScript, type RunRecord, type RunResult } from './script';
 import type { Level } from './level';
 
 /**
@@ -15,11 +15,14 @@ import type { Level } from './level';
  * screen — the battery, the 500-command cap, the loop limit — and the
  * interpreter yields to the browser as it goes, so even nine of them at once
  * never freeze the tab.
+ *
+ * Nothing it says reaches the console — only `onEnd`, so the variant's
+ * output rules can be judged.
  */
 export function runHeadless(
     level: Level,
     code: string,
-    onEnd?: (variables: ReadonlyMap<string, ScriptValue>) => void,
+    onEnd?: (record: RunRecord) => void,
 ): Promise<RunResult> {
     const engine = new GameEngine(level, { energy: level.options.energy });
     return runScript(code, {

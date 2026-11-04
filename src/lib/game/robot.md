@@ -198,6 +198,27 @@ safe to walk through, and reports `false`.
 
 ---
 
+## Output
+
+### `say(value)`
+Writes one line to the **console** under the code editor. Not a robot
+command but part of the language: the robot does nothing, so it costs **no
+energy**, **no command** and **no memory** — a student should never have to
+delete a `say` to make a program fit. Open from **Stage 1**.
+
+- Takes exactly one value; join several with `+` (`say("Farbe: " + crateColor())`)
+- Values are written the way `+` joins them: `null` reads as `nichts`
+- The name is reserved — `function say()` or `let say` is an error
+- A run keeps at most 1000 lines; later ones are dropped
+- The console is hidden until the first `say`, then stays for the session.
+  Only the variant on screen writes to it; hidden variants run silently
+
+Output rules ("Ausgabe prüfen") judge what a run wrote, per variant:
+`contains` (anywhere, across lines), `line` (one line exactly) and
+`notContains`. Case-sensitive.
+
+---
+
 ## Crash Model
 
 Running into the world — a wall, a pit, a sensor's zone, a crate that cannot
@@ -220,7 +241,7 @@ The JavaScript subset is introduced gradually across levels:
 
 | Stage | Feature | Example |
 |-------|---------|---------|
-| 1 | Sequencing | `moveForward();` |
+| 1 | Sequencing, `say` | `moveForward();` `say("Hallo");` |
 | 2 | `repeat(n)` | `repeat(4) { moveForward(); }` |
 | 3 | `if` / `else` + sensing | `if (isBlocked()) { turnLeft(); }` |
 | 4 | `while` | `while (!isGoal()) { moveForward(); }` |

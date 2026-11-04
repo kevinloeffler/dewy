@@ -1,4 +1,4 @@
-import type { CompletionContext, CompletionResult } from '@codemirror/autocomplete';
+import type { Completion, CompletionContext, CompletionResult } from '@codemirror/autocomplete';
 import type { LanguageStage } from '$lib/game/level';
 
 /**
@@ -17,6 +17,11 @@ export type RobotApiEntry = {
 	type: 'function' | 'keyword';
 	info: string;
 	stage: LanguageStage;
+	/**
+	 * What to insert, with the caret `cursor` characters in — for a command
+	 * that takes something between its brackets. Left out: `label()`.
+	 */
+	insert?: { text: string; cursor: number };
 };
 
 export const ROBOT_API: readonly RobotApiEntry[] = [
@@ -76,6 +81,14 @@ export const ROBOT_API: readonly RobotApiEntry[] = [
 		type: 'function',
 		info: 'Bleibt einen Takt stehen. Kostet keine Energie; ein Förderband fährt dabei weiter.',
 		stage: 1,
+	},
+	{
+		label: 'say',
+		detail: '(text)',
+		type: 'function',
+		info: 'Schreibt etwas in die Konsole. Kostet weder Energie noch Speicher.',
+		stage: 1,
+		insert: { text: 'say("")', cursor: 5 },
 	},
 
 	// ── Stage 2 — loops ──────────────────────────────────────────────────
@@ -157,8 +170,20 @@ export function robotCompletions(maxStage: LanguageStage = 5) {
 				detail: entry.detail,
 				type: entry.type,
 				info: entry.info,
-				apply: entry.type === 'keyword' ? entry.label : entry.label + '()',
+				apply: apply(entry),
 			})),
 		};
+	};
+}
+
+function apply(entry: RobotApiEntry): Completion['apply'] {
+	if (entry.type === 'keyword') return entry.label;
+	const insert = entry.insert;
+	if (!insert) return entry.label + '()';
+	return (view, _completion, from, to) => {
+		view.dispatch({
+			changes: { from, to, insert: insert.text },
+			selection: { anchor: from + insert.cursor },
+		});
 	};
 }

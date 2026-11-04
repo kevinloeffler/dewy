@@ -74,3 +74,15 @@ describe('measureMemory', () => {
         expect(measureMemory('repeat(4) { moveForward(); }', 2)).toBe(2);
     });
 });
+
+describe('say and memory', () => {
+    it('costs no memory', () => {
+        expect(count('say("Hallo");')).toBe(0);
+        expect(count('moveForward();\nsay("da");\nmoveForward();')).toBe(2);
+        expect(count('repeat(3) { say("x"); }')).toBe(1);
+    });
+
+    it('is measured at stage 1', () => {
+        expect(measureMemory('say("Hallo");\nmoveForward();', 1)).toBe(1);
+    });
+});

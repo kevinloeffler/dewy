@@ -55,4 +55,21 @@ describe('runHeadless', () => {
             'crash',
         ]);
     });
+
+    it('hands each variant its own output, and says nothing out loud', async () => {
+        const outputs = await Promise.all(
+            variantLevels(corridors()).map(
+                (level) =>
+                    new Promise<readonly string[]>((resolve) => {
+                        void runHeadless(
+                            level,
+                            'let n = 0; while (!isGoal()) { say(n); moveForward(); n = n + 1; }',
+                            (record) => resolve(record.output),
+                        );
+                    }),
+            ),
+        );
+        // Reaching the goal ends the run on the spot, so the last `say` is before the last move.
+        expect(outputs).toEqual([['0', '1', '2'], ['0', '1', '2', '3', '4']]);
+    });
 });

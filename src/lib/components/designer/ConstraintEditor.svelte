@@ -3,18 +3,19 @@
 		CodeConstraint,
 		CodeConstruct,
 		ConstraintOperator,
+		OutputOperator,
 		ValueOperator
 	} from '$lib/game/level';
 	import { formatValue } from '$lib/game/constraints';
 
 	/**
-	 * One row as the designer edits it. The stored shape is `count`, `name` or
-	 * `value`; "Muss verwenden" and "Darf nicht verwenden" are `count` rules
+	 * One row as the designer edits it. The stored shape is `count`, `name`,
+	 * `value` or `output`; "Muss verwenden" and "Darf nicht verwenden" are `count` rules
 	 * with `min 1` and `max 0`, kept as their own mode so switching a row to
 	 * "Anzahl" does not snap straight back.
 	 */
 	export type ConstraintRow = {
-		mode: 'use' | 'forbid' | 'count' | 'name' | 'value';
+		mode: 'use' | 'forbid' | 'count' | 'name' | 'value' | 'output';
 		/** `construct:<name>` or `call:<name>`. */
 		target: string;
 		operator: ConstraintOperator;
@@ -24,6 +25,9 @@
 		valueOperator: ValueOperator;
 		/** As typed: `5`, `true`, `"Dewy"`. Read by `parseValue`. */
 		value: string;
+		outputOperator: OutputOperator;
+		/** Kept exactly as typed — spaces in output are part of it. */
+		text: string;
 		message: string;
 	};
 
@@ -52,8 +56,13 @@
 			name: '',
 			valueOperator: '===',
 			value: '',
+			outputOperator: 'contains',
+			text: '',
 			message: constraint.message ?? ''
 		};
+		if (constraint.kind === 'output') {
+			return { ...row, mode: 'output', outputOperator: constraint.operator, text: constraint.text };
+		}
 		if (constraint.kind === 'value') {
 			return {
 				...row,
@@ -75,6 +84,9 @@
 
 	export function fromRow(row: ConstraintRow): CodeConstraint {
 		const message = row.message.trim() || null;
+		if (row.mode === 'output') {
+			return { kind: 'output', operator: row.outputOperator, text: row.text, message };
+		}
 		if (row.mode === 'value') {
 			return {
 				kind: 'value',
@@ -116,10 +128,12 @@
 	import {
 		CODE_CONSTRUCTS,
 		CONSTRAINT_ACTIONS,
+		CONSTRAINT_BUILTINS,
 		CONSTRAINT_SENSORS,
 		CONSTRUCT_NAME,
 		constraintLabel,
 		constraintProblems,
+		OUTPUT_OPERATORS,
 		VALUE_OPERATORS
 	} from '$lib/game/constraints';
 	import type { LevelOptions } from '$lib/game/level';
@@ -152,6 +166,12 @@
 		'>=': '≥'
 	};
 
+	const OUTPUT_OPERATOR_LABEL: Record<OutputOperator, string> = {
+		contains: 'enthält',
+		line: 'hat die Zeile',
+		notContains: 'enthält nicht'
+	};
+
 	function remove(index: number) {
 		rows = rows.filter((_, i) => i !== index);
 	}
@@ -161,7 +181,8 @@
 	<p class="intro">
 		Regeln dazu, <em>womit</em> das Programm geschrieben ist. Gezählt wird, was im Code steht – nicht,
 		wie oft es läuft. Verbote und Höchstzahlen sperren den Start; Pflichten müssen erst zum Lösen
-		erfüllt sein. Ein geprüfter Wert gilt für die Variable, wie sie am Ende des Laufs steht – in jeder
+		erfüllt sein. Ein geprüfter Wert gilt für die Variable, wie sie am Ende des Laufs steht, eine
+		geprüfte Ausgabe für alles, was der Lauf mit <code>say</code> geschrieben hat – beides in jeder
 		Variante.
 	</p>
 
@@ -179,9 +200,22 @@
 								<option value="count">Anzahl</option>
 								<option value="name">Name existiert</option>
 								<option value="value">Wert prüfen</option>
+								<option value="output">Ausgabe prüfen</option>
 							</select>
 
-							{#if row.mode === 'value'}
+							{#if row.mode === 'output'}
+								<select bind:value={row.outputOperator} aria-label="Vergleich">
+									{#each OUTPUT_OPERATORS as operator (operator)}
+										<option value={operator}>{OUTPUT_OPERATOR_LABEL[operator]}</option>
+									{/each}
+								</select>
+								<input
+									class="name"
+									bind:value={row.text}
+									placeholder="Hallo"
+									aria-label="Text"
+								/>
+							{:else if row.mode === 'value'}
 								<input
 									class="name"
 									bind:value={row.name}
@@ -235,6 +269,11 @@
 									</optgroup>
 									<optgroup label="Sensoren">
 										{#each CONSTRAINT_SENSORS as name (name)}
+											<option value={`call:${name}`}>{name}()</option>
+										{/each}
+									</optgroup>
+									<optgroup label="Ausgabe">
+										{#each CONSTRAINT_BUILTINS as name (name)}
 											<option value={`call:${name}`}>{name}()</option>
 										{/each}
 									</optgroup>
