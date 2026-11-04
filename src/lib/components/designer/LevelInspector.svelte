@@ -130,26 +130,28 @@
 		></textarea>
 	</label>
 
-	<div class="field">
-		Anleitung
-		<div class="instructions">
-			<button class="btn btn-ghost small" type="button" onclick={editInstructions}>
-				{level.instructions ? 'Anleitung bearbeiten' : 'Anleitung hinzufügen'}
-			</button>
-			<span class="muted">{level.instructions ? 'vorhanden' : 'keine'}</span>
-		</div>
+	<div class="field inline">
+		<span class="inline-label">Anleitung</span>
+		{#if level.instructions}
+			<svg class="status is-on" viewBox="0 0 16 16" aria-label="vorhanden" role="img">
+				<path d="M3.5 8.5l3 3 6-7" />
+			</svg>
+		{:else}
+			<svg class="status" viewBox="0 0 16 16" aria-label="keine" role="img">
+				<path d="M4.5 4.5l7 7M11.5 4.5l-7 7" />
+			</svg>
+		{/if}
+		<button class="btn btn-ghost small" type="button" onclick={editInstructions}>
+			{level.instructions ? 'Bearbeiten' : 'Hinzufügen'}
+		</button>
 	</div>
 
-	<div class="field">
-		Code-Regeln
-		<div class="instructions">
-			<button class="btn btn-ghost small" type="button" onclick={editConstraints}>
-				{constraintCount > 0 ? 'Regeln bearbeiten' : 'Regeln hinzufügen'}
-			</button>
-			<span class="muted">
-				{constraintCount === 0 ? 'keine' : constraintCount === 1 ? '1 Regel' : `${constraintCount} Regeln`}
-			</span>
-		</div>
+	<div class="field inline">
+		<span class="inline-label">Code-Regeln</span>
+		<span class="count" aria-label={`${constraintCount} Regeln`}>{constraintCount}</span>
+		<button class="btn btn-ghost small" type="button" onclick={editConstraints}>
+			{constraintCount > 0 ? 'Bearbeiten' : 'Hinzufügen'}
+		</button>
 	</div>
 
 	<div class="field">
@@ -173,71 +175,78 @@
 
 	<hr />
 
-	<label class="field check">
-		<input
-			type="checkbox"
-			checked={energyOn}
-			onchange={(event) =>
-				draft.edit((current) =>
-					setOptions(current, { energy: event.currentTarget.checked ? 15 : null })
-				)}
-		/>
-		Energielimit
-	</label>
-
-	{#if energyOn}
-		<label class="field indent">
-			Maximale Anzahl Befehle
+	<!-- One block per option: the checkbox and the value it unlocks belong together. -->
+	<div class="field">
+		<label class="check">
 			<input
-				type="number"
-				min="1"
-				value={level.options.energy}
+				type="checkbox"
+				checked={energyOn}
 				onchange={(event) =>
 					draft.edit((current) =>
-						setOptions(current, { energy: Number(event.currentTarget.value) || 1 })
+						setOptions(current, { energy: event.currentTarget.checked ? 15 : null })
 					)}
 			/>
+			Energielimit
 		</label>
-	{/if}
 
-	<label class="field check">
-		<input
-			type="checkbox"
-			checked={memoryOn}
-			onchange={(event) =>
-				draft.edit((current) =>
-					setOptions(current, { memory: event.currentTarget.checked ? 12 : null })
-				)}
-		/>
-		Speicherlimit
-	</label>
+		{#if energyOn}
+			<label class="indent">
+				Maximale Anzahl Befehle
+				<input
+					type="number"
+					min="1"
+					value={level.options.energy}
+					onchange={(event) =>
+						draft.edit((current) =>
+							setOptions(current, { energy: Number(event.currentTarget.value) || 1 })
+						)}
+				/>
+			</label>
+		{/if}
+	</div>
 
-	{#if memoryOn}
-		<label class="field indent">
-			Maximale Anzahl Anweisungen
+	<div class="field">
+		<label class="check">
 			<input
-				type="number"
-				min="1"
-				value={level.options.memory}
+				type="checkbox"
+				checked={memoryOn}
 				onchange={(event) =>
 					draft.edit((current) =>
-						setOptions(current, { memory: Number(event.currentTarget.value) || 1 })
+						setOptions(current, { memory: event.currentTarget.checked ? 12 : null })
 					)}
 			/>
+			Speicherlimit
 		</label>
-	{/if}
 
-	<label class="field check">
-		<input
-			type="checkbox"
-			checked={level.options.showInventory}
-			onchange={(event) =>
-				draft.edit((current) =>
-					setOptions(current, { showInventory: event.currentTarget.checked })
-				)}
-		/>
-		Inventar anzeigen
-	</label>
+		{#if memoryOn}
+			<label class="indent">
+				Maximale Anzahl Anweisungen
+				<input
+					type="number"
+					min="1"
+					value={level.options.memory}
+					onchange={(event) =>
+						draft.edit((current) =>
+							setOptions(current, { memory: Number(event.currentTarget.value) || 1 })
+						)}
+				/>
+			</label>
+		{/if}
+	</div>
+
+	<div class="field">
+		<label class="check">
+			<input
+				type="checkbox"
+				checked={level.options.showInventory}
+				onchange={(event) =>
+					draft.edit((current) =>
+						setOptions(current, { showInventory: event.currentTarget.checked })
+					)}
+			/>
+			Inventar anzeigen
+		</label>
+	</div>
 
 	<label class="field">
 		<span class="field-label">
@@ -329,14 +338,55 @@
 		color: var(--text-muted);
 	}
 
-	.field.check {
+	.check {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		cursor: pointer;
+	}
+
+	.indent {
+		display: flex;
+		flex-direction: column;
+		gap: 5px;
+		padding-left: 22px;
+		margin-top: 4px;
+	}
+
+	/* Label, status and button on one row. */
+	.field.inline {
 		flex-direction: row;
 		align-items: center;
 		gap: 8px;
 	}
 
-	.field.indent {
-		padding-left: 22px;
+	.inline-label {
+		flex: 1;
+	}
+
+	.status {
+		width: 14px;
+		height: 14px;
+		fill: none;
+		stroke: var(--text-faint);
+		stroke-width: 2;
+		stroke-linecap: round;
+		stroke-linejoin: round;
+	}
+
+	.status.is-on {
+		stroke: var(--success);
+	}
+
+	.count {
+		min-width: 20px;
+		text-align: center;
+		font-weight: 600;
+		color: var(--text);
+	}
+
+	.inline .small {
+		margin-top: 0;
 	}
 
 	.field :global(input:not([type='checkbox'])),
@@ -385,20 +435,6 @@
 		padding: 5px 10px;
 		font-size: 12px;
 		margin-top: 6px;
-	}
-
-	.instructions {
-		display: flex;
-		align-items: center;
-		gap: 8px;
-	}
-
-	.instructions .small {
-		margin-top: 0;
-	}
-
-	.muted {
-		color: var(--text-faint);
 	}
 
 	.spacer {
