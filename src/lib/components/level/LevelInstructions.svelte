@@ -8,13 +8,13 @@
 	 */
 	interface Props {
 		source: string;
+		/** Folded away in presentation mode, where the teacher says it out loud. */
+		open?: boolean;
 	}
 
-	let { source }: Props = $props();
+	let { source, open = $bindable(true) }: Props = $props();
 
 	const html = $derived(renderMarkdown(source));
-
-	let open = $state(true);
 </script>
 
 <section class="instructions panel">

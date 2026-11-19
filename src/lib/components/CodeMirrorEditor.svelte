@@ -101,7 +101,8 @@
 	.cm-wrap :global(.cm-editor) {
 		height: 100%;
 		font-family: var(--font-code);
-		font-size: 13px;
+		/* A surrounding layout may enlarge it — presentation mode does. */
+		font-size: var(--code-font-size, 13px);
 	}
 
 	.cm-wrap :global(.cm-scroller) {

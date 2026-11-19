@@ -35,6 +35,13 @@
 	import LevelInstructions from './LevelInstructions.svelte';
 	import LevelComplete from './LevelComplete.svelte';
 	import ConsolePanel, { type ConsoleLine } from './ConsolePanel.svelte';
+	import {
+		followFullscreen,
+		isPresentationShortcut,
+		presentation,
+		presentationShortcut,
+		setPresentation,
+	} from '$lib/presentation.svelte';
 
 	interface Props {
 		level: LevelDocument;
@@ -200,11 +207,32 @@
 		}
 	}
 
+	/**
+	 * Presentation mode folds the instructions away (the teacher says them out
+	 * loud) and slows the robot down to talk over each step. Applied on entry
+	 * and on mounting the next level while it is still on, and undone on exit
+	 * — unless the teacher has since picked another speed themselves.
+	 */
+	const PRESENTATION_SPEED = 0.5;
+	let instructionsOpen = $state(true);
+	$effect(() => {
+		const on = presentation.on;
+		untrack(() => {
+			instructionsOpen = !on;
+			if (on) view.speed = PRESENTATION_SPEED;
+			else if (view.speed === PRESENTATION_SPEED) view.speed = 1;
+		});
+	});
+
 	onMount(() => {
+		const unfollow = followFullscreen();
 		const instance = new World(canvas, view);
 		world = instance;
 		mount(untrack(() => level));
-		return () => instance.destroy();
+		return () => {
+			unfollow();
+			instance.destroy();
+		};
 	});
 
 	/**
@@ -571,6 +599,11 @@
 	}
 
 	function onkeydown(event: KeyboardEvent) {
+		if (isPresentationShortcut(event)) {
+			event.preventDefault();
+			setPresentation(!presentation.on);
+			return;
+		}
 		if (!(event.metaKey || event.ctrlKey) || event.key !== 'Enter') return;
 		event.preventDefault();
 		run();
@@ -631,7 +664,10 @@
 
 <svelte:window {onkeydown} />
 
-<div class="screen">
+<div class="screen" class:is-presenting={presentation.on}>
+	{#if presentation.on}
+		<h1 class="present-title">{level.name}</h1>
+	{:else}
 	<Topbar>
 		{#snippet left()}
 			<nav class="crumbs" aria-label="Kurs">
@@ -643,7 +679,9 @@
 					{/if}
 					<span class="crumb-sep" aria-hidden="true">/</span>
 				{/each}
-				<span class="crumb is-current">{level.name}</span>
+				<span class="crumb is-current" title="Präsentationsmodus: {presentationShortcut.join(' ')}"
+					>{level.name}</span
+				>
 			</nav>
 			{#if props.counter}
 				<span class="pill">{props.counter}</span>
@@ -657,12 +695,13 @@
 			{@render props.actions?.()}
 		{/snippet}
 	</Topbar>
+	{/if}
 
 	<main class="stage">
 		<section class="column">
 			{#if level.instructions}
 				<div class="instructions-cell">
-					<LevelInstructions source={level.instructions} />
+					<LevelInstructions source={level.instructions} bind:open={instructionsOpen} />
 				</div>
 			{/if}
 
@@ -996,6 +1035,44 @@
 	.goal.is-violated .goal-mark {
 		background: var(--danger);
 		border-color: var(--danger);
+	}
+
+	/* ── Presentation mode ──────────────────────────────────── */
+
+	/*
+		For a projector: no topbar, the editor a share of the width rather than
+		a fixed 480px, and everything a room has to read enlarged. The code
+		grows through its font size — CSS zoom would throw off CodeMirror's
+		cursor maths — and the panels with fixed pixel sizes through `zoom`.
+		The viewport is never zoomed: the canvas resizes itself, and zoom would
+		break `pickTile`'s pointer coordinates.
+	*/
+	.present-title {
+		margin: 0;
+		padding: 12px 24px 0;
+		font-size: 1.25rem;
+		font-weight: 700;
+		color: var(--text-muted);
+	}
+
+	.is-presenting .stage {
+		grid-template-columns: minmax(0, 2fr) minmax(0, 3fr);
+	}
+
+	.is-presenting .editor {
+		--code-font-size: 22px;
+	}
+
+	.is-presenting .instructions-cell,
+	.is-presenting .editor :global(.output-panel),
+	.is-presenting .controls-cell,
+	.is-presenting .goals {
+		zoom: 1.4;
+	}
+
+	.is-presenting .toast {
+		max-width: 560px;
+		font-size: 1.25rem;
 	}
 
 	/* ── Footer ─────────────────────────────────────────────── */
