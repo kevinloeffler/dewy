@@ -405,6 +405,18 @@
 		playing = false;
 	}
 
+	/**
+	 * The editor never locks. A run executes the code as it was when it
+	 * started, so the first keystroke during one — playing, paused or mid-step
+	 * — resets it rather than leave the line marker pointing into a program
+	 * that is no longer on screen. `reset` aborts synchronously, so the rest
+	 * of a burst of typing does not reset again while the first one settles.
+	 */
+	function edit(next: string) {
+		code = next;
+		if (running && controller && !controller.signal.aborted) void reset();
+	}
+
 	async function reset() {
 		if (active) {
 			controller?.abort();
@@ -659,10 +671,9 @@
 					<CodeMirrorEditor
 						{code}
 						{activeLine}
-						readonly={running}
 						stage={level.options.languageStage}
 						height="100%"
-						onchange={(next) => (code = next)}
+						onchange={edit}
 					/>
 
 					<div class="notice" role="status" aria-live="polite">
