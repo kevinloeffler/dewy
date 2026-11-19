@@ -864,7 +864,7 @@
 		flex: 1;
 		min-height: 0;
 		display: grid;
-		grid-template-columns: 480px 1fr;
+		grid-template-columns: 528px 1fr;
 		gap: 16px;
 		padding: 16px;
 	}
@@ -1041,7 +1041,7 @@
 
 	/*
 		For a projector: no topbar, the editor a share of the width rather than
-		a fixed 480px, and everything a room has to read enlarged. The code
+		a fixed 528px, and everything a room has to read enlarged. The code
 		grows through its font size — CSS zoom would throw off CodeMirror's
 		cursor maths — and the panels with fixed pixel sizes through `zoom`.
 		The viewport is never zoomed: the canvas resizes itself, and zoom would
@@ -1056,7 +1056,7 @@
 	}
 
 	.is-presenting .stage {
-		grid-template-columns: minmax(0, 2fr) minmax(0, 3fr);
+		grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
 	}
 
 	.is-presenting .editor {
