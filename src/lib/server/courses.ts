@@ -571,6 +571,9 @@ export async function unshareCourse(
  *
  * The copy starts unpublished. Somebody else's course appearing live in your
  * catalogue the instant you duplicate it is not what anyone means by "copy".
+ *
+ * The course's LLM provider (`llm_config`) is deliberately left behind: its
+ * API key belongs to a person, so the copy starts on the school's default.
  */
 export async function duplicateCourse(actor: Actor, courseId: string): Promise<string> {
 	if (!(await canViewCourse(actor, courseId))) {

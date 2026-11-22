@@ -10,7 +10,7 @@
 	import TriangleAlert from '@lucide/svelte/icons/triangle-alert';
 	import { draggable, droppable, type DragDropState } from '@thisux/sveltednd';
 	import { autosave, SaveTracker } from '$lib/autosave.svelte.js';
-	import { Button, Callout, Modal } from '$lib/components/index.js';
+	import { Button, Callout, LlmConfigForm, Modal } from '$lib/components/index.js';
 	import { dismiss } from '$lib/dismiss.js';
 	import type { ActionData, PageServerData } from './$types';
 
@@ -39,6 +39,7 @@
 	let addingTheory = $state<string | null>(null);
 	let deletingCourse = $state(false);
 	let sharing = $state(false);
+	let configuringLlm = $state(false);
 
 	// Which shared level the "new level" dialog has selected.
 	let borrowed = $state('');
@@ -202,6 +203,9 @@
 				</form>
 				<button class="btn btn-ghost act" type="button" onclick={() => (sharing = true)}>
 					Teilen
+				</button>
+				<button class="btn btn-ghost act" type="button" onclick={() => (configuringLlm = true)}>
+					KI-Anbieter
 				</button>
 			{/if}
 
@@ -646,6 +650,49 @@
 		</form>
 	{/if}
 </Modal>
+
+{#if data.llm}
+	<Modal bind:open={configuringLlm} title="KI-Anbieter für diesen Kurs">
+		<p class="dialog-note">
+			{#if data.llm.config}
+				Dieser Kurs verwendet deinen eigenen Anbieter.
+			{:else if data.llm.hasDefault}
+				Dieser Kurs verwendet den Standard der Schule.
+			{:else}
+				Die Schule hat keinen Standard-Anbieter. Ohne eigenen Anbieter sind die KI-Funktionen in
+				diesem Kurs ausgeschaltet.
+			{/if}
+			Ein eigener Anbieter gilt für dich und die Schüler/innen <strong>deiner</strong> Klassen.
+			Klassen anderer Lehrpersonen, mit denen du den Kurs teilst, verwenden den Standard der Schule.
+			Fällt dein Anbieter aus, springt der Standard der Schule ein.
+		</p>
+
+		{#if !data.llm.hasOwner}
+			<Callout variant="warn">
+				Dieser Kurs hat keine Besitzerin und keinen Besitzer. Für ihn gilt immer der Standard der
+				Schule.
+			</Callout>
+		{:else if !data.llm.secretKeyConfigured}
+			<Callout variant="warn">
+				Auf dem Server fehlt <code>LLM_SECRET_KEY</code>, darum können keine API-Schlüssel
+				gespeichert werden. Wende dich an die Administration.
+			</Callout>
+		{/if}
+
+		{#key data.llm.config?.updatedAt}
+			<LlmConfigForm
+				config={data.llm.config}
+				saveAction="?/saveLlm"
+				testAction="?/testLlm"
+				clearAction="?/clearLlm"
+				message={form?.llm?.message}
+				ok={form?.llm?.ok}
+				disabled={!data.llm.hasOwner || !data.llm.secretKeyConfigured}
+				clearLabel="Standard verwenden"
+			/>
+		{/key}
+	</Modal>
+{/if}
 
 <!--
 	Deleting the course takes every stage, theory block and level with it, and

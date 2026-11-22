@@ -28,6 +28,16 @@ import {
 } from '$lib/server/courses';
 import { findLevelMetadata } from '$lib/server/levels';
 import { actorOf, Forbidden, listTeachers } from '$lib/server/users';
+import {
+	clearCourseConfig,
+	courseHasOwner,
+	getCourseConfigView,
+	hasAppConfig,
+	saveCourseConfig,
+	secretKeyConfigured,
+	testCourseConfig
+} from '$lib/server/llm/config';
+import { llmAction, llmInputFrom } from '$lib/server/llm/actions';
 
 export const load: PageServerLoad = async (event) => {
 	const actor = actorOf(event);
@@ -51,7 +61,17 @@ export const load: PageServerLoad = async (event) => {
 		levels: await findLevelMetadata(levelIds),
 		shares: canEdit ? await listCourseShares(actor, course.id) : [],
 		teachers: canEdit ? (await listTeachers()).filter((row) => row.id !== actor.user.id) : [],
-		sharedLevels: canEdit ? await listSharedLevels(actor) : []
+		sharedLevels: canEdit ? await listSharedLevels(actor) : [],
+		// Only for those who may change it: a clone recipient's students never
+		// use this course's provider (see `$lib/server/llm/resolve`).
+		llm: canEdit
+			? {
+					config: await getCourseConfigView(actor, course.id),
+					hasDefault: await hasAppConfig(),
+					hasOwner: await courseHasOwner(course.id),
+					secretKeyConfigured: secretKeyConfigured()
+				}
+			: null
 	};
 };
 
@@ -381,6 +401,30 @@ export const actions: Actions = {
 		if (!result.ok) return fail(result.status, { message: result.message });
 		return { savedAt: Date.now() };
 	},
+
+	// ── LLM provider ──────────────────────────────────────────
+	// `config.ts` gates each of these with `assertCanEditCourse` itself.
+
+	saveLlm: async (event) => {
+		const formData = await event.request.formData();
+		return llmAction(async () => {
+			await saveCourseConfig(actorOf(event), event.params.courseId, llmInputFrom(formData));
+			return { ok: true, message: 'Gespeichert. Der Test war erfolgreich.' };
+		});
+	},
+
+	testLlm: (event) =>
+		llmAction(async () =>
+			(await testCourseConfig(actorOf(event), event.params.courseId))
+				? { ok: true, message: 'Der Test war erfolgreich.' }
+				: { ok: false, message: 'Der Test ist fehlgeschlagen. Details siehe oben.' }
+		),
+
+	clearLlm: (event) =>
+		llmAction(async () => {
+			await clearCourseConfig(actorOf(event), event.params.courseId);
+			return { ok: true, message: 'Entfernt. Dieser Kurs verwendet jetzt den Standard der Schule.' };
+		}),
 
 	/** Take an editable copy of a course — your own, or one shared with you. */
 	duplicate: async (event) => {

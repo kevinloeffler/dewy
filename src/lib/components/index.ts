@@ -9,6 +9,7 @@ export { default as CredentialsSheet }  from './CredentialsSheet.svelte';
 export { default as Field }             from './Field.svelte';
 export { default as GemCounter }  from './GemCounter.svelte';
 export { default as Kbd }         from './Kbd.svelte';
+export { default as LlmConfigForm } from './LlmConfigForm.svelte';
 export { default as MarkdownEditor } from './MarkdownEditor.svelte';
 export { default as Modal }       from './Modal.svelte';
 export { default as Panel }       from './Panel.svelte';
@@ -22,5 +23,6 @@ export { default as VariantChips } from './VariantChips.svelte';
 
 export type { LogEntry, LogKind } from './Console.svelte';
 export type { Credential } from './CredentialsSheet.svelte';
+export type { LlmConfigSummary } from './LlmConfigForm.svelte';
 export type { SelectOption } from './Select.svelte';
 export type { VariantOutcome } from './VariantChips.svelte';

@@ -3,14 +3,18 @@
 	import type { Snippet } from 'svelte';
 	import { Topbar } from '$lib/components/index.js';
 
-	let { children }: { children: Snippet } = $props();
+	import type { LayoutData } from './$types';
 
-	const tabs = [
+	let { data, children }: { data: LayoutData; children: Snippet } = $props();
+
+	const tabs = $derived([
 		{ href: '/admin/courses', label: 'Kurse' },
 		{ href: '/admin/playgrounds', label: 'Playgrounds' },
 		{ href: '/admin/classes', label: 'Klassen' },
-		{ href: '/admin/people', label: 'Benutzer' }
-	];
+		{ href: '/admin/people', label: 'Benutzer' },
+		// The school's settings are the admin's alone; the page guards itself too.
+		...(data.role === 'admin' ? [{ href: '/admin/settings', label: 'Einstellungen' }] : [])
+	]);
 
 	const current = $derived(page.url.pathname);
 </script>

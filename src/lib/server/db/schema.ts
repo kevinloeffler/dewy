@@ -359,4 +359,84 @@ export const image = sqliteTable('image', {
 	createdAt: integer('created_at', { mode: 'timestamp' }).notNull().$defaultFn(() => new Date())
 });
 
+/**
+ * Where the LLM features send their requests: any OpenAI Chat Completions
+ * compatible endpoint.
+ *
+ * Two scopes. The single `app` row is the school's default, set by an admin.
+ * A `course` row is a teacher's own override for one course. It is all or
+ * nothing: a course has a complete config or none, so no field is ever
+ * inherited from the default. `$lib/server/llm/resolve` decides which rows a
+ * request may use, and `$lib/server/llm/config` is the only writer.
+ *
+ * The API key is stored AES-256-GCM encrypted under `LLM_SECRET_KEY`, so a
+ * leaked `dewy.db` backup does not leak it. It is never sent to a browser;
+ * `apiKeyHint` (the last four characters) is what the settings show.
+ *
+ * `last_error` / `last_ok_at` record how the endpoint last behaved, so a
+ * teacher can see that their key stopped working and the school's default
+ * has been answering instead.
+ *
+ * `duplicateCourse` deliberately does not copy a course row: credentials
+ * belong to a person, and a copy starts on the default.
+ */
+export const llmConfig = sqliteTable(
+	'llm_config',
+	{
+		id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+		scope: text('scope', { enum: ['app', 'course'] }).notNull(),
+		courseId: text('course_id').references(() => course.id, { onDelete: 'cascade' }),
+		baseUrl: text('base_url').notNull(),
+		model: text('model').notNull(),
+		reasoningEffort: text('reasoning_effort'),
+		apiKeyCiphertext: text('api_key_ciphertext').notNull(),
+		apiKeyHint: text('api_key_hint').notNull(),
+		lastError: text('last_error'),
+		lastErrorAt: integer('last_error_at', { mode: 'timestamp' }),
+		lastOkAt: integer('last_ok_at', { mode: 'timestamp' }),
+		updatedById: text('updated_by_id').references(() => user.id, { onDelete: 'set null' }),
+		createdAt: integer('created_at', { mode: 'timestamp' }).notNull().$defaultFn(() => new Date()),
+		updatedAt: integer('updated_at', { mode: 'timestamp' }).notNull().$defaultFn(() => new Date())
+	},
+	(t) => [
+		uniqueIndex('llm_config_course_idx').on(t.courseId),
+		// SQLite treats NULLs as distinct, so the unique index above cannot stop
+		// a second app row. A partial index on the scope can.
+		uniqueIndex('llm_config_app_idx').on(t.scope).where(sql`${t.scope} = 'app'`),
+		check(
+			'llm_config_scope_shape',
+			sql`(${t.scope} = 'app' AND ${t.courseId} IS NULL)
+			 OR (${t.scope} = 'course' AND ${t.courseId} IS NOT NULL)`
+		)
+	]
+);
+
+/**
+ * One row per LLM call, for seeing costs and debugging fallbacks.
+ *
+ * Metadata only. No prompt and no reply is stored: those contain student code
+ * and would turn this into a record of everything a child ever asked.
+ */
+export const llmUsage = sqliteTable(
+	'llm_usage',
+	{
+		id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+		at: integer('at', { mode: 'timestamp' }).notNull().$defaultFn(() => new Date()),
+		feature: text('feature').notNull(),
+		userId: text('user_id').references(() => user.id, { onDelete: 'set null' }),
+		courseId: text('course_id').references(() => course.id, { onDelete: 'set null' }),
+		/** Which config answered, or the last one tried when none did. Null: none configured. */
+		configScope: text('config_scope', { enum: ['app', 'course'] }),
+		fellBack: integer('fell_back', { mode: 'boolean' }).notNull().default(false),
+		outcome: text('outcome', {
+			enum: ['ok', 'error', 'invalid_output', 'unconfigured']
+		}).notNull(),
+		model: text('model'),
+		promptTokens: integer('prompt_tokens'),
+		completionTokens: integer('completion_tokens'),
+		latencyMs: integer('latency_ms').notNull()
+	},
+	(t) => [index('llm_usage_at_idx').on(t.at), index('llm_usage_course_idx').on(t.courseId)]
+);
+
 export * from './auth.schema';
