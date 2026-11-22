@@ -207,7 +207,8 @@ export function censusOf(program: Program): CodeCensus {
 
 /**
  * `met` — fine. `unmet` — short of a requirement: the program may run, but
- * cannot complete the level. `violated` — over a limit: it may not run.
+ * cannot complete the level. `violated` — over a limit: it may run too, so
+ * the student can watch what it does, but likewise cannot complete it.
  */
 export type ConstraintStatus = 'met' | 'unmet' | 'violated';
 

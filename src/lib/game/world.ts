@@ -139,7 +139,9 @@ const DURATIONS: Record<WorldEventKind, number> = {
     // Unused: a crash or fumble holds for its own reaction's length (REACTION_DURATIONS).
     crash:       0,
     fumble:      0,
-    goalReached: CELEBRATE_DURATION,
+    // Silent: the run cannot tell whether reaching the goal solved the level —
+    // see `celebrate()`.
+    goalReached: 0,
 }
 
 
@@ -533,6 +535,18 @@ export class World implements EventPlayer {
      */
     shrug() {
         this.roboter?.react('shrug')
+    }
+
+    /**
+     * The level is solved. Queued, unlike `shrug`, so it follows the speed
+     * setting and the caller can open the level-complete sheet as Dewy
+     * lands. A reset snaps it to its end and resolves it too — the caller
+     * checks for that itself.
+     */
+    celebrate(): Promise<void> {
+        const robot = this.roboter
+        if (!robot) return Promise.resolve()
+        return this.queue.play(() => [instant(() => robot.celebrate()), hold(CELEBRATE_DURATION)])
     }
 
 
@@ -1396,10 +1410,12 @@ export class World implements EventPlayer {
                 return [instant(() => robot.react(event.reaction)), hold(REACTION_DURATIONS[event.reaction])]
 
             case 'goalReached':
-                // Self-timed like the crash. At speed 1 the hold covers it
-                // exactly, so the level-complete sheet opens as Dewy lands;
-                // faster, the sheet opens while it is still finishing.
-                return [instant(() => robot.celebrate()), hold(seconds)]
+                // The world is done, but whether that solves the level — the
+                // code rules, the run rules, the hidden variants — is only known
+                // once the run is over. The player answers with `celebrate()`
+                // or `shrug()` then, so Dewy never cheers for a run that does
+                // not count.
+                return []
         }
     }
 

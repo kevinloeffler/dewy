@@ -22,6 +22,7 @@
 		type RunRecord
 	} from '$lib/game/constraints';
 	import { runHeadless } from '$lib/game/run';
+	import { RunCancelled } from '$lib/game/events';
 	import type { CrateColor } from '$lib/game/crate-color';
 	import type { Coord, GoalCondition, Level, LevelDocument } from '$lib/game/level';
 	import { variantLevel } from '$lib/game/variants';
@@ -195,7 +196,7 @@
 	let consoleShown = $state(
 		untrack(() => levelDocument.constraints.some((constraint) => constraint.kind === 'output'))
 	);
-	/** Over a limit: the program may not run. See `$lib/game/constraints`. */
+	/** Over a limit: the program may run, but cannot solve. See `$lib/game/constraints`. */
 	const violated = $derived(checks?.find((check) => check.status === 'violated') ?? null);
 
 	function tryParse(source: string): Program | null {
@@ -395,23 +396,6 @@
 	 * different each time it is pressed, which is the opposite of the point.
 	 */
 	async function begin() {
-		// One gate for Run, Step and Cmd+Enter alike: a program too big for the
-		// robot's memory never starts. Typing it is fine — only running is not.
-		// Run and Step are already disabled here; this catches Cmd+Enter.
-		if (overMemory) {
-			notice = {
-				kind: 'error',
-				text: `Das Programm ist zu lang für Dewys Speicher — ${memoryUsed} Anweisungen, Dewy fasst ${level.options.memory}.`,
-			};
-			playing = false;
-			return;
-		}
-		if (violated) {
-			notice = { kind: 'error', text: `Diese Regel ist verletzt: ${plain(violated.label)}` };
-			playing = false;
-			return;
-		}
-
 		// `running` only goes up once `execute` is under way, and the reset
 		// below yields before that — so a second click needs its own guard.
 		if (!engine || !robot || running || starting) return;
@@ -453,6 +437,7 @@
 		}
 		if (!engine || !world) return;
 
+		resets++;
 		engine.reset();
 		world.reset(engine.state);
 		activeLine = null;
@@ -514,6 +499,25 @@
 	}
 
 	/**
+	 * Counts resets, so a celebration still under way when the student
+	 * resets does not open the level-complete sheet afterwards.
+	 */
+	let resets = 0;
+
+	/** Dewy cheers, then the level-complete sheet opens as it lands. */
+	async function cheer() {
+		const at = resets;
+		try {
+			await world?.celebrate();
+		} catch (error) {
+			// The world was rebuilt under it — another variant, another level.
+			if (error instanceof RunCancelled) return;
+			throw error;
+		}
+		if (at === resets && solved) celebrating = true;
+	}
+
+	/**
 	 * Settles the UI after a run: the toast or the sheet, the line marker.
 	 * `all` says, per variant, whether it was solved — or is `null` for a
 	 * level with only one.
@@ -528,6 +532,25 @@
 					world?.shrug();
 					break;
 				}
+				// Over a limit — too long for the memory, or more of something
+				// than a rule allows. It may run, so the student can watch what
+				// it does, but it can never solve the level.
+				if (overMemory) {
+					notice = {
+						kind: 'warning',
+						text: `${free ? 'Fast' : 'Geschafft'} – aber das Programm ist zu lang für Dewys Speicher: ${memoryUsed} Anweisungen, ${level.options.memory} verfügbar`,
+					};
+					world?.shrug();
+					break;
+				}
+				if (violated) {
+					notice = {
+						kind: 'warning',
+						text: `${free ? 'Fast' : 'Geschafft'} – aber diese Regel ist verletzt: ${plain(violated.label)}`,
+					};
+					world?.shrug();
+					break;
+				}
 				// The world on screen is done, but a rule is not met: the program
 				// works, it is just not the one this level asks for.
 				const unmet = checks?.find((check) => check.status !== 'met');
@@ -538,7 +561,7 @@
 							? `Noch nicht erfüllt: ${plain(unmet.label)}`
 							: `Geschafft – aber diese Regel fehlt noch: ${plain(unmet.label)}`,
 					};
-					if (free) world?.shrug();
+					world?.shrug();
 					break;
 				}
 				// Solving the variant on screen is not solving the level.
@@ -548,14 +571,15 @@
 						kind: 'warning',
 						text: `Variante ${visible + 1} geschafft – ${missing === 1 ? 'eine Variante klappt' : `${missing} Varianten klappen`} noch nicht.`,
 					};
+					world?.shrug();
 					break;
 				}
 				solved = true;
-				celebrating = true;
 				// Fires on every completion, not once per mount: recording it is
 				// idempotent, and a student who resets and solves it again should
 				// not silently stop counting.
 				props.oncomplete?.({ code, steps: engine?.state.steps ?? 0 });
+				void cheer();
 				break;
 			}
 			case 'crash':
@@ -728,7 +752,6 @@
 					memory={level.options.memory}
 					{memoryUsed}
 					{overMemory}
-					blocked={overMemory || violated !== null}
 					bind:speed={view.speed}
 					onrun={run}
 					onstep={step}

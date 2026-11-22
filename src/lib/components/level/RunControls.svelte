@@ -14,8 +14,6 @@
 		memoryUsed: number | null;
 		/** Over the memory cap — the gauge turns red. */
 		overMemory: boolean;
-		/** Run and Step are refused — over memory, or breaking a code rule. */
-		blocked: boolean;
 		speed: number;
 		onrun: () => void;
 		onstep: () => void;
@@ -30,7 +28,6 @@
 		memory,
 		memoryUsed,
 		overMemory,
-		blocked,
 		speed = $bindable(),
 		onrun,
 		onstep,
@@ -138,7 +135,7 @@
 				Stopp
 			</Button>
 		{:else}
-			<Button onclick={onrun} disabled={blocked}>
+			<Button onclick={onrun}>
 				{#snippet icon()}
 					<svg width="11" height="11.9" viewBox="0 0 12 13" fill="none" aria-hidden="true">
 						<path
@@ -151,7 +148,7 @@
 			</Button>
 		{/if}
 
-		<Button variant="ghost" onclick={onstep} disabled={blocked}>
+		<Button variant="ghost" onclick={onstep}>
 			{#snippet icon()}
 				<svg
 						width="12.5"
