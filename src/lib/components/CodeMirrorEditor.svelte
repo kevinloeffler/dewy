@@ -2,8 +2,10 @@
 	import { onMount } from 'svelte';
 	import { EditorView, basicSetup } from 'codemirror';
 	import { javascript } from '@codemirror/lang-javascript';
-	import { EditorState, Compartment } from '@codemirror/state';
-	import { autocompletion } from '@codemirror/autocomplete';
+	import { EditorState, Compartment, Prec } from '@codemirror/state';
+	import { keymap } from '@codemirror/view';
+	import { indentWithTab } from '@codemirror/commands';
+	import { autocompletion, acceptCompletion } from '@codemirror/autocomplete';
 	import { sageTheme, sageSyntax } from '$lib/codemirror/theme.js';
 	import { robotCompletions } from '$lib/codemirror/completions.js';
 	import { executingLineExtension, setExecutingLine } from '$lib/codemirror/executing-line.js';
@@ -49,6 +51,11 @@
 					executingLineExtension,
 					readonlyComp.of(EditorState.readOnly.of(isReadonly)),
 					autocompletion({ override: [robotCompletions(stage)] }),
+					// Tab accepts an open suggestion, otherwise indents. Indenting
+					// means Tab no longer leaves the editor; CodeMirror's escape
+					// hatch (Esc then Tab, or Ctrl-M / Shift-Alt-M) still does.
+					Prec.highest(keymap.of([{ key: 'Tab', run: acceptCompletion }])),
+					keymap.of([indentWithTab]),
 					EditorView.updateListener.of((update) => {
 						if (update.docChanged) onchange?.(update.state.doc.toString());
 					}),
