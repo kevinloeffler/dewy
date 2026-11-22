@@ -54,7 +54,7 @@
 		/**
 		 * The program that last solved this level, from the server. Used when
 		 * this browser holds no draft — a student who changes computers gets
-		 * their solution back rather than the starter code.
+		 * their solution back rather than an empty editor.
 		 */
 		savedCode?: string | null;
 		/** Fires on every transition into a completed run. */
@@ -614,21 +614,14 @@
 	// ========================================================
 
 	function loadCode(): string {
-		if (!browser) return savedCode ?? starterCode(levelDocument);
+		if (!browser) return savedCode ?? '';
 		let draft: string | null = null;
 		try {
 			draft = localStorage.getItem(storageKey);
 		} catch {
 			// Storage blocked: fall through to what the server remembers.
 		}
-		return draft ?? savedCode ?? starterCode(levelDocument);
-	}
-
-	function starterCode(target: LevelDocument): string {
-		const lines = [`// ${target.name}`];
-		if (target.description) lines.push(`// ${target.description}`);
-		lines.push('//', '// Schreib dein Programm hier unten und drück dann auf Start.', '');
-		return lines.join('\n');
+		return draft ?? savedCode ?? '';
 	}
 
 	/** Labels mark code with backticks; a toast shows them as plain text. */
