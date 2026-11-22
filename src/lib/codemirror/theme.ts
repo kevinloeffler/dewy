@@ -14,7 +14,10 @@ export const sageTheme: Extension = EditorView.theme(
 
 		'.cm-content': {
 			caretColor: '#2d3a2e',
-			padding: '4px 0',
+			// Room to scroll about seven lines past the last one, so a student
+			// writing at the end of a long program is not typing at the bottom
+			// edge. `lh` is the line height, so it follows the font size.
+			padding: '4px 0 7lh',
 		},
 
 		'.cm-cursor, .cm-dropCursor': {
