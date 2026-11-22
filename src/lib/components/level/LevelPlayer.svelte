@@ -423,9 +423,15 @@
 	 * — resets it rather than leave the line marker pointing into a program
 	 * that is no longer on screen. `reset` aborts synchronously, so the rest
 	 * of a burst of typing does not reset again while the first one settles.
+	 *
+	 * After a run, typing only clears the toast: it was about the program
+	 * that ran, which is no longer the one on screen.
 	 */
 	function edit(next: string) {
+		// The editor echoes code set from outside back through `onchange`.
+		if (next === code) return;
 		code = next;
+		notice = null;
 		if (running && controller && !controller.signal.aborted) void reset();
 	}
 
